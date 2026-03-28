@@ -1,22 +1,23 @@
 import { db } from '../db/index.js';
-import { auditLogs } from '../db/schema.js';
 import { generateId } from './id.js';
 
 export async function audit(params: {
   tenantId: string;
-  userId?: string | null;
+  memberId?: string | null;
   action: string;
   resource: string;
-  resourceId?: string;
-  meta?: Record<string, unknown>;
+  resourceId?: string | null;
+  meta?: Record<string, unknown> | null;
 }): Promise<void> {
-  await db.insert(auditLogs).values({
-    id: generateId('audit'),
-    tenantId: params.tenantId,
-    userId: params.userId ?? null,
-    action: params.action,
-    resource: params.resource,
-    resourceId: params.resourceId ?? null,
-    meta: params.meta ?? null,
+  await db.auditLog.create({
+    data: {
+      id: generateId('aud'),
+      tenantId: params.tenantId,
+      memberId: params.memberId ?? null,
+      action: params.action,
+      resource: params.resource,
+      resourceId: params.resourceId ?? null,
+      meta: params.meta ?? undefined,
+    },
   });
 }

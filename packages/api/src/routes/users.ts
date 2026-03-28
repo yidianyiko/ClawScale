@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users, tenants } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { hashPassword } from '../lib/password.js';
@@ -23,16 +21,16 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-const userSelect = {
-  id: users.id,
-  tenantId: users.tenantId,
-  email: users.email,
-  name: users.name,
-  role: users.role,
-  isActive: users.isActive,
-  createdAt: users.createdAt,
-  lastActiveAt: users.lastActiveAt,
-};
+const memberSelect = {
+  id: true,
+  tenantId: true,
+  email: true,
+  name: true,
+  role: true,
+  isActive: true,
+  createdAt: true,
+  lastActiveAt: true,
+} as const;
 
 export const usersRouter = new Hono()
   .use('*', requireAuth)
@@ -41,59 +39,59 @@ export const usersRouter = new Hono()
   .get('/', async (c) => {
     const { tenantId } = c.get('auth');
 
-    const rows = await db
-      .select(userSelect)
-      .from(users)
-      .where(eq(users.tenantId, tenantId));
+    const rows = await db.member.findMany({
+      where: { tenantId },
+      select: memberSelect,
+    });
 
     return c.json({ ok: true, data: rows });
   })
 
-  // ── POST /api/users — invite a new user ─────────────────────────────────────
+  // ── POST /api/users — invite a new member ────────────────────────────────────
   .post('/', requireAdmin, zValidator('json', inviteSchema), async (c) => {
     const { tenantId, userId: actorId } = c.get('auth');
     const body = c.req.valid('json');
 
     // Check plan limit
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-    const settings = tenant?.settings as { maxUsers?: number } | undefined;
-    const maxUsers = settings?.maxUsers ?? 5;
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
+    const settings = tenant?.settings as { maxMembers?: number } | undefined;
+    const maxMembers = settings?.maxMembers ?? 5;
 
-    const currentCount = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.tenantId, tenantId), eq(users.isActive, true)));
+    const activeCount = await db.member.count({
+      where: { tenantId, isActive: true },
+    });
 
-    if (currentCount.length >= maxUsers) {
-      return c.json({ ok: false, error: `Plan limit reached (${maxUsers} users max)` }, 422);
+    if (activeCount >= maxMembers) {
+      return c.json({ ok: false, error: `Plan limit reached (${maxMembers} members max)` }, 422);
     }
 
     // Check duplicate email within tenant
-    const existing = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.tenantId, tenantId), eq(users.email, body.email.toLowerCase())))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return c.json({ ok: false, error: 'A user with this email already exists' }, 409);
-    }
-
-    const id = generateId('usr');
-    const passwordHash = await hashPassword(body.temporaryPassword);
-
-    await db.insert(users).values({
-      id,
-      tenantId,
-      email: body.email.toLowerCase(),
-      name: body.name,
-      passwordHash,
-      role: body.role,
+    const existing = await db.member.findUnique({
+      where: { tenantId_email: { tenantId, email: body.email.toLowerCase() } },
+      select: { id: true },
     });
 
-    await audit({ tenantId, userId: actorId, action: 'invite_user', resource: 'user', resourceId: id });
+    if (existing) {
+      return c.json({ ok: false, error: 'A member with this email already exists' }, 409);
+    }
 
-    const [created] = await db.select(userSelect).from(users).where(eq(users.id, id)).limit(1);
+    const id = generateId('mbr');
+    const passwordHash = await hashPassword(body.temporaryPassword);
+
+    await db.member.create({
+      data: {
+        id,
+        tenantId,
+        email: body.email.toLowerCase(),
+        name: body.name,
+        passwordHash,
+        role: body.role,
+      },
+    });
+
+    await audit({ tenantId, memberId: actorId, action: 'invite_member', resource: 'member', resourceId: id });
+
+    const created = await db.member.findUnique({ where: { id }, select: memberSelect });
     return c.json({ ok: true, data: created }, 201);
   })
 
@@ -102,14 +100,13 @@ export const usersRouter = new Hono()
     const { tenantId } = c.get('auth');
     const id = c.req.param('id');
 
-    const [user] = await db
-      .select(userSelect)
-      .from(users)
-      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
-      .limit(1);
+    const member = await db.member.findFirst({
+      where: { id, tenantId },
+      select: memberSelect,
+    });
 
-    if (!user) return c.json({ ok: false, error: 'User not found' }, 404);
-    return c.json({ ok: true, data: user });
+    if (!member) return c.json({ ok: false, error: 'Member not found' }, 404);
+    return c.json({ ok: true, data: member });
   })
 
   // ── PATCH /api/users/:id ─────────────────────────────────────────────────────
@@ -118,22 +115,18 @@ export const usersRouter = new Hono()
     const id = c.req.param('id');
     const body = c.req.valid('json');
 
-    const [existing] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
-      .limit(1);
+    const existing = await db.member.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
 
-    if (!existing) return c.json({ ok: false, error: 'User not found' }, 404);
+    if (!existing) return c.json({ ok: false, error: 'Member not found' }, 404);
 
-    await db
-      .update(users)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(users.id, id));
+    await db.member.update({ where: { id }, data: body });
 
-    await audit({ tenantId, userId: actorId, action: 'update_user', resource: 'user', resourceId: id, meta: body });
+    await audit({ tenantId, memberId: actorId, action: 'update_member', resource: 'member', resourceId: id, meta: body });
 
-    const [updated] = await db.select(userSelect).from(users).where(eq(users.id, id)).limit(1);
+    const updated = await db.member.findUnique({ where: { id }, select: memberSelect });
     return c.json({ ok: true, data: updated });
   })
 
@@ -146,17 +139,16 @@ export const usersRouter = new Hono()
       return c.json({ ok: false, error: 'You cannot deactivate your own account' }, 422);
     }
 
-    const [existing] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)))
-      .limit(1);
+    const existing = await db.member.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
 
-    if (!existing) return c.json({ ok: false, error: 'User not found' }, 404);
+    if (!existing) return c.json({ ok: false, error: 'Member not found' }, 404);
 
-    await db.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, id));
+    await db.member.update({ where: { id }, data: { isActive: false } });
 
-    await audit({ tenantId, userId: actorId, action: 'deactivate_user', resource: 'user', resourceId: id });
+    await audit({ tenantId, memberId: actorId, action: 'deactivate_member', resource: 'member', resourceId: id });
 
     return c.json({ ok: true, data: null });
   });

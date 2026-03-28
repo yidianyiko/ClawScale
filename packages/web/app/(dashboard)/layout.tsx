@@ -1,0 +1,99 @@
+'use client';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
+import { LayoutDashboard, Users, Radio, Settings, LogOut, Hexagon, MessageSquare, Zap } from 'lucide-react';
+import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
+import { cn } from '@/lib/utils';
+
+const navItems = [
+  { href: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { href: '/conversations', icon: MessageSquare, label: 'Conversations' },
+  { href: '/channels', icon: Radio, label: 'Channels' },
+  { href: '/workflows', icon: Zap, label: 'Workflows' },
+  { href: '/users', icon: Users, label: 'Team' },
+  { href: '/settings', icon: Settings, label: 'Settings' },
+];
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.replace('/login');
+    } else {
+      setReady(true);
+    }
+  }, [router]);
+
+  if (!ready) return null;
+
+  const user = getUser();
+  const tenant = getTenant();
+
+  function handleLogout() {
+    clearAuth();
+    router.push('/login');
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <aside className="flex w-60 flex-col bg-navy-900 text-white">
+        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
+          <Hexagon className="h-7 w-7 text-teal-500" strokeWidth={1.5} />
+          <div>
+            <span className="font-semibold text-white text-base">ClawScale</span>
+            <p className="text-[10px] text-white/40 leading-none mt-0.5">by Pulse</p>
+          </div>
+        </div>
+
+        {tenant && (
+          <div className="mx-4 mt-4 rounded-lg bg-white/5 px-3 py-2">
+            <p className="text-xs font-medium text-white/80 truncate">{tenant.name}</p>
+            <p className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wide">{tenant.plan}</p>
+          </div>
+        )}
+
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {navItems.map(({ href, icon: Icon, label, exact }) => {
+            const isActive = exact ? pathname === href : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                  isActive
+                    ? 'bg-teal-500/20 text-teal-400'
+                    : 'text-white/60 hover:bg-white/5 hover:text-white',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="border-t border-white/10 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500/20 text-teal-400 text-sm font-semibold">
+              {user?.name[0]?.toUpperCase() ?? '?'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-white truncate">{user?.name}</p>
+              <p className="text-xs text-white/40 capitalize">{user?.role}</p>
+            </div>
+            <button onClick={handleLogout} className="text-white/40 hover:text-white transition-colors" title="Sign out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto">{children}</main>
+    </div>
+  );
+}

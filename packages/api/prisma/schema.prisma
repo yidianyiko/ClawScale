@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum TenantPlan {
+  starter
+  business
+  enterprise
+}
+
+enum MemberRole {
+  admin
+  member
+  viewer
+}
+
+enum ChannelStatus {
+  connected
+  disconnected
+  pending
+  error
+}
+
+enum ChannelType {
+  whatsapp
+  telegram
+  slack
+  discord
+  instagram
+  facebook
+  line
+  signal
+  teams
+  matrix
+  web
+  wechat_work
+}
+
+enum WorkflowType {
+  script_js
+  script_python
+  script_shell
+  n8n
+  pulse_editor
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+enum EndUserStatus {
+  allowed
+  blocked
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String     @id
+  slug      String     @unique
+  name      String
+  plan      TenantPlan @default(starter)
+  settings  Json       @default("{}")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  members       Member[]
+  sessions      Session[]
+  channels      Channel[]
+  endUsers      EndUser[]
+  workflows     Workflow[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
+/// Internal staff who manage the bot (owner/admin/viewers).
+model Member {
+  id           String     @id
+  tenantId     String     @map("tenant_id")
+  email        String
+  name         String
+  passwordHash String     @map("password_hash")
+  role         MemberRole @default(member)
+  isActive     Boolean    @default(true) @map("is_active")
+  lastActiveAt DateTime?  @map("last_active_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("members")
+}
+
+model Session {
+  id        String   @id
+  memberId  String   @map("member_id")
+  tenantId  String   @map("tenant_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([tenantId])
+  @@map("sessions")
+}
+
+model Channel {
+  id        String        @id
+  tenantId  String        @map("tenant_id")
+  type      ChannelType
+  name      String
+  status    ChannelStatus @default(disconnected)
+  config    Json          @default("{}")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  endUsers      EndUser[]
+
+  @@index([tenantId])
+  @@map("channels")
+}
+
+/// External users who chat with the bot via social channels.
+/// Identified by (tenantId, channelId, externalId) — the platform's user ID.
+/// Can be anonymous (no name/email) until the bot or owner enriches the record.
+model EndUser {
+  id         String        @id
+  tenantId   String        @map("tenant_id")
+  channelId  String        @map("channel_id")
+  externalId String        @map("external_id") // platform-native user ID
+  name       String?
+  email      String?
+  metadata   Json          @default("{}")
+  status     EndUserStatus @default(allowed)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel       Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([tenantId, channelId, externalId])
+  @@index([tenantId])
+  @@map("end_users")
+}
+
+model Conversation {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  channelId String   @map("channel_id")
+  endUserId String   @map("end_user_id")
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  channel  Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  endUser  EndUser   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([tenantId])
+  @@index([endUserId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String      @id
+  conversationId String      @map("conversation_id")
+  role           MessageRole
+  content        String
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+/// Owner-defined automations that the AI agent can invoke during a conversation.
+model Workflow {
+  id          String       @id
+  tenantId    String       @map("tenant_id")
+  name        String
+  description String?
+  type        WorkflowType
+  /// For script types: the script source code.
+  /// For n8n/pulse_editor: not used (use config instead).
+  code        String?
+  /// For n8n: { webhookUrl, method, headers }
+  /// For pulse_editor: { appId, skillName }
+  /// For scripts: optional env/args config
+  config      Json         @default("{}")
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("workflows")
+}
+
+model AuditLog {
+  id         String   @id
+  tenantId   String   @map("tenant_id")
+  memberId   String?  @map("member_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  meta       Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  member Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@map("audit_logs")
+}

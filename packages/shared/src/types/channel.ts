@@ -1,6 +1,5 @@
 /**
- * Channel types supported — mirrors OpenClaw's channel plugin identifiers.
- * Add more as OpenClaw gains support.
+ * Channel types — social platforms the bot can connect to.
  */
 export type ChannelType =
   | 'whatsapp'
@@ -13,7 +12,8 @@ export type ChannelType =
   | 'signal'
   | 'teams'
   | 'matrix'
-  | 'web';
+  | 'web'
+  | 'wechat_work';
 
 export type ChannelStatus = 'connected' | 'disconnected' | 'pending' | 'error';
 
@@ -23,10 +23,8 @@ export interface Channel {
   type: ChannelType;
   name: string;
   status: ChannelStatus;
-  /** Opaque config — schema varies per channel type */
-  config: Record<string, unknown>;
-  /** OpenClaw process info for this channel */
-  gatewayPort: number | null;
+  /** Opaque config — schema varies per channel type, contains secrets (admin-only) */
+  config?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -115,6 +113,13 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   web: {
     label: 'Web Chat Widget',
     fields: [],
+  },
+  wechat_work: {
+    label: 'WeChat Work (WeCom)',
+    fields: [
+      { key: 'botId', label: 'Bot ID', type: 'text', required: true, placeholder: '' },
+      { key: 'secret', label: 'Bot Secret', type: 'password', required: true, placeholder: '' },
+    ],
   },
 };
 

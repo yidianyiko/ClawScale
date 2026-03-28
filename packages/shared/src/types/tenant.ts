@@ -10,24 +10,30 @@ export interface Tenant {
 }
 
 export interface TenantSettings {
-  /** Display name for the shared AI persona */
+  /** Display name for the AI persona shown to end-users */
   personaName: string;
-  /** System prompt for the shared AI persona */
+  /** System prompt that defines the bot's behaviour */
   personaPrompt: string;
-  /** Max users allowed on this plan */
-  maxUsers: number;
-  /** Max channels allowed on this plan */
+  /** Max internal members (staff) allowed on this plan */
+  maxMembers: number;
+  /** Max social channels allowed on this plan */
   maxChannels: number;
-  /** Feature flags */
+  /**
+   * End-user access control policy.
+   * - anonymous: anyone who messages the bot can interact with it
+   * - whitelist: only externalIds in allowList are permitted
+   * - blacklist: externalIds in blockList are denied; everyone else is allowed
+   */
+  endUserAccess: 'anonymous' | 'whitelist' | 'blacklist';
+  allowList?: string[];
+  blockList?: string[];
   features: {
-    sharedMemory: boolean;
-    privateThreads: boolean;
     knowledgeBase: boolean;
   };
 }
 
-export const PLAN_LIMITS: Record<TenantPlan, Pick<TenantSettings, 'maxUsers' | 'maxChannels'>> = {
-  starter: { maxUsers: 5, maxChannels: 3 },
-  business: { maxUsers: 50, maxChannels: 20 },
-  enterprise: { maxUsers: Infinity, maxChannels: Infinity },
+export const PLAN_LIMITS: Record<TenantPlan, Pick<TenantSettings, 'maxMembers' | 'maxChannels'>> = {
+  starter:    { maxMembers: 5,        maxChannels: 3 },
+  business:   { maxMembers: 50,       maxChannels: 20 },
+  enterprise: { maxMembers: Infinity, maxChannels: Infinity },
 };

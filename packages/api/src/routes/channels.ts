@@ -1,21 +1,16 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { channels, tenants } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
-import {
-  startTenantGateway,
-  stopTenantGateway,
-  getGatewayStatus,
-} from '../lib/openclaw-bridge.js';
+import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
+import { startWeChatBot, stopWeChatBot } from '../adapters/wechat.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work',
 ] as const;
 
 const createSchema = z.object({
@@ -29,6 +24,17 @@ const updateSchema = z.object({
   config: z.record(z.unknown()).optional(),
 });
 
+const channelListSelect = {
+  id: true,
+  tenantId: true,
+  type: true,
+  name: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  // config intentionally omitted (contains secrets)
+} as const;
+
 export const channelsRouter = new Hono()
   .use('*', requireAuth)
 
@@ -36,20 +42,10 @@ export const channelsRouter = new Hono()
   .get('/', async (c) => {
     const { tenantId } = c.get('auth');
 
-    const rows = await db
-      .select({
-        id: channels.id,
-        tenantId: channels.tenantId,
-        type: channels.type,
-        name: channels.name,
-        status: channels.status,
-        gatewayPort: channels.gatewayPort,
-        createdAt: channels.createdAt,
-        updatedAt: channels.updatedAt,
-        // Config intentionally omitted from list (contains secrets)
-      })
-      .from(channels)
-      .where(eq(channels.tenantId, tenantId));
+    const rows = await db.channel.findMany({
+      where: { tenantId },
+      select: channelListSelect,
+    });
 
     return c.json({ ok: true, data: rows });
   })
@@ -60,33 +56,32 @@ export const channelsRouter = new Hono()
     const body = c.req.valid('json');
 
     // Check plan channel limit
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
     const settings = tenant?.settings as { maxChannels?: number } | undefined;
     const maxChannels = settings?.maxChannels ?? 3;
 
-    const existing = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(eq(channels.tenantId, tenantId));
+    const channelCount = await db.channel.count({ where: { tenantId } });
 
-    if (existing.length >= maxChannels) {
+    if (channelCount >= maxChannels) {
       return c.json({ ok: false, error: `Plan limit reached (${maxChannels} channels max)` }, 422);
     }
 
     const id = generateId('ch');
-    await db.insert(channels).values({
-      id,
-      tenantId,
-      type: body.type,
-      name: body.name,
-      config: body.config,
-      status: 'disconnected',
+    await db.channel.create({
+      data: {
+        id,
+        tenantId,
+        type: body.type,
+        name: body.name,
+        config: body.config,
+        status: 'disconnected',
+      },
     });
 
-    await audit({ tenantId, userId, action: 'create_channel', resource: 'channel', resourceId: id });
+    await audit({ tenantId, memberId: userId, action: 'create_channel', resource: 'channel', resourceId: id });
 
-    const [created] = await db.select().from(channels).where(eq(channels.id, id)).limit(1);
-    return c.json({ ok: true, data: { ...created, config: undefined } }, 201);
+    const created = await db.channel.findUnique({ where: { id }, select: channelListSelect });
+    return c.json({ ok: true, data: created }, 201);
   })
 
   // ── GET /api/channels/:id ────────────────────────────────────────────────────
@@ -94,11 +89,8 @@ export const channelsRouter = new Hono()
     const { tenantId } = c.get('auth');
     const id = c.req.param('id');
 
-    const [channel] = await db
-      .select()
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
+    // Return config only on single-channel fetch (for editing)
+    const channel = await db.channel.findFirst({ where: { id, tenantId } });
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
     return c.json({ ok: true, data: channel });
@@ -110,19 +102,18 @@ export const channelsRouter = new Hono()
     const id = c.req.param('id');
     const body = c.req.valid('json');
 
-    const [existing] = await db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
+    const existing = await db.channel.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
 
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
-    await db.update(channels).set({ ...body, updatedAt: new Date() }).where(eq(channels.id, id));
-    await audit({ tenantId, userId, action: 'update_channel', resource: 'channel', resourceId: id });
+    await db.channel.update({ where: { id }, data: body });
+    await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
 
-    const [updated] = await db.select().from(channels).where(eq(channels.id, id)).limit(1);
-    return c.json({ ok: true, data: { ...updated, config: undefined } });
+    const updated = await db.channel.findUnique({ where: { id }, select: channelListSelect });
+    return c.json({ ok: true, data: updated });
   })
 
   // ── DELETE /api/channels/:id ─────────────────────────────────────────────────
@@ -130,61 +121,58 @@ export const channelsRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const id = c.req.param('id');
 
-    const [existing] = await db
-      .select()
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
-
+    const existing = await db.channel.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
-    // Stop the gateway process if running
-    if (existing.status === 'connected') {
-      stopTenantGateway(`${tenantId}:${id}`);
+    if (existing.type === 'discord') {
+      stopDiscordBot(id).catch(() => {});
+    } else if (existing.type === 'wechat_work') {
+      stopWeChatBot(id).catch(() => {});
     }
 
-    await db.delete(channels).where(eq(channels.id, id));
-    await audit({ tenantId, userId, action: 'delete_channel', resource: 'channel', resourceId: id });
+    await db.channel.delete({ where: { id } });
+    await audit({ tenantId, memberId: userId, action: 'delete_channel', resource: 'channel', resourceId: id });
 
     return c.json({ ok: true, data: null });
   })
 
   // ── POST /api/channels/:id/connect ──────────────────────────────────────────
+  // Marks the channel active. The actual webhook listener is configured externally
+  // (e.g. set the webhook URL on the social platform to point at /gateway/:channelId).
   .post('/:id/connect', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
     const id = c.req.param('id');
 
-    const [channel] = await db
-      .select()
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
-
+    const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
     if (channel.status === 'connected') {
-      return c.json({ ok: true, data: { message: 'Already connected' } });
+      return c.json({ ok: true, data: { status: 'connected' } });
     }
 
-    // Mark as pending while we spin up the OpenClaw process
-    await db.update(channels).set({ status: 'pending', updatedAt: new Date() }).where(eq(channels.id, id));
+    await db.channel.update({ where: { id }, data: { status: 'connected' } });
+    await audit({ tenantId, memberId: userId, action: 'connect_channel', resource: 'channel', resourceId: id });
 
-    try {
-      const gatewayKey = `${tenantId}:${id}`;
-      const port = await startTenantGateway(gatewayKey);
-
-      await db
-        .update(channels)
-        .set({ status: 'connected', gatewayPort: port, updatedAt: new Date() })
-        .where(eq(channels.id, id));
-
-      await audit({ tenantId, userId, action: 'connect_channel', resource: 'channel', resourceId: id });
-
-      return c.json({ ok: true, data: { status: 'connected', gatewayPort: port } });
-    } catch (err) {
-      await db.update(channels).set({ status: 'error', updatedAt: new Date() }).where(eq(channels.id, id));
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      return c.json({ ok: false, error: `Failed to start gateway: ${message}` }, 500);
+    // Start platform-specific adapter
+    if (channel.type === 'discord') {
+      const config = channel.config as Record<string, string> | null;
+      const botToken = config?.['botToken'];
+      if (botToken) {
+        startDiscordBot(id, botToken).catch((err) =>
+          console.error(`[discord:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'wechat_work') {
+      const config = channel.config as Record<string, string> | null;
+      const botId = config?.['botId'];
+      const secret = config?.['secret'];
+      if (botId && secret) {
+        startWeChatBot(id, botId, secret).catch((err) =>
+          console.error(`[wechat:${id}] Failed to start bot:`, err),
+        );
+      }
     }
+
+    return c.json({ ok: true, data: { status: 'connected' } });
   })
 
   // ── POST /api/channels/:id/disconnect ───────────────────────────────────────
@@ -192,39 +180,22 @@ export const channelsRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const id = c.req.param('id');
 
-    const [channel] = await db
-      .select()
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
-
+    const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
-    stopTenantGateway(`${tenantId}:${id}`);
+    await db.channel.update({ where: { id }, data: { status: 'disconnected' } });
+    await audit({ tenantId, memberId: userId, action: 'disconnect_channel', resource: 'channel', resourceId: id });
 
-    await db
-      .update(channels)
-      .set({ status: 'disconnected', gatewayPort: null, gatewayPid: null, updatedAt: new Date() })
-      .where(eq(channels.id, id));
-
-    await audit({ tenantId, userId, action: 'disconnect_channel', resource: 'channel', resourceId: id });
+    // Stop platform-specific adapter
+    if (channel.type === 'discord') {
+      stopDiscordBot(id).catch((err) =>
+        console.error(`[discord:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'wechat_work') {
+      stopWeChatBot(id).catch((err) =>
+        console.error(`[wechat:${id}] Failed to stop bot:`, err),
+      );
+    }
 
     return c.json({ ok: true, data: { status: 'disconnected' } });
-  })
-
-  // ── GET /api/channels/:id/status ────────────────────────────────────────────
-  .get('/:id/status', async (c) => {
-    const { tenantId } = c.get('auth');
-    const id = c.req.param('id');
-
-    const [channel] = await db
-      .select({ id: channels.id, status: channels.status, gatewayPort: channels.gatewayPort })
-      .from(channels)
-      .where(and(eq(channels.id, id), eq(channels.tenantId, tenantId)))
-      .limit(1);
-
-    if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
-
-    const processStatus = getGatewayStatus(`${tenantId}:${id}`);
-    return c.json({ ok: true, data: { ...channel, processStatus } });
   });

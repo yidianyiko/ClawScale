@@ -1,26 +1,29 @@
-export type UserRole = 'admin' | 'member' | 'viewer';
+export type MemberRole = 'admin' | 'member' | 'viewer';
 
-export interface User {
+/** Internal staff member who manages the bot via the dashboard */
+export interface Member {
   id: string;
   tenantId: string;
   email: string;
   name: string;
-  role: UserRole;
+  role: MemberRole;
   isActive: boolean;
   createdAt: string;
   lastActiveAt: string | null;
 }
 
-/** Safe user object (no password hash) returned from API */
-export type PublicUser = User;
+/** Alias used by auth result (kept as `user` in the API response shape for front-end compat) */
+export type PublicUser = Member;
 
-export interface InviteUserPayload {
+export interface InviteMemberPayload {
   email: string;
   name: string;
-  role: UserRole;
+  role: MemberRole;
+  temporaryPassword: string;
 }
 
-export interface UpdateUserPayload {
+export interface UpdateMemberPayload {
   name?: string;
-  role?: UserRole;
+  role?: MemberRole;
+  isActive?: boolean;
 }

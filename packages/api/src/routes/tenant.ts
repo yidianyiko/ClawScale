@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { tenants, auditLogs, users } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { audit } from '../lib/audit.js';
 
@@ -13,13 +11,7 @@ const updateSettingsSchema = z.object({
     .object({
       personaName: z.string().min(1).max(80).optional(),
       personaPrompt: z.string().max(4000).optional(),
-      features: z
-        .object({
-          sharedMemory: z.boolean().optional(),
-          privateThreads: z.boolean().optional(),
-          knowledgeBase: z.boolean().optional(),
-        })
-        .optional(),
+      endUserAccess: z.enum(['anonymous', 'whitelist', 'blacklist']).optional(),
     })
     .optional(),
 });
@@ -30,7 +22,7 @@ export const tenantRouter = new Hono()
   // ── GET /api/tenant ──────────────────────────────────────────────────────────
   .get('/', async (c) => {
     const { tenantId } = c.get('auth');
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return c.json({ ok: false, error: 'Tenant not found' }, 404);
     return c.json({ ok: true, data: tenant });
   })
@@ -40,7 +32,7 @@ export const tenantRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const body = c.req.valid('json');
 
-    const [current] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const current = await db.tenant.findUnique({ where: { id: tenantId } });
     if (!current) return c.json({ ok: false, error: 'Tenant not found' }, 404);
 
     const updatedSettings =
@@ -48,18 +40,17 @@ export const tenantRouter = new Hono()
         ? { ...(current.settings as object), ...body.settings }
         : current.settings;
 
-    await db
-      .update(tenants)
-      .set({
+    await db.tenant.update({
+      where: { id: tenantId },
+      data: {
         ...(body.name != null ? { name: body.name } : {}),
-        settings: updatedSettings,
-        updatedAt: new Date(),
-      })
-      .where(eq(tenants.id, tenantId));
+        settings: updatedSettings as object,
+      },
+    });
 
-    await audit({ tenantId, userId, action: 'update_tenant_settings', resource: 'tenant', resourceId: tenantId });
+    await audit({ tenantId, memberId: userId, action: 'update_tenant_settings', resource: 'tenant', resourceId: tenantId });
 
-    const [updated] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const updated = await db.tenant.findUnique({ where: { id: tenantId } });
     return c.json({ ok: true, data: updated });
   })
 
@@ -69,47 +60,58 @@ export const tenantRouter = new Hono()
     const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 200);
     const offset = parseInt(c.req.query('offset') ?? '0', 10);
 
-    const rows = await db
-      .select({
-        id: auditLogs.id,
-        userId: auditLogs.userId,
-        userName: users.name,
-        action: auditLogs.action,
-        resource: auditLogs.resource,
-        resourceId: auditLogs.resourceId,
-        meta: auditLogs.meta,
-        createdAt: auditLogs.createdAt,
-      })
-      .from(auditLogs)
-      .leftJoin(users, eq(auditLogs.userId, users.id))
-      .where(eq(auditLogs.tenantId, tenantId))
-      .orderBy(auditLogs.createdAt)
-      .limit(limit)
-      .offset(offset);
+    const rows = await db.auditLog.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        memberId: true,
+        member: { select: { name: true } },
+        action: true,
+        resource: true,
+        resourceId: true,
+        meta: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+    });
 
-    return c.json({ ok: true, data: rows });
+    const mapped = rows.map((row) => ({
+      id: row.id,
+      memberId: row.memberId,
+      memberName: row.member?.name ?? null,
+      action: row.action,
+      resource: row.resource,
+      resourceId: row.resourceId,
+      meta: row.meta,
+      createdAt: row.createdAt,
+    }));
+
+    return c.json({ ok: true, data: mapped });
   })
 
   // ── GET /api/tenant/stats ────────────────────────────────────────────────────
   .get('/stats', async (c) => {
     const { tenantId } = c.get('auth');
 
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
 
-    const userRows = await db
-      .select({ id: users.id, isActive: users.isActive })
-      .from(users)
-      .where(eq(users.tenantId, tenantId));
-
-    const totalUsers = userRows.length;
-    const activeUsers = userRows.filter((u) => u.isActive).length;
+    const [totalMembers, activeMembers, totalConversations, activeChannels] = await Promise.all([
+      db.member.count({ where: { tenantId } }),
+      db.member.count({ where: { tenantId, isActive: true } }),
+      db.conversation.count({ where: { tenantId } }),
+      db.channel.count({ where: { tenantId, status: 'connected' } }),
+    ]);
 
     return c.json({
       ok: true,
       data: {
         plan: tenant?.plan ?? 'starter',
-        totalUsers,
-        activeUsers,
+        totalMembers,
+        activeMembers,
+        totalConversations,
+        activeChannels,
         settings: tenant?.settings,
       },
     });
