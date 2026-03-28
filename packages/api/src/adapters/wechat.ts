@@ -23,17 +23,23 @@ export async function startWeChatBot(channelId: string, botId: string, secret: s
 
   const client = new AiBot.WSClient({ botId, secret });
 
-  client.on('message.text', async (frame: { text?: { content?: string }; sender?: { user_id?: string; name?: string } }) => {
-    const text = frame.text?.content?.trim();
+  client.on('message.text', async (frame: {
+    headers?: { req_id?: string };
+    body?: { text?: { content?: string }; from?: { userid?: string; name?: string } };
+  }) => {
+    const text = frame.body?.text?.content?.trim();
     if (!text) return;
+
+    const userId = frame.body?.from?.userid ?? 'unknown';
+    console.log(`[wechat:${channelId}] Message from ${userId}: ${text}`);
 
     try {
       const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          externalId: frame.sender?.user_id ?? 'unknown',
-          displayName: frame.sender?.name,
+          externalId: userId,
+          displayName: frame.body?.from?.name,
           text,
           meta: { platform: 'wechat_work' },
         }),
@@ -42,7 +48,8 @@ export async function startWeChatBot(channelId: string, botId: string, secret: s
       const data = (await res.json()) as { ok: boolean; data?: { reply: string }; error?: string };
 
       if (data.ok && data.data?.reply) {
-        await client.reply(data.data.reply);
+        const streamId = `stream_${Date.now()}`;
+        await client.replyStream(frame, streamId, data.data.reply, true);
       }
     } catch (err) {
       console.error(`[wechat:${channelId}] Error routing message:`, err);
