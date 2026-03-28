@@ -12,6 +12,7 @@ import { conversationsRouter } from './routes/conversations.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
 import { initWeChatAdapters } from './adapters/wechat.js';
+import { initWhatsAppAdapters } from './adapters/whatsapp.js';
 
 const app = new Hono();
 
@@ -62,4 +63,5 @@ serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   console.log(`ClawScale API running on http://${info.address}:${info.port}`);
   initDiscordAdapters().catch((err) => console.error('[discord] Init failed:', err));
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));
+  initWhatsAppAdapters().catch((err) => console.error('[whatsapp] Init failed:', err));
 });

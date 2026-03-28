@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Plus, Loader2, Plug, PlugZap, Trash2, Radio } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
@@ -8,8 +8,9 @@ import { CHANNEL_CONFIG_SCHEMA, type ChannelType, type Channel } from '@clawscal
 import type { ApiResponse } from '@clawscale/shared';
 
 const CHANNEL_ICONS: Record<string, string> = {
-  whatsapp: '📱', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
+  whatsapp: '📱', whatsapp_business: '🟢', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
   facebook: '👥', line: '💚', signal: '🔒', teams: '🏢', matrix: '🔷', web: '🌐',
+  wechat_work: '💼',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -31,6 +32,12 @@ export default function Channels() {
   const [adding, setAdding] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // WhatsApp QR modal
+  const [qrChannelId, setQrChannelId] = useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [qrStatus, setQrStatus] = useState<string | null>(null);
+  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   async function load() {
     const res = await api.get<ApiResponse<ChannelRow[]>>('/api/channels');
     if (res.ok) setChannels(res.data);
@@ -38,6 +45,36 @@ export default function Channels() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  // Poll QR endpoint while modal is open
+  useEffect(() => {
+    if (!qrChannelId) {
+      if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
+      return;
+    }
+
+    async function pollQR() {
+      if (!qrChannelId) return;
+      const res = await api.get<ApiResponse<{ qr: string | null; status: string | null }>>(`/api/channels/${qrChannelId}/qr`);
+      if (!res.ok) return;
+      setQrImage(res.data.qr);
+      setQrStatus(res.data.status);
+      if (res.data.status === 'connected') {
+        setChannels((prev) => prev.map((c) => c.id === qrChannelId ? { ...c, status: 'connected' as const } : c));
+        closeQrModal();
+      }
+    }
+
+    void pollQR();
+    qrPollRef.current = setInterval(pollQR, 3000);
+    return () => { if (qrPollRef.current) clearInterval(qrPollRef.current); };
+  }, [qrChannelId]);
+
+  function closeQrModal() {
+    setQrChannelId(null);
+    setQrImage(null);
+    setQrStatus(null);
+  }
 
   function resetAddForm() { setAddName(''); setAddConfig({}); setAddError(''); setAddType('whatsapp'); }
 
@@ -51,11 +88,16 @@ export default function Channels() {
     } finally { setAdding(false); }
   }
 
-  async function handleConnect(id: string) {
-    setActionLoading(id);
+  async function handleConnect(ch: ChannelRow) {
+    setActionLoading(ch.id);
     try {
-      const res = await api.post<ApiResponse<{ status: string; gatewayPort: number }>>(`/api/channels/${id}/connect`);
-      if (res.ok) setChannels((prev) => prev.map((c) => c.id === id ? { ...c, status: 'connected' as const, gatewayPort: res.data.gatewayPort } : c));
+      const res = await api.post<ApiResponse<{ status: string }>>(`/api/channels/${ch.id}/connect`);
+      if (!res.ok) return;
+      const newStatus = res.data.status as ChannelRow['status'];
+      setChannels((prev) => prev.map((c) => c.id === ch.id ? { ...c, status: newStatus } : c));
+      if (ch.type === 'whatsapp') {
+        setQrChannelId(ch.id);
+      }
     } finally { setActionLoading(null); }
   }
 
@@ -63,7 +105,7 @@ export default function Channels() {
     setActionLoading(id);
     try {
       const res = await api.post<ApiResponse<{ status: string }>>(`/api/channels/${id}/disconnect`);
-      if (res.ok) setChannels((prev) => prev.map((c) => c.id === id ? { ...c, status: 'disconnected' as const, gatewayPort: null } : c));
+      if (res.ok) setChannels((prev) => prev.map((c) => c.id === id ? { ...c, status: 'disconnected' as const } : c));
     } finally { setActionLoading(null); }
   }
 
@@ -85,6 +127,7 @@ export default function Channels() {
         {isAdmin && <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Add channel</button>}
       </div>
 
+      {/* Add channel modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md p-6">
@@ -103,6 +146,11 @@ export default function Channels() {
                 <label className="label">Display name</label>
                 <input className="input" placeholder={`My ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
               </div>
+              {addType === 'whatsapp' && (
+                <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+                  After adding, click <strong>Connect</strong> to get a QR code to scan with your phone.
+                </p>
+              )}
               {schema.fields.map((field) => (
                 <div key={field.key}>
                   <label className="label">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
@@ -122,13 +170,34 @@ export default function Channels() {
         </div>
       )}
 
+      {/* WhatsApp QR modal */}
+      {qrChannelId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="card w-full max-w-sm p-6 text-center">
+            <h2 className="text-lg font-semibold mb-1">Scan QR Code</h2>
+            <p className="text-sm text-gray-500 mb-5">Open WhatsApp → Linked Devices → Link a device</p>
+            {qrImage ? (
+              <img src={qrImage} alt="WhatsApp QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
+            ) : (
+              <div className="mx-auto w-56 h-56 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
+              </div>
+            )}
+            <p className="mt-4 text-xs text-gray-400">
+              {qrStatus === 'qr_pending' ? 'Waiting for scan…' : qrStatus ?? 'Generating QR…'}
+            </p>
+            <button className="btn-secondary w-full mt-5" onClick={closeQrModal}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>
       ) : channels.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <Radio className="h-10 w-10 text-gray-200 mb-3" />
           <p className="text-gray-500 font-medium">No channels yet</p>
-          <p className="text-sm text-gray-400 mt-1 max-w-xs">Connect WhatsApp, Telegram, Slack, and more to start routing messages through your AI assistant.</p>
+          <p className="text-sm text-gray-400 mt-1 max-w-xs">Connect WhatsApp, Telegram, Discord, and more to start routing messages through your AI assistant.</p>
           {isAdmin && <button className="btn-primary mt-5" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Add your first channel</button>}
         </div>
       ) : (
@@ -140,22 +209,24 @@ export default function Channels() {
                   <span className="text-2xl">{CHANNEL_ICONS[ch.type] ?? '🔌'}</span>
                   <div>
                     <p className="font-semibold text-gray-900">{ch.name}</p>
-                    <p className="text-xs text-gray-400 capitalize">{ch.type}</p>
+                    <p className="text-xs text-gray-400 capitalize">{ch.type.replace('_', ' ')}</p>
                   </div>
                 </div>
                 <span className={cn(STATUS_BADGE[ch.status])}>{ch.status}</span>
               </div>
-              {ch.gatewayPort && <p className="text-xs text-gray-400 mb-3 font-mono">gateway :{ch.gatewayPort}</p>}
               {isAdmin && (
                 <div className="flex items-center gap-2 mt-4">
                   {ch.status === 'connected' ? (
                     <button className="btn-secondary flex-1 text-xs" onClick={() => handleDisconnect(ch.id)} disabled={actionLoading === ch.id}>
                       {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} Disconnect
                     </button>
+                  ) : ch.status === 'pending' ? (
+                    <button className="btn-primary flex-1 text-xs" onClick={() => setQrChannelId(ch.id)} disabled={ch.type !== 'whatsapp'}>
+                      {ch.type === 'whatsapp' ? '📷 Show QR' : 'Connecting…'}
+                    </button>
                   ) : (
-                    <button className="btn-primary flex-1 text-xs" onClick={() => handleConnect(ch.id)} disabled={actionLoading === ch.id || ch.status === 'pending'}>
-                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />}
-                      {ch.status === 'pending' ? 'Connecting…' : 'Connect'}
+                    <button className="btn-primary flex-1 text-xs" onClick={() => handleConnect(ch)} disabled={actionLoading === ch.id}>
+                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />} Connect
                     </button>
                   )}
                   <button className="text-gray-400 hover:text-red-500 transition-colors p-1" onClick={() => handleDelete(ch.id)} title="Delete channel">

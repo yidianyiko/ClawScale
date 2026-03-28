@@ -3,6 +3,7 @@
  */
 export type ChannelType =
   | 'whatsapp'
+  | 'whatsapp_business'
   | 'telegram'
   | 'slack'
   | 'discord'
@@ -43,9 +44,15 @@ export interface UpdateChannelPayload {
 /** Per-channel-type config schemas (used for UI form generation) */
 export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields: ChannelConfigField[] }> = {
   whatsapp: {
-    label: 'WhatsApp Business',
+    label: 'WhatsApp (Personal)',
+    fields: [],
+  },
+  whatsapp_business: {
+    label: 'WhatsApp Business API',
     fields: [
-      { key: 'phoneNumber', label: 'Phone Number', type: 'text', required: true, placeholder: '+601234567890' },
+      { key: 'phoneNumberId', label: 'Phone Number ID', type: 'text', required: true, placeholder: '123456789012345' },
+      { key: 'accessToken', label: 'Access Token', type: 'password', required: true, placeholder: 'EAAxxxxxxx...' },
+      { key: 'verifyToken', label: 'Webhook Verify Token', type: 'text', required: true, placeholder: 'any-secret-string-you-choose' },
     ],
   },
   telegram: {

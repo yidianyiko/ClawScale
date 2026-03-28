@@ -41,6 +41,7 @@ enum ChannelType {
   matrix
   web
   wechat_work
+  whatsapp_business
 }
 
 enum WorkflowType {

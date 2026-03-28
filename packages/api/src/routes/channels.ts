@@ -7,9 +7,10 @@ import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wechat.js';
+import { startWhatsAppBot, stopWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
 
 const CHANNEL_TYPES = [
-  'whatsapp', 'telegram', 'slack', 'discord', 'instagram',
+  'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
   'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work',
 ] as const;
 
@@ -128,6 +129,8 @@ export const channelsRouter = new Hono()
       stopDiscordBot(id).catch(() => {});
     } else if (existing.type === 'wechat_work') {
       stopWeChatBot(id).catch(() => {});
+    } else if (existing.type === 'whatsapp') {
+      stopWhatsAppBot(id).catch(() => {});
     }
 
     await db.channel.delete({ where: { id } });
@@ -170,6 +173,13 @@ export const channelsRouter = new Hono()
           console.error(`[wechat:${id}] Failed to start bot:`, err),
         );
       }
+    } else if (channel.type === 'whatsapp') {
+      // WhatsApp: start QR flow, status stays 'pending' until phone scans
+      await db.channel.update({ where: { id }, data: { status: 'pending' } });
+      startWhatsAppBot(id).catch((err) =>
+        console.error(`[whatsapp:${id}] Failed to start bot:`, err),
+      );
+      return c.json({ ok: true, data: { status: 'pending' } });
     }
 
     return c.json({ ok: true, data: { status: 'connected' } });
@@ -195,7 +205,37 @@ export const channelsRouter = new Hono()
       stopWeChatBot(id).catch((err) =>
         console.error(`[wechat:${id}] Failed to stop bot:`, err),
       );
+    } else if (channel.type === 'whatsapp') {
+      stopWhatsAppBot(id).catch((err) =>
+        console.error(`[whatsapp:${id}] Failed to stop bot:`, err),
+      );
     }
 
     return c.json({ ok: true, data: { status: 'disconnected' } });
+  })
+
+  // ── GET /api/channels/:id/qr ─────────────────────────────────────────────────
+  // Poll this endpoint after connecting a WhatsApp channel to get the QR code.
+  .get('/:id/qr', requireAdmin, async (c) => {
+    const { tenantId } = c.get('auth');
+    const id = c.req.param('id');
+
+    const channel = await db.channel.findFirst({ where: { id, tenantId }, select: { id: true, type: true } });
+    if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type !== 'whatsapp') return c.json({ ok: false, error: 'Not a WhatsApp channel' }, 400);
+
+    // Wait up to 10s for QR to be ready if not yet available
+    let qr = getWhatsAppQR(id);
+    if (!qr && getWhatsAppStatus(id) === 'qr_pending') {
+      await new Promise<void>((resolve) => {
+        const deadline = Date.now() + 10_000;
+        const check = setInterval(() => {
+          qr = getWhatsAppQR(id);
+          if (qr || Date.now() > deadline) { clearInterval(check); resolve(); }
+        }, 300);
+      });
+    }
+
+    const status = getWhatsAppStatus(id);
+    return c.json({ ok: true, data: { qr, status } });
   });
