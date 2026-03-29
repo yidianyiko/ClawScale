@@ -61,8 +61,8 @@ cd packages/api && pnpm dev
 cd packages/web && pnpm dev
 ```
 
-API → http://localhost:3001
-Web → http://localhost:3000
+API → http://localhost:4041
+Web → http://localhost:4040
 
 ### Docker (all-in-one)
 
@@ -73,7 +73,7 @@ docker compose up --build
 
 ### First run
 
-Open http://localhost:3000 and **Register** to create your workspace. You are automatically the admin.
+Open http://localhost:4040 and **Register** to create your workspace. You are automatically the admin.
 
 ## Environment variables
 
@@ -82,8 +82,8 @@ Open http://localhost:3000 and **Register** to create your workspace. You are au
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret for signing auth tokens |
 | `OPENAI_API_KEY` | OpenAI API key |
-| `CORS_ORIGIN` | Frontend URL (default: `http://localhost:3000`) |
-| `PORT` | API port (default: `3001`) |
+| `CORS_ORIGIN` | Frontend URL (default: `http://localhost:4040`) |
+| `PORT` | API port (default: `4041`) |
 | `WHATSAPP_AUTH_DIR` | Directory for WhatsApp session files (default: `./data/whatsapp`) |
 
 ## License

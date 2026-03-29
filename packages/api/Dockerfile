@@ -30,5 +30,5 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=build /app/packages/api/dist ./packages/api/dist
 COPY --from=build /app/packages/api/node_modules/.prisma ./packages/api/node_modules/.prisma
 COPY packages/api/prisma ./packages/api/prisma
-EXPOSE 3001
+EXPOSE 4041
 CMD ["node", "packages/api/dist/index.js"]

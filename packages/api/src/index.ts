@@ -29,7 +29,7 @@ const app = new Hono();
 app.use(
   '*',
   cors({
-    origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:3000',
+    origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:4040',
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -65,7 +65,7 @@ app.onError((err, c) => {
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 
-const port = parseInt(process.env['PORT'] ?? '3001', 10);
+const port = parseInt(process.env['PORT'] ?? '4041', 10);
 const host = process.env['HOST'] ?? '0.0.0.0';
 
 serve({ fetch: app.fetch, port, hostname: host }, (info) => {

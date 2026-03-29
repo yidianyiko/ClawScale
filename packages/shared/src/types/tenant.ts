@@ -22,6 +22,11 @@ export interface ClawScaleAgentSettings {
   answerStyle?: string;
   /** Whether the orchestrator responds at all (default: true) */
   isActive?: boolean;
+  /** LLM configuration for the ClawScale agent */
+  llm?: {
+    /** LangChain model string, e.g. "openai:gpt-5.4-mini", "anthropic:claude-haiku-4-5-20251001" */
+    model: string;
+  };
 }
 
 export interface TenantSettings {

@@ -16,6 +16,9 @@ const updateSettingsSchema = z.object({
         name:        z.string().min(1).max(80).optional(),
         answerStyle: z.string().max(500).optional(),
         isActive:    z.boolean().optional(),
+        llm: z.object({
+          model: z.string().min(1).max(100),
+        }).nullable().optional(),
       }).optional(),
     })
     .optional(),
@@ -45,7 +48,12 @@ export const tenantRouter = new Hono()
       const { clawscale, ...flatSettings } = body.settings;
       updatedSettings = { ...updatedSettings, ...flatSettings };
       if (clawscale !== undefined) {
-        updatedSettings.clawscale = { ...((updatedSettings.clawscale as object) ?? {}), ...clawscale };
+        const merged = { ...((updatedSettings.clawscale as Record<string, unknown>) ?? {}), ...clawscale };
+        // Remove keys explicitly set to null (e.g. llm: null → delete llm)
+        for (const key of Object.keys(merged)) {
+          if (merged[key] === null) delete merged[key];
+        }
+        updatedSettings.clawscale = merged;
       }
     }
 

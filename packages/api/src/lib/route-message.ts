@@ -6,15 +6,17 @@
  *   - Access policy enforcement
  *   - Conversation management
  *   - Message persistence
- *   - AI backend selection (multi-backend: users can have many active)
- *   - Reply generation and persistence (one reply per active backend)
+ *   - Commands: /backends, /add, /remove, /clear, /help
+ *   - Direct messages: agent> message
+ *   - AI backend routing (multi-backend)
  */
 
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 import { generateReply } from './ai-backend.js';
-import { clawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
-import { parseSlashCommand, type SlashCommand } from './slash-commands.js';
+import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
+import type { AgentLlmConfig } from './clawscale-agent.js';
+import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
 export interface InboundMessage {
@@ -33,7 +35,6 @@ export interface ReplyEntry {
 
 export interface RouteResult {
   conversationId: string;
-  /** All replies generated for this message (one per active backend, plus optional ClawScale reply). */
   replies: ReplyEntry[];
   /** @deprecated Use replies[0].reply for backwards compat with single-reply adapters */
   reply: string;
@@ -47,36 +48,27 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     where: { id: channelId },
     select: { id: true, tenantId: true, status: true },
   });
-
   if (!channel || channel.status !== 'connected') return null;
-
   const { tenantId } = channel;
 
-  // 2. Load tenant settings (persona + access policy)
+  // 2. Load tenant settings
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const settings = (tenant?.settings ?? {}) as {
     personaName?: string;
     endUserAccess?: 'anonymous' | 'whitelist' | 'blacklist';
     allowList?: string[];
-    clawscale?: { name?: string; answerStyle?: string; isActive?: boolean };
+    clawscale?: { name?: string; answerStyle?: string; isActive?: boolean; llm?: AgentLlmConfig };
     blockList?: string[];
   };
-  const personaName = settings.personaName ?? 'Assistant';
 
   // 3. Find or create EndUser
   let endUser = await db.endUser.findUnique({
     where: { tenantId_channelId_externalId: { tenantId, channelId, externalId } },
     include: { activeBackends: { select: { backendId: true } } },
   });
-
   if (!endUser) {
     endUser = await db.endUser.create({
-      data: {
-        id: generateId('eu'),
-        tenantId, channelId, externalId,
-        name: displayName ?? null,
-        status: 'allowed',
-      },
+      data: { id: generateId('eu'), tenantId, channelId, externalId, name: displayName ?? null, status: 'allowed' },
       include: { activeBackends: { select: { backendId: true } } },
     });
   } else if (displayName && !endUser.name) {
@@ -86,7 +78,6 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       include: { activeBackends: { select: { backendId: true } } },
     });
   }
-
   const activeBackendIds = endUser.activeBackends.map((ab) => ab.backendId);
 
   // 4. Enforce access policy
@@ -110,20 +101,15 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 6. Persist inbound message
   await db.message.create({
-    data: {
-      id: generateId('msg'),
-      conversationId: conversation.id,
-      role: 'user',
-      content: text,
-      metadata: meta ?? {},
-    },
+    data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: meta ?? {} },
   });
 
-  // 7. Load backends and ClawScale orchestrator config
+  // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
   const clawscaleName = clawscaleCfg.name ?? 'ClawScale Assistant';
   const clawscaleStyle = clawscaleCfg.answerStyle;
   const clawscaleActive = clawscaleCfg.isActive !== false;
+  const clawscaleLlm = clawscaleCfg.llm;
 
   const allBackends = await db.aiBackend.findMany({
     where: { tenantId, isActive: true },
@@ -132,272 +118,256 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   const replies: ReplyEntry[] = [];
 
-  // 8. Check for slash commands (/<agent> <message>)
-  const slashCmd = parseSlashCommand(text);
-  if (slashCmd) {
-    return handleSlashCommand(slashCmd, allBackends, clawscaleName, clawscaleActive, clawscaleStyle, activeBackendIds, endUser.id, conversation, replies);
-  }
-
-  // 9. Run ClawScale agent for selection commands / knowledge / menu
-  if (clawscaleActive) {
-    const agentResponse = clawscaleAgent(
-      text,
-      allBackends.map((b) => ({ id: b.id, name: b.name })),
-      activeBackendIds,
-      clawscaleName,
-      'select',
-      clawscaleStyle,
-    );
-
-    // Process add/remove commands
-    if (agentResponse.addBackendIds?.length) {
-      for (const bid of agentResponse.addBackendIds) {
-        await db.endUserBackend.upsert({
-          where: { endUserId_backendId: { endUserId: endUser.id, backendId: bid } },
-          create: { endUserId: endUser.id, backendId: bid },
-          update: {},
-        });
-        if (!activeBackendIds.includes(bid)) activeBackendIds.push(bid);
-      }
-    }
-    if (agentResponse.removeBackendIds?.length) {
-      await db.endUserBackend.deleteMany({
-        where: {
-          endUserId: endUser.id,
-          backendId: { in: agentResponse.removeBackendIds },
-        },
-      });
-      for (const bid of agentResponse.removeBackendIds) {
-        const idx = activeBackendIds.indexOf(bid);
-        if (idx !== -1) activeBackendIds.splice(idx, 1);
-      }
-    }
-
-    // If ClawScale has a non-empty reply (menu, knowledge, selection confirmation), include it
-    if (agentResponse.reply) {
-      replies.push({ backendId: null, backendName: clawscaleName, reply: agentResponse.reply });
-      await db.message.create({
-        data: {
-          id: generateId('msg'),
-          conversationId: conversation.id,
-          role: 'assistant',
-          content: agentResponse.reply,
-          backendId: null,
-        },
-      });
-    }
-
-    // If the agent handled a selection command, return early (don't also route to backends)
-    if (agentResponse.addBackendIds?.length || agentResponse.removeBackendIds?.length) {
-      await db.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
-      const combinedReply = replies.map((r) => r.reply).join('\n\n');
-      return { conversationId: conversation.id, replies, reply: combinedReply };
-    }
-  }
-
-  // 10. Route to active backends
-  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
-
-  if (activeBackends.length === 0) {
-    // No active backends — if ClawScale already replied (menu/knowledge), we're done
-    if (replies.length > 0) {
-      await db.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
-      const combinedReply = replies.map((r) => r.reply).join('\n\n');
-      return { conversationId: conversation.id, replies, reply: combinedReply };
-    }
-
-    // No ClawScale reply and no backends — check for auto-select
-    const defaultBackend = allBackends.find((b) => b.isDefault);
-    const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
-
-    if (autoSelect) {
-      await db.endUserBackend.upsert({
-        where: { endUserId_backendId: { endUserId: endUser.id, backendId: autoSelect.id } },
-        create: { endUserId: endUser.id, backendId: autoSelect.id },
-        update: {},
-      });
-      activeBackends.push(autoSelect);
-    } else if (clawscaleActive) {
-      // Show welcome menu
-      const menuReply = buildSelectionMenu(clawscaleName, allBackends);
-      replies.push({ backendId: null, backendName: clawscaleName, reply: menuReply });
-      await db.message.create({
-        data: {
-          id: generateId('msg'),
-          conversationId: conversation.id,
-          role: 'assistant',
-          content: menuReply,
-          backendId: null,
-        },
-      });
-      await db.conversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
-      return { conversationId: conversation.id, replies, reply: menuReply };
-    } else {
-      return null;
-    }
-  }
-
-  // 11. Generate replies from all active backends concurrently
-  return generateAndPersistReplies(activeBackends, conversation, replies);
-
-  // ── Slash command handler ─────────────────────────────────────────────
-
-  async function handleSlashCommand(
-    cmd: SlashCommand,
-    backends: typeof allBackends,
-    csName: string,
-    csActive: boolean,
-    csStyle: string | undefined,
-    userActiveIds: string[],
-    endUserId: string,
-    conv: typeof conversation,
-    reps: ReplyEntry[],
-  ): Promise<RouteResult> {
-    // /<target> with no message — show usage
-    if (!cmd.message) {
-      const backendList = backends.map((b) => {
-        const cfg = (b.config ?? {}) as { commandAlias?: string };
-        const alias = cfg.commandAlias ? ` (\`/${cfg.commandAlias}\`)` : '';
-        return `• ${b.name}${alias}`;
-      }).join('\n');
-      const helpReply = `Usage: /<agent> <message>\n\nAvailable agents:\n• \`/clawscale\`\n${backendList}`;
-      reps.push({ backendId: null, backendName: csName, reply: helpReply });
-      await persistAssistantReply(conv.id, helpReply, null);
-      await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
-      return { conversationId: conv.id, replies: reps, reply: helpReply };
-    }
-
-    // Resolve target
-    const { resolveTarget } = await import('./slash-commands.js');
-    const resolved = resolveTarget(cmd.target, backends);
-
-    if (resolved.type === 'not_found') {
-      const backendNames = backends.map((b) => b.name.toLowerCase()).join(', ');
-      const errReply = `Unknown agent: "${cmd.target}". Available: clawscale, ${backendNames}`;
-      reps.push({ backendId: null, backendName: csName, reply: errReply });
-      await persistAssistantReply(conv.id, errReply, null);
-      await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
-      return { conversationId: conv.id, replies: reps, reply: errReply };
-    }
-
-    if (resolved.type === 'clawscale') {
-      if (!csActive) {
-        const errReply = 'ClawScale assistant is currently disabled.';
-        reps.push({ backendId: null, backendName: csName, reply: errReply });
-        await persistAssistantReply(conv.id, errReply, null);
-        await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
-        return { conversationId: conv.id, replies: reps, reply: errReply };
-      }
-
-      // Use 'direct' mode — always responds, can manage backends (add/remove/list/clear)
-      const agentResponse = clawscaleAgent(
-        cmd.message,
-        backends.map((b) => ({ id: b.id, name: b.name })),
-        userActiveIds,
-        csName,
-        'direct',
-        csStyle,
-      );
-
-      // Process add/remove if ClawScale parsed a selection command
-      if (agentResponse.addBackendIds?.length) {
-        for (const bid of agentResponse.addBackendIds) {
-          await db.endUserBackend.upsert({
-            where: { endUserId_backendId: { endUserId, backendId: bid } },
-            create: { endUserId, backendId: bid },
-            update: {},
-          });
-        }
-      }
-      if (agentResponse.removeBackendIds?.length) {
-        await db.endUserBackend.deleteMany({
-          where: { endUserId, backendId: { in: agentResponse.removeBackendIds } },
-        });
-      }
-
-      if (agentResponse.reply) {
-        reps.push({ backendId: null, backendName: csName, reply: agentResponse.reply });
-        await persistAssistantReply(conv.id, agentResponse.reply, null);
-      }
-      await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
-      const combinedReply = reps.map((r) => r.reply).join('\n\n');
-      return { conversationId: conv.id, replies: reps, reply: combinedReply };
-    }
-
-    // Route to a specific backend
-    const backend = backends.find((b) => b.id === resolved.backendId);
-    if (!backend) {
-      const errReply = `Backend "${cmd.target}" is not available.`;
-      reps.push({ backendId: null, backendName: csName, reply: errReply });
-      await persistAssistantReply(conv.id, errReply, null);
-      await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
-      return { conversationId: conv.id, replies: reps, reply: errReply };
-    }
-
-    return generateAndPersistReplies([backend], conv, reps);
-  }
-
-  // ── Shared helpers (closure over conversation) ────────────────────────
-
-  async function persistAssistantReply(convId: string, content: string, backendId: string | null) {
-    await db.message.create({
-      data: {
-        id: generateId('msg'),
-        conversationId: convId,
-        role: 'assistant',
-        content,
-        backendId,
+  /**
+   * Run the ClawScale LangChain agent.
+   *
+   * The agent handles the full reason → act → observe loop internally.
+   * Slash commands are executed via a callback that re-enters routeInboundMessage.
+   */
+  async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
+    const agentReply = await runClawscaleAgent({
+      text: userText,
+      backends: allBackends.map((b) => ({ id: b.id, name: b.name })),
+      activeIds: [...activeBackendIds],
+      personaName: clawscaleName,
+      mode,
+      ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
+      ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
+      executeCommand: async (command) => {
+        const result = await routeInboundMessage({ ...input, text: command });
+        return result?.reply ?? '(no result)';
       },
     });
+
+    if (!agentReply) return { conversationId: conversation!.id, replies, reply: '' };
+    return reply(agentReply);
   }
 
-  async function generateAndPersistReplies(
-    backends: typeof allBackends,
-    conv: typeof conversation,
-    reps: ReplyEntry[],
-  ): Promise<RouteResult> {
+  // ── Helper closures ─────────────────────────────────────────────────
+
+  async function reply(content: string, backendId: string | null = null, backendName: string | null = clawscaleName): Promise<RouteResult> {
+    replies.push({ backendId, backendName, reply: content });
+    await db.message.create({
+      data: { id: generateId('msg'), conversationId: conversation!.id, role: 'assistant', content, backendId },
+    });
+    await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
+    const combined = replies.map((r) =>
+      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
+    ).join('\n\n---\n\n');
+    return { conversationId: conversation!.id, replies, reply: combined };
+  }
+
+  async function addBackend(backendId: string) {
+    await db.endUserBackend.upsert({
+      where: { endUserId_backendId: { endUserId: endUser!.id, backendId } },
+      create: { endUserId: endUser!.id, backendId },
+      update: {},
+    });
+    if (!activeBackendIds.includes(backendId)) activeBackendIds.push(backendId);
+  }
+
+  async function removeBackend(backendId: string) {
+    await db.endUserBackend.deleteMany({
+      where: { endUserId: endUser!.id, backendId },
+    });
+    const idx = activeBackendIds.indexOf(backendId);
+    if (idx !== -1) activeBackendIds.splice(idx, 1);
+  }
+
+  async function removeAllBackends() {
+    await db.endUserBackend.deleteMany({ where: { endUserId: endUser!.id } });
+    activeBackendIds.length = 0;
+  }
+
+  function formatList(highlightActive = true): string {
+    return allBackends.map((b, i) => {
+      const active = highlightActive && activeBackendIds.includes(b.id) ? ' ✅' : '';
+      return `${i + 1}. ${b.name}${active}`;
+    }).join('\n');
+  }
+
+  async function routeToBackends(backends: typeof allBackends): Promise<RouteResult> {
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, conv.id);
+        const replyText = await runBackend(backend, conversation!.id);
         return { backend, replyText };
       }),
     );
-
     for (const result of results) {
       if (result.status === 'fulfilled') {
         const { backend, replyText } = result.value;
-        reps.push({ backendId: backend.id, backendName: backend.name, reply: replyText });
+        replies.push({ backendId: backend.id, backendName: backend.name, reply: replyText });
         await db.message.create({
           data: {
-            id: generateId('msg'),
-            conversationId: conv.id,
-            role: 'assistant',
-            content: replyText,
-            backendId: backend.id,
+            id: generateId('msg'), conversationId: conversation!.id,
+            role: 'assistant', content: replyText, backendId: backend.id,
             metadata: { backendName: backend.name },
           },
         });
       } else {
-        console.error(`[backend error]`, (result as PromiseRejectedResult).reason);
+        console.error('[backend error]', (result as PromiseRejectedResult).reason);
+      }
+    }
+    await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
+    const combined = replies.map((r) =>
+      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
+    ).join('\n\n---\n\n');
+    return { conversationId: conversation!.id, replies, reply: combined };
+  }
+
+  // 8. Parse commands
+  const cmd = parseCommand(text);
+
+  if (cmd) {
+    // ── System commands ────────────────────────────────────────────────
+    if (cmd.kind === 'system') {
+      switch (cmd.command) {
+        case 'help': {
+          return reply(formatCommandHelp());
+        }
+
+        case 'team': {
+          // Parse subcommand: /team, /team invite <arg>, /team kick [arg]
+          const subMatch = cmd.arg.match(/^(invite|kick)(?:\s+([\s\S]+))?$/i);
+
+          if (!subMatch) {
+            // /team with no subcommand — show team
+            const agents: string[] = [];
+            if (clawscaleActive) {
+              agents.push(`• *${clawscaleName}* — ClawScale assistant`);
+            }
+            for (const b of allBackends) {
+              const active = activeBackendIds.includes(b.id) ? ' ✅' : '';
+              agents.push(`• *${b.name}*${active}`);
+            }
+            if (agents.length === 0) {
+              return reply('No agents in your team yet. Ask your admin to configure AI backends.');
+            }
+            return reply(`*Your team:*\n\n${agents.join('\n')}`);
+          }
+
+          const sub = subMatch[1]!.toLowerCase();
+          const subArg = (subMatch[2] ?? '').trim();
+
+          if (sub === 'invite') {
+            if (!subArg) {
+              return reply(`Usage: \`/team invite <name|#>\`\n\n${formatList()}`);
+            }
+            const resolved = resolveAddRemoveArg(subArg, allBackends);
+            if (resolved.type !== 'backend' || !resolved.backendId) {
+              return reply(`Agent not found: "${subArg}"\n\nAvailable:\n\n${formatList()}`);
+            }
+            if (activeBackendIds.includes(resolved.backendId)) {
+              return reply(`*${resolved.backendName}* is already in your team.`);
+            }
+            await addBackend(resolved.backendId);
+            return reply(`✅ *${resolved.backendName}* joined the team.\n\nActive agents:\n\n${formatList()}`);
+          }
+
+          if (sub === 'kick') {
+            if (!subArg) {
+              // /team kick — kick all
+              if (activeBackendIds.length === 0) {
+                return reply('No active agents to kick.');
+              }
+              await removeAllBackends();
+              return reply(`✅ Kicked all agents.\n\nAvailable:\n\n${formatList()}`);
+            }
+            const resolved = resolveAddRemoveArg(subArg, allBackends);
+            if (resolved.type !== 'backend' || !resolved.backendId) {
+              return reply(`Agent not found: "${subArg}"\n\nActive agents:\n\n${formatList()}`);
+            }
+            if (!activeBackendIds.includes(resolved.backendId)) {
+              return reply(`*${resolved.backendName}* is not currently in your team.`);
+            }
+            await removeBackend(resolved.backendId);
+            return reply(`✅ Kicked *${resolved.backendName}*.\n\nActive agents:\n\n${formatList()}`);
+          }
+
+          return reply(`Unknown subcommand. Usage:\n\`/team invite <name|#>\`\n\`/team kick <name|#>\``);
+        }
+
+        case 'backends': {
+          if (allBackends.length === 0) {
+            return reply('No AI backends have been configured. Ask your admin to set one up.');
+          }
+          const active = allBackends.filter((b) => activeBackendIds.includes(b.id));
+          const activeStr = active.length > 0
+            ? `\n\n*Active:* ${active.map((b) => b.name).join(', ')}`
+            : '\n\nNo backends active. Use `/team invite <name|#>` to add one.';
+          return reply(`*Available backends:*\n\n${formatList()}${activeStr}`);
+        }
+
+        case 'clear': {
+          // Delete all messages in the conversation
+          await db.message.deleteMany({ where: { conversationId: conversation.id } });
+          return reply('✅ Conversation context cleared.');
+        }
       }
     }
 
-    await db.conversation.update({ where: { id: conv.id }, data: { updatedAt: new Date() } });
+    // ── Direct message: agent> message ─────────────────────────────────
+    if (cmd.kind === 'direct') {
+      if (!cmd.message) {
+        return reply(`Usage: \`${cmd.target}> message\``);
+      }
 
-    const combinedReply = reps.map((r) =>
-      reps.length > 1 && r.backendName ? `**${r.backendName}:**\n${r.reply}` : r.reply,
-    ).join('\n\n---\n\n');
+      const resolved = resolveTarget(cmd.target, allBackends);
 
-    return { conversationId: conv.id, replies: reps, reply: combinedReply };
+      if (resolved.type === 'not_found') {
+        const names = allBackends.map((b) => b.name.toLowerCase()).join(', ');
+        return reply(`Unknown agent: "${cmd.target}". Available: clawscale, ${names}`);
+      }
+
+      if (resolved.type === 'clawscale') {
+        if (!clawscaleActive) {
+          return reply('ClawScale assistant is currently disabled.');
+        }
+        // Direct mode — run agent loop (may execute commands)
+        return runAgent(cmd.message, 'direct');
+      }
+
+      // Route to specific backend
+      const backend = allBackends.find((b) => b.id === resolved.backendId);
+      if (!backend) {
+        return reply(`Backend "${cmd.target}" is not available.`);
+      }
+      return routeToBackends([backend]);
+    }
   }
+
+  // 9. No command — route to active backends or show menu
+  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
+
+  if (activeBackends.length > 0) {
+    return routeToBackends(activeBackends);
+  }
+
+  // No active backends — try auto-select
+  const defaultBackend = allBackends.find((b) => b.isDefault);
+  const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
+
+  if (autoSelect) {
+    await addBackend(autoSelect.id);
+    return routeToBackends([autoSelect]);
+  }
+
+  // Run ClawScale agent loop (handles knowledge base + command execution)
+  if (clawscaleActive) {
+    const result = await runAgent(text, 'select');
+    // If agent returned empty (silent), fall back to welcome menu
+    if (!result.reply) {
+      const menuReply = buildSelectionMenu(clawscaleName, allBackends);
+      return reply(menuReply);
+    }
+    return result;
+  }
+
+  return null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Load conversation history for a backend, excluding ClawScale agent messages.
- * Each backend only sees user messages and its own assistant replies.
- */
 async function loadHistory(conversationId: string, backendId: string) {
   const msgs = await db.message.findMany({
     where: {
@@ -419,7 +389,6 @@ async function runBackend(
   conversationId: string,
 ): Promise<string> {
   const history = await loadHistory(conversationId, backend.id);
-
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   return generateReply({
     backend: { type: backend.type as AiBackendType, config: cfg },

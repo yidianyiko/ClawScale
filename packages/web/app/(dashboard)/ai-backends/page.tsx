@@ -126,6 +126,34 @@ export default function AiBackendsPage() {
 
   // ── ClawScale settings ────────────────────────────────────────────────────────
 
+  const [inlineModel, setInlineModel] = useState('');
+  const [savingInlineModel, setSavingInlineModel] = useState(false);
+
+  async function saveInlineModel() {
+    if (!inlineModel.trim()) return;
+    setSavingInlineModel(true);
+    try {
+      const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
+        settings: { clawscale: { ...clawscale, llm: { model: inlineModel.trim() } } },
+      });
+      if (res.ok) {
+        const cfg = (res.data.settings as { clawscale?: ClawScaleAgentSettings }).clawscale ?? {};
+        setClawscale(cfg); setClawscaleForm(cfg);
+        setInlineModel('');
+      }
+    } finally { setSavingInlineModel(false); }
+  }
+
+  async function clearModel() {
+    const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
+      settings: { clawscale: { ...clawscale, llm: null } },
+    });
+    if (res.ok) {
+      const cfg = (res.data.settings as { clawscale?: ClawScaleAgentSettings }).clawscale ?? {};
+      setClawscale(cfg); setClawscaleForm(cfg);
+    }
+  }
+
   async function saveClawscale(e: React.FormEvent) {
     e.preventDefault();
     setClawscaleError('');
@@ -183,6 +211,42 @@ export default function AiBackendsPage() {
                   <Lock className="h-3 w-3" />
                   <span>Selection prompt is locked — name, visibility, and answer style can be changed.</span>
                 </div>
+                {clawscale.llm?.model ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <p className="text-xs text-gray-500 font-mono">Model: {clawscale.llm.model}</p>
+                    {isAdmin && (
+                      <button
+                        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                        title="Clear model"
+                        onClick={clearModel}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <p className="text-xs text-amber-600 mb-1.5">No LLM configured — agent will not respond to messages.</p>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="input font-mono text-xs py-1 px-2 flex-1 max-w-xs"
+                          placeholder="openai:gpt-5.4-mini"
+                          value={inlineModel}
+                          onChange={(e) => setInlineModel(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveInlineModel(); } }}
+                        />
+                        <button
+                          className="btn-primary text-xs py-1 px-3"
+                          disabled={!inlineModel.trim() || savingInlineModel}
+                          onClick={saveInlineModel}
+                        >
+                          {savingInlineModel ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Set'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {clawscale.answerStyle && (
                   <p className="mt-2 text-xs text-gray-500 italic">Style: {clawscale.answerStyle}</p>
                 )}
@@ -226,6 +290,25 @@ export default function AiBackendsPage() {
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   Appended to knowledge-base and off-topic replies. The backend-selection menu is always shown as-is.
+                </p>
+              </div>
+
+              <div>
+                <label className="label">
+                  LLM Model
+                  <span className="text-gray-400 font-normal ml-1">(required for conversational agent)</span>
+                </label>
+                <input
+                  className="input font-mono text-xs"
+                  placeholder="openai:gpt-5.4-mini"
+                  value={clawscaleForm.llm?.model ?? ''}
+                  onChange={(e) => setClawscaleForm((f) => ({
+                    ...f,
+                    llm: e.target.value ? { model: e.target.value } : undefined,
+                  }))}
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  LangChain model string. Examples: openai:gpt-5.4-mini, anthropic:claude-haiku-4-5-20251001, openrouter:openai/gpt-4o
                 </p>
               </div>
 

@@ -1,313 +1,157 @@
 /**
  * ClawScale Default Agent
  *
- * A built-in, rule-based agent that runs before any external AI backend is
- * selected. It handles:
+ * LLM-backed agent using LangChain.js that can answer questions about
+ * ClawScale and execute slash commands as tools.
  *
- *   1. Backend selection — parses add/remove commands, presents the menu.
- *   2. ClawScale knowledge — answers questions about what ClawScale is and
- *      how it works, without calling any external LLM.
- *
- * Users can select multiple backends simultaneously. All active backends
- * respond to each message independently.
+ * Architecture:
+ *   - createAgent() from langchain with a `run_command` tool
+ *   - The tool calls back into routeInboundMessage to execute slash commands
+ *   - The agent loop (reason → act → observe → repeat) is handled by LangChain
+ *   - Falls back to a simple rule-based agent when no LLM is configured
  */
+
+import { createAgent, tool } from 'langchain';
+import { z } from 'zod/v4';
+import { commandList, commandSummary } from './slash-commands.js';
 
 export interface BackendOption {
   id: string;
   name: string;
 }
 
-export interface AgentResponse {
-  /** The reply text to send back to the user. */
-  reply: string;
-  /**
-   * Backend IDs to add to the user's active set.
-   * The caller should persist these in the EndUserBackend join table.
-   */
-  addBackendIds?: string[];
-  /**
-   * Backend IDs to remove from the user's active set.
-   */
-  removeBackendIds?: string[];
+/** Config for the LLM that powers the ClawScale agent. */
+export interface AgentLlmConfig {
+  /** Model string in langchain format, e.g. "openai:gpt-5.4-mini", "anthropic:claude-haiku-4-5-20251001" */
+  model: string;
 }
 
-// ── ClawScale knowledge base ──────────────────────────────────────────────────
+export interface AgentContext {
+  text: string;
+  backends: BackendOption[];
+  activeIds: string[];
+  personaName: string;
+  mode: 'select' | 'direct';
+  answerStyle?: string;
+  llmConfig?: AgentLlmConfig;
+  /** Callback to execute a slash command. Returns the command's output text. */
+  executeCommand: (command: string) => Promise<string>;
+}
+
+// ── System prompt builder ────────────────────────────────────────────────────
+
+function buildSystemPrompt(ctx: AgentContext): string {
+  const backendList = ctx.backends.length > 0
+    ? ctx.backends.map((b, i) => {
+        const active = ctx.activeIds.includes(b.id) ? ' (active)' : '';
+        return `  ${i + 1}. ${b.name}${active}`;
+      }).join('\n')
+    : '  (none configured)';
+
+  return `You are ${ctx.personaName}, the ClawScale assistant.
+
+ClawScale is a multi-tenant AI chat gateway built by Pulse. It connects messaging platforms (WhatsApp, Telegram, Discord, Slack, LINE, Teams, Signal, Matrix, WeChat, and more) to one or more AI backends — so teams can deploy smart assistants without end-users needing accounts or technical knowledge.
+
+You help users with:
+- Answering questions about ClawScale
+- Managing their AI backends (adding, removing, listing, switching)
+- General conversation
+
+Current state:
+- Available backends:
+${backendList}
+- Active backends: ${ctx.activeIds.length > 0 ? ctx.backends.filter(b => ctx.activeIds.includes(b.id)).map(b => b.name).join(', ') : 'none'}
+
+You have a \`run_command\` tool to execute slash commands. Use it when the user wants to manage backends or needs system information. Available commands:
+${commandList()}
+
+When you use a tool, incorporate the result naturally into your response.
+Keep responses concise and helpful. Use markdown formatting.${ctx.answerStyle ? `\n\nAnswer style: ${ctx.answerStyle}` : ''}`;
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Returns a knowledge-base answer if the text matches a ClawScale topic,
- * or null if the question is off-topic.
- */
-function matchKnowledge(text: string): string | null {
-  const t = text.toLowerCase().trim();
-
-  // What is ClawScale?
-  if (/what (is|are) clawscale|about clawscale|tell me about|clawscale\?/.test(t)) {
-    return (
-      `*ClawScale* is a multi-tenant AI chat gateway built by Pulse.\n\n` +
-      `It connects any messaging platform (WhatsApp, Telegram, Discord, Slack, LINE, Teams, Signal, Matrix, WeChat, and more) ` +
-      `to one or more AI backends — so your team can deploy a smart assistant without ` +
-      `end-users needing accounts or technical knowledge.\n\n` +
-      `You can add multiple AI assistants to your session and they'll all respond to your messages.`
-    );
-  }
-
-  // How does it work?
-  if (/how does (it|clawscale) work|how (do i|to) use|getting started/.test(t)) {
-    return (
-      `Here's how ClawScale works:\n\n` +
-      `1️⃣  An admin connects one or more messaging platforms (e.g. WhatsApp, Telegram).\n` +
-      `2️⃣  The admin configures AI backends — any LLM or OpenClaw instance.\n` +
-      `3️⃣  You choose which AI backends to add to your session.\n` +
-      `4️⃣  All your active backends respond to each message independently.\n\n` +
-      `Reply with a number to add an AI assistant, or say "remove <number>" to remove one.`
-    );
-  }
-
-  // What is an AI backend / what backends are available?
-  if (/what (is an?|are) (ai )?backend|which (ai|backend|model)|available (ai|backend|model)/.test(t)) {
-    return (
-      `An *AI backend* is the language model that powers your conversation.\n\n` +
-      `ClawScale supports:\n` +
-      `• *OpenAI* (GPT-4o, GPT-4o-mini, etc.)\n` +
-      `• *Anthropic Claude* (Haiku, Sonnet, Opus)\n` +
-      `• *OpenRouter* (hundreds of models via one API)\n` +
-      `• *OpenClaw* (your own self-hosted AI instance)\n` +
-      `• *Pulse Editor AI* (Pulse's built-in AI manager)\n` +
-      `• *Custom* (any OpenAI-compatible endpoint)\n\n` +
-      `Your admin decides which backends are available in this workspace.\n` +
-      `You can add multiple backends at once — they'll each respond to your messages.`
-    );
-  }
-
-  // How do I switch / change backend?
-  if (/switch|change (backend|ai|model|assistant)|use (a )?different|reset/.test(t)) {
-    return (
-      `You can manage your active AI assistants at any time:\n\n` +
-      `• Reply with a *number* to add a backend\n` +
-      `• Say *"remove <number>"* to remove one\n` +
-      `• Say *"list"* to see your active backends\n` +
-      `• Say *"clear"* to remove all and start fresh`
-    );
-  }
-
-  // What platforms / channels are supported?
-  if (/platform|channel|support(ed)?|integrate|connect/.test(t)) {
-    return (
-      `ClawScale currently supports these messaging platforms:\n\n` +
-      `• WhatsApp (Personal & Business)\n` +
-      `• Telegram\n` +
-      `• Discord\n` +
-      `• Slack\n` +
-      `• Microsoft Teams\n` +
-      `• LINE\n` +
-      `• Signal\n` +
-      `• Matrix\n` +
-      `• WeChat Work (WeCom)\n` +
-      `• WeChat Personal\n\n` +
-      `Admins can connect platforms from the *Channels* section of the dashboard.`
-    );
-  }
-
-  // Who made / built ClawScale?
-  if (/who (made|built|created|developed)|by (pulse|who)/.test(t)) {
-    return (
-      `ClawScale is built by *Pulse* — a developer tools company focused on AI workflows.`
-    );
-  }
-
-  // Help
-  if (/^help$|what can you do|what do you know|commands/.test(t)) {
-    return (
-      `I'm the *ClawScale* default assistant. I can help you:\n\n` +
-      `• *Add backends*: reply with a number from the menu\n` +
-      `• *Remove backends*: say "remove <number>"\n` +
-      `• *List active*: say "list" or "active"\n` +
-      `• *Clear all*: say "clear"\n\n` +
-      `You can also use slash commands:\n` +
-      `• \`/clawscale <message>\` — talk to me directly\n` +
-      `• \`/<backend> <message>\` — talk to a specific backend\n\n` +
-      `I can also answer questions about ClawScale:\n` +
-      `• What is ClawScale?\n` +
-      `• How does it work?\n` +
-      `• What AI backends are available?\n` +
-      `• What platforms are supported?`
-    );
-  }
-
-  return null; // off-topic
-}
-
-// ── Backend list formatting ───────────────────────────────────────────────────
-
-function formatBackendList(backends: BackendOption[], activeIds: string[]): string {
-  return backends.map((b, i) => {
-    const active = activeIds.includes(b.id) ? ' ✅' : '';
-    return `${i + 1}. ${b.name}${active}`;
-  }).join('\n');
-}
-
-function formatActiveList(backends: BackendOption[], activeIds: string[]): string {
-  const active = backends.filter((b) => activeIds.includes(b.id));
-  if (active.length === 0) return 'You have no active AI assistants.';
-  return `Your active AI assistants:\n\n` +
-    active.map((b) => `• ${b.name}`).join('\n');
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
-/**
- * Run the ClawScale default agent.
+ * Run the ClawScale agent for a single user message.
  *
- * @param text          The user's message text.
- * @param backends      Active backends the user can choose from.
- * @param activeIds     IDs of backends currently active for this user.
- * @param personaName   The persona display name configured by the admin.
- * @param mode
- *   - `'select'` (default): normal mode. The agent presents the menu,
- *     parses add/remove commands, and answers ClawScale questions.
- *     Stays silent when backends are active and message isn't a command.
- *   - `'direct'`: user explicitly invoked via /clawscale. Same as select
- *     but always responds (never stays silent).
- *   - `'chat'`: user has explicitly selected the ClawScale backend. Only
- *     answers ClawScale questions and declines off-topic ones.
+ * When an LLM is configured, creates a LangChain agent with the run_command
+ * tool and lets it handle the full reason/act/observe loop.
+ *
+ * Falls back to rule-based responses when no LLM is available.
  */
-export function clawscaleAgent(
-  text: string,
-  backends: BackendOption[],
-  activeIds: string[],
-  personaName: string,
-  mode: 'select' | 'direct' | 'chat' = 'select',
-  answerStyle?: string,
-): AgentResponse {
-  const styled = (reply: string) =>
-    answerStyle ? `${reply}\n\n${answerStyle}` : reply;
+export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
+  // In select mode with active backends, stay silent — let backends handle it
+  if (ctx.mode === 'select' && ctx.activeIds.length > 0) {
+    return '';
+  }
 
-  const t = text.trim().toLowerCase();
+  if (!ctx.llmConfig) {
+    return 'ClawScale agent is not configured. Ask your admin to set up an LLM in the dashboard.';
+  }
 
-  if (mode === 'select' || mode === 'direct') {
-    // ── "clear" / "remove all" ──────────────────────────────────────────
-    if (/^(clear|remove all|reset)$/.test(t)) {
-      if (activeIds.length === 0) {
-        const list = formatBackendList(backends, []);
-        return { reply: styled(`You have no active backends to clear.\n\nAvailable:\n\n${list}`) };
+  // Build the run_command tool with the executeCommand callback
+  const runCommand = tool(
+    async ({ command }) => {
+      try {
+        return await ctx.executeCommand(command);
+      } catch (err) {
+        return `Error executing command: ${err}`;
       }
-      const list = formatBackendList(backends, []);
-      return {
-        reply: styled(`✅ Cleared all active AI assistants.\n\nAvailable:\n\n${list}\n\nReply with a number to add one.`),
-        removeBackendIds: [...activeIds],
-      };
-    }
+    },
+    {
+      name: 'run_command',
+      description: `Execute a ClawScale slash command. Available: ${commandSummary()}`,
+      schema: z.object({
+        command: z
+          .string()
+          .describe('The slash command to execute, e.g. "/backends", "/team invite gpt", "/team kick 2"'),
+      }),
+    },
+  );
 
-    // ── "list" / "active" ───────────────────────────────────────────────
-    if (/^(list|active|status|my backends)$/.test(t)) {
-      const activeList = formatActiveList(backends, activeIds);
-      const list = formatBackendList(backends, activeIds);
-      return { reply: styled(`${activeList}\n\nAll available:\n\n${list}`) };
-    }
+  const agent = createAgent({
+    model: ctx.llmConfig.model,
+    tools: [runCommand],
+    systemPrompt: buildSystemPrompt(ctx),
+    name: 'clawscale_agent',
+  });
 
-    // ── "remove <N>" ────────────────────────────────────────────────────
-    const removeMatch = t.match(/^remove\s+(\d+)$/);
-    if (removeMatch) {
-      const idx = parseInt(removeMatch[1], 10) - 1;
-      if (idx >= 0 && idx < backends.length) {
-        const target = backends[idx];
-        if (!activeIds.includes(target.id)) {
-          return { reply: styled(`*${target.name}* is not currently active.`) };
-        }
-        const newActiveIds = activeIds.filter((id) => id !== target.id);
-        const list = formatBackendList(backends, newActiveIds);
-        return {
-          reply: styled(`✅ Removed *${target.name}*.\n\nActive backends:\n\n${list}`),
-          removeBackendIds: [target.id],
-        };
+  try {
+    const result = await agent.invoke({
+      messages: [{ role: 'user', content: ctx.text }],
+    });
+
+    // Extract the last assistant message
+    const messages = result.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg && typeof msg.content === 'string' && msg.content.trim()) {
+        return msg.content.trim();
       }
-      return { reply: styled(`Invalid number. Reply with a number between 1 and ${backends.length}.`) };
     }
 
-    // ── Add by number ───────────────────────────────────────────────────
-    const choice = parseInt(t, 10);
-    if (!isNaN(choice) && choice >= 1 && choice <= backends.length) {
-      const selected = backends[choice - 1];
-      if (activeIds.includes(selected.id)) {
-        return { reply: styled(`*${selected.name}* is already active. Say "remove ${choice}" to remove it.`) };
-      }
-      const newActiveIds = [...activeIds, selected.id];
-      const list = formatBackendList(backends, newActiveIds);
-      return {
-        reply: styled(`✅ Added *${selected.name}*. It will now respond to your messages.\n\nActive backends:\n\n${list}\n\nReply with another number to add more, or just send a message.`),
-        addBackendIds: [selected.id],
-      };
-    }
+    return '';
+  } catch (err) {
+    console.error('[clawscale-agent] LLM error:', err);
+    return 'Sorry, something went wrong. Please try again.';
   }
-
-  // ── If user has active backends and this is a regular message, stay silent ──
-  // ClawScale only handles explicit selection commands when backends are active.
-  // All other messages go straight to the active backends.
-  // In 'direct' mode (/clawscale), always respond.
-  if (mode === 'select' && activeIds.length > 0) {
-    return { reply: '' };
-  }
-
-  // ── Knowledge base + fallback ─────────────────────────────────────────
-
-  const knowledgeReply = matchKnowledge(text);
-  if (knowledgeReply) {
-    if (backends.length > 0) {
-      const list = formatBackendList(backends, activeIds);
-      return { reply: styled(`${knowledgeReply}\n\n${list}`) };
-    }
-    return { reply: styled(knowledgeReply) };
-  }
-
-  // Off-topic fallback
-  if (mode === 'chat') {
-    return {
-      reply: styled(
-        `I'm the built-in *ClawScale* assistant. I can only answer questions about ClawScale itself.\n\n` +
-        `For general questions, please start a new conversation and choose a different AI backend.`,
-      ),
-    };
-  }
-
-  if (backends.length === 0) {
-    return {
-      reply: styled(
-        `I can only answer questions about ClawScale before an AI backend is selected. ` +
-        `Ask your admin to configure at least one AI backend in the dashboard.`,
-      ),
-    };
-  }
-
-  const list = formatBackendList(backends, activeIds);
-  return {
-    reply: styled(
-      `I'm the *ClawScale* default assistant — I can help you manage your AI backends ` +
-      `or answer questions about ClawScale.\n\n` +
-      `Your backends:\n\n${list}\n\n` +
-      `Reply with a number to add one, "remove <number>" to remove, or ask me: *"help"*`,
-    ),
-  };
 }
 
-/**
- * Build the initial greeting + backend selection menu.
- */
-export function buildSelectionMenu(personaName: string, backends: BackendOption[], activeIds: string[] = []): string {
+// ── Welcome menu ─────────────────────────────────────────────────────────────
+
+export function buildSelectionMenu(personaName: string, backends: BackendOption[]): string {
   if (backends.length === 0) {
     return (
-      `👋 Welcome to ClawScale!\n\n` +
-      `I'm ${personaName}, your AI-powered assistant. ` +
+      `👋 Welcome! I'm ${personaName}.\n\n` +
       `No AI backends have been configured yet — please ask your admin to set one up.\n\n` +
       `In the meantime, you can ask me about ClawScale.`
     );
   }
 
-  const list = formatBackendList(backends, activeIds);
+  const list = backends.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
   return (
-    `👋 Welcome to ClawScale!\n\n` +
-    `I'm ${personaName}, your AI-powered assistant. ClawScale connects you to multiple AI backends ` +
-    `— you can add as many as you like and they'll all respond to your messages.\n\n` +
-    `Available AI assistants:\n\n${list}\n\n` +
-    `Reply with a number to add one, or ask me *"What is ClawScale?"* to learn more.`
+    `👋 Welcome! I'm ${personaName}.\n\n` +
+    `Available AI backends:\n\n${list}\n\n` +
+    `Use \`/add <name|#>\` to add a backend, or type \`/help\` for all commands.`
   );
 }

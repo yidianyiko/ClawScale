@@ -31,12 +31,12 @@ services:
       DATABASE_URL: postgresql://clawscale:clawscale@postgres:5432/clawscale
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      PORT: 3001
+      PORT: 4041
       HOST: 0.0.0.0
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4040}
       OPENCLAW_DATA_DIR: /data/tenants
     ports:
-      - '3001:3001'
+      - '4041:4041'
     volumes:
       - tenant_data:/data/tenants
 
@@ -45,12 +45,12 @@ services:
       context: .
       dockerfile: packages/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4041}
     restart: unless-stopped
     depends_on:
       - api
     ports:
-      - '3000:3000'
+      - '4040:4040'
 
 volumes:
   postgres_data:

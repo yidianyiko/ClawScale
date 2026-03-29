@@ -1,56 +1,120 @@
 /**
- * Slash command parser for ClawScale chat.
+ * Command parser for ClawScale chat.
  *
- * Format: /<agent_name> <message>
+ * Two command types:
  *
- * Examples:
- *   /clawscale list backends
- *   /gpt explain this code
- *   /basic-llm hello
+ * 1. Slash commands — system actions:
+ *    /backends              — list available/active backends
+ *    /team                  — show agents in the team
+ *    /team invite <name|#>  — invite an agent to the team
+ *    /team kick <name|#>    — kick an agent (no arg = kick all)
+ *    /clear                 — clear conversation context
+ *    /help                  — show commands
  *
- * Reserved names:
- *   - "clawscale" — routes to the built-in ClawScale agent
- *
- * Other names are matched against AI backend names or command aliases.
+ * 2. Direct messages — route to a specific agent:
+ *    gpt> hello
+ *    clawscale> list backends
+ *    basic llm> explain this
  */
 
-export interface SlashCommand {
-  /** The target agent/backend name */
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type CommandType = 'backends' | 'clear' | 'team' | 'help';
+
+export interface SystemCommand {
+  kind: 'system';
+  command: CommandType;
+  /** Argument after the command (e.g. "2" for /add 2, or backend name) */
+  arg: string;
+}
+
+export interface DirectMessage {
+  kind: 'direct';
+  /** Agent/backend name (everything before ">") */
   target: string;
-  /** The message body after the target name */
+  /** The message body */
   message: string;
 }
 
+export type ParsedCommand = SystemCommand | DirectMessage;
+
+// ── Parser ────────────────────────────────────────────────────────────────────
+
+const SYSTEM_COMMANDS = new Set<CommandType>(['backends', 'clear', 'team', 'help']);
+
 /**
- * Parse a slash command from user text.
- * Returns null if the text is not a slash command.
- *
- * Format: /<target> <message>
+ * Parse user text for commands.
+ * Returns null if the text is a regular message.
  */
-export function parseSlashCommand(text: string): SlashCommand | null {
+export function parseCommand(text: string): ParsedCommand | null {
   const trimmed = text.trim();
+
+  // 1. Direct message: "agent name> message"
+  //    Match everything before ">" as agent name (allows spaces),
+  //    but only when ">" appears after a word at the start.
+  const directMatch = trimmed.match(/^(.+?)>\s*([\s\S]*)$/);
+  if (directMatch) {
+    const target = directMatch[1].trim().toLowerCase();
+    const message = (directMatch[2] ?? '').trim();
+    // Avoid false positives: target must be non-empty and not look like
+    // a comparison (e.g. "this is > than that" — target would be very long)
+    if (target && target.length <= 50) {
+      return { kind: 'direct', target, message };
+    }
+  }
+
+  // 2. Slash commands: /command [arg]
   if (!trimmed.startsWith('/')) return null;
 
-  // /<target> <message...>
-  const match = trimmed.match(/^\/(\S+)\s+([\s\S]+)$/);
-  if (match) {
-    return {
-      target: match[1].toLowerCase(),
-      message: match[2].trim(),
-    };
+  const slashMatch = trimmed.match(/^\/(\S+)(?:\s+([\s\S]+))?$/);
+  if (!slashMatch) return null;
+
+  const cmd = slashMatch[1].toLowerCase();
+  const arg = (slashMatch[2] ?? '').trim();
+
+  if (SYSTEM_COMMANDS.has(cmd as CommandType)) {
+    return { kind: 'system', command: cmd as CommandType, arg };
   }
 
-  // /<target> (no message)
-  const targetOnly = trimmed.match(/^\/(\S+)\s*$/);
-  if (targetOnly) {
-    return {
-      target: targetOnly[1].toLowerCase(),
-      message: '',
-    };
-  }
-
+  // Unknown slash command
   return null;
 }
+
+// ── Command reference ─────────────────────────────────────────────────────────
+
+/** Single source of truth for all command descriptions. */
+export const COMMAND_REFERENCE = [
+  { command: '/backends', description: 'list available AI backends' },
+  { command: '/team', description: 'show agents in your team' },
+  { command: '/team invite <name|#>', description: 'invite an agent to your team' },
+  { command: '/team kick <name|#>', description: 'kick an agent from your team' },
+  { command: '/team kick', description: 'kick all agents' },
+  { command: '/clear', description: 'clear conversation context' },
+  { command: '/help', description: 'show all commands' },
+] as const;
+
+/** Formatted help text for the /help command and agent prompts. */
+export function formatCommandHelp(): string {
+  const cmds = COMMAND_REFERENCE.map((c) => `${c.command} — ${c.description}`).join('\n');
+  return (
+    `*Commands:*\n\n${cmds}\n\n` +
+    `*Direct message:*\n` +
+    `\`agent name> message\` — send a message to a specific agent\n` +
+    `\`clawscale> help\` — talk to ClawScale directly`
+  );
+}
+
+/** Short summary for LLM tool descriptions. */
+export function commandSummary(): string {
+  return COMMAND_REFERENCE.map((c) => c.command).join(', ');
+}
+
+/** Bullet list for LLM system prompts. */
+export function commandList(): string {
+  return COMMAND_REFERENCE.map((c) => `- ${c.command} — ${c.description}`).join('\n');
+}
+
+// ── Target resolver ───────────────────────────────────────────────────────────
 
 export interface ResolvedTarget {
   type: 'clawscale' | 'backend' | 'not_found';
@@ -59,7 +123,7 @@ export interface ResolvedTarget {
 }
 
 /**
- * Resolve a slash command target name to a backend.
+ * Resolve an agent name to a backend.
  *
  * Matching priority:
  *   1. Reserved name "clawscale"
@@ -81,7 +145,7 @@ export function resolveTarget(
     return { type: 'backend', backendId: exact.id, backendName: exact.name };
   }
 
-  // Command alias match (admin-defined in backend config)
+  // Command alias match
   const aliasMatch = backends.find((b) => {
     const cfg = (b.config ?? {}) as { commandAlias?: string };
     return cfg.commandAlias?.toLowerCase() === target;
@@ -91,6 +155,45 @@ export function resolveTarget(
   }
 
   // Prefix match (unambiguous only)
+  const prefixMatches = backends.filter((b) => b.name.toLowerCase().startsWith(target));
+  if (prefixMatches.length === 1) {
+    return { type: 'backend', backendId: prefixMatches[0].id, backendName: prefixMatches[0].name };
+  }
+
+  return { type: 'not_found' };
+}
+
+/**
+ * Resolve an /add or /remove argument to a backend.
+ * Accepts a number (1-indexed) or a name/alias.
+ */
+export function resolveAddRemoveArg(
+  arg: string,
+  backends: { id: string; name: string; config: unknown }[],
+): ResolvedTarget {
+  // Try as number first
+  const num = parseInt(arg, 10);
+  if (!isNaN(num) && num >= 1 && num <= backends.length) {
+    const b = backends[num - 1];
+    return { type: 'backend', backendId: b.id, backendName: b.name };
+  }
+
+  // Fall back to name resolution (without "clawscale" as valid target)
+  const target = arg.toLowerCase();
+
+  const exact = backends.find((b) => b.name.toLowerCase() === target);
+  if (exact) {
+    return { type: 'backend', backendId: exact.id, backendName: exact.name };
+  }
+
+  const aliasMatch = backends.find((b) => {
+    const cfg = (b.config ?? {}) as { commandAlias?: string };
+    return cfg.commandAlias?.toLowerCase() === target;
+  });
+  if (aliasMatch) {
+    return { type: 'backend', backendId: aliasMatch.id, backendName: aliasMatch.name };
+  }
+
   const prefixMatches = backends.filter((b) => b.name.toLowerCase().startsWith(target));
   if (prefixMatches.length === 1) {
     return { type: 'backend', backendId: prefixMatches[0].id, backendName: prefixMatches[0].name };
