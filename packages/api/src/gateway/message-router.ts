@@ -242,13 +242,17 @@ async function generateReply(ctx: {
     : ctx.personaPrompt;
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-5-mini',
+    model: 'gpt-5.4-mini',
     messages: [
       { role: 'system', content: systemPrompt },
       ...ctx.history.map((m) => ({ role: m.role, content: m.content })),
     ],
-    max_completion_tokens: 1024,
+    max_completion_tokens: 4096,
   });
 
-  return response.choices[0]?.message?.content?.trim() ?? 'Sorry, I could not generate a response.';
+  const choice = response.choices[0];
+  if (!choice?.message?.content?.trim()) {
+    console.error('[ai] Empty response from model. finish_reason:', choice?.finish_reason, 'usage:', response.usage);
+  }
+  return choice?.message?.content?.trim() || 'Sorry, I could not generate a response.';
 }
