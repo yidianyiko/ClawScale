@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Radio, Settings, LogOut, Hexagon, MessageSquare, Zap } from 'lucide-react';
+import { LayoutDashboard, Users, Radio, Settings, LogOut, Hexagon, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +10,7 @@ const navItems = [
   { href: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { href: '/conversations', icon: MessageSquare, label: 'Conversations' },
   { href: '/channels', icon: Radio, label: 'Channels' },
+  { href: '/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
   { href: '/workflows', icon: Zap, label: 'Workflows' },
   { href: '/users', icon: Users, label: 'Team' },
   { href: '/settings', icon: Settings, label: 'Settings' },

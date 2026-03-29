@@ -6,15 +6,21 @@
  *   anthropic  — Anthropic Messages API (Claude)
  *   openrouter — OpenRouter (OpenAI-compatible endpoint)
  *   pulse      — Pulse Editor AI manager (streaming SSE, LangChain message format)
- *   openclaw   — OpenClaw instance (placeholder)
+ *   openclaw   — OpenClaw instance (OpenAI-compatible at <openClawUrl>/v1)
+ *   custom     — Any OpenAI-compatible endpoint
  */
 
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AiBackendConfig } from '@clawscale/shared';
+import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
+
+export interface BackendSpec {
+  type: AiBackendType;
+  config: AiBackendProviderConfig;
+}
 
 export interface GenerateOptions {
-  backend: AiBackendConfig | undefined;
+  backend: BackendSpec | undefined;
   systemPrompt: string;
   history: { role: 'user' | 'assistant'; content: string }[];
 }
@@ -79,8 +85,6 @@ async function generatePulse(
   systemPrompt: string,
   history: { role: 'user' | 'assistant'; content: string }[],
 ): Promise<string> {
-  // Pulse Editor AI manager uses a streaming SSE endpoint with LangChain message format.
-  // Messages are sent as JSON lines; the stream emits events with delta content.
   const messages = [
     { type: 'system', content: systemPrompt },
     ...history.map((m) => ({
@@ -100,7 +104,6 @@ async function generatePulse(
     throw new Error(`Pulse AI stream error: ${res.status}`);
   }
 
-  // Read SSE stream and accumulate content from delta events
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let accumulated = '';
@@ -124,7 +127,6 @@ async function generatePulse(
           content?: string;
           delta?: { content?: string };
         };
-        // Accept either top-level content or delta.content
         const chunk = parsed.delta?.content ?? (parsed.type === 'ai' ? parsed.content : null);
         if (chunk) accumulated += chunk;
       } catch {
@@ -138,43 +140,50 @@ async function generatePulse(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-const FALLBACK_OPENAI_MODEL = 'gpt-5.4-mini';
+const FALLBACK_OPENAI_MODEL = 'gpt-4o-mini';
 
 export async function generateReply({ backend, systemPrompt, history }: GenerateOptions): Promise<string> {
   const type = backend?.type ?? 'openai';
+  const cfg = backend?.config ?? {};
 
   switch (type) {
     case 'openai': {
-      const apiKey = backend?.apiKey ?? process.env['OPENAI_API_KEY'] ?? '';
-      const model = backend?.model || FALLBACK_OPENAI_MODEL;
-      const client = getOpenAIClient(apiKey);
-      return generateOpenAI(client, model, systemPrompt, history);
+      const apiKey = cfg.apiKey ?? process.env['OPENAI_API_KEY'] ?? '';
+      const model = cfg.model || FALLBACK_OPENAI_MODEL;
+      return generateOpenAI(getOpenAIClient(apiKey), model, systemPrompt, history);
     }
 
     case 'anthropic': {
-      const apiKey = backend?.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
-      const model = backend?.model || 'claude-haiku-4-5-20251001';
-      const client = getAnthropicClient(apiKey);
-      return generateAnthropic(client, model, systemPrompt, history);
+      const apiKey = cfg.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
+      const model = cfg.model || 'claude-haiku-4-5-20251001';
+      return generateAnthropic(getAnthropicClient(apiKey), model, systemPrompt, history);
     }
 
     case 'openrouter': {
-      const apiKey = backend?.apiKey ?? process.env['OPENROUTER_API_KEY'] ?? '';
-      const model = backend?.model || 'openai/gpt-4o-mini';
-      const baseURL = backend?.baseUrl || 'https://openrouter.ai/api/v1';
-      const client = getOpenAIClient(apiKey, baseURL);
-      return generateOpenAI(client, model, systemPrompt, history);
+      const apiKey = cfg.apiKey ?? process.env['OPENROUTER_API_KEY'] ?? '';
+      const model = cfg.model || 'openai/gpt-4o-mini';
+      const baseURL = cfg.baseUrl || 'https://openrouter.ai/api/v1';
+      return generateOpenAI(getOpenAIClient(apiKey, baseURL), model, systemPrompt, history);
     }
 
     case 'pulse': {
-      const pulseApiUrl = backend?.pulseApiUrl;
-      if (!pulseApiUrl) throw new Error('Pulse AI backend: pulseApiUrl is required');
-      return generatePulse(pulseApiUrl, systemPrompt, history);
+      if (!cfg.pulseApiUrl) throw new Error('Pulse AI backend: pulseApiUrl is required');
+      return generatePulse(cfg.pulseApiUrl, systemPrompt, history);
     }
 
     case 'openclaw': {
-      // Placeholder — OpenClaw inference not yet implemented
-      throw new Error('OpenClaw AI backend is not yet implemented');
+      const url = cfg.openClawUrl ?? cfg.baseUrl;
+      if (!url) throw new Error('OpenClaw AI backend: openClawUrl is required');
+      const apiKey = cfg.apiKey ?? 'openclaw';
+      const model = cfg.model || 'default';
+      return generateOpenAI(getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`), model, systemPrompt, history);
+    }
+
+    case 'custom': {
+      if (!cfg.baseUrl) throw new Error('Custom AI backend: baseUrl is required');
+      const apiKey = cfg.apiKey ?? 'custom';
+      const model = cfg.model || 'default';
+      return generateOpenAI(getOpenAIClient(apiKey, cfg.baseUrl), model, systemPrompt, history);
     }
 
     default:

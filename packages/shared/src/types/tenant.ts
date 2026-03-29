@@ -9,33 +9,6 @@ export interface Tenant {
   createdAt: string;
 }
 
-// ── AI Backend ────────────────────────────────────────────────────────────────
-
-export type AiBackendType = 'openai' | 'anthropic' | 'openrouter' | 'pulse' | 'openclaw';
-
-export interface AiBackendConfig {
-  /** Which provider to use */
-  type: AiBackendType;
-  /** Model identifier (provider-specific) */
-  model?: string;
-  /** API key (OpenAI / Anthropic / OpenRouter) */
-  apiKey?: string;
-  /** Base URL override — used by OpenRouter and OpenClaw */
-  baseUrl?: string;
-  /** Pulse Editor AI manager streaming endpoint URL */
-  pulseApiUrl?: string;
-  /** OpenClaw instance base URL (placeholder) */
-  openClawUrl?: string;
-}
-
-export const AI_BACKEND_DEFAULTS: Record<AiBackendType, { label: string; defaultModel: string; placeholder?: string }> = {
-  openai:      { label: 'OpenAI',          defaultModel: 'gpt-4o-mini' },
-  anthropic:   { label: 'Claude (Anthropic)', defaultModel: 'claude-haiku-4-5-20251001' },
-  openrouter:  { label: 'OpenRouter',      defaultModel: 'openai/gpt-4o-mini', placeholder: 'https://openrouter.ai/api/v1' },
-  pulse:       { label: 'Pulse Editor AI', defaultModel: '' },
-  openclaw:    { label: 'OpenClaw',        defaultModel: '' },
-};
-
 // ── Tenant Settings ───────────────────────────────────────────────────────────
 
 export interface TenantSettings {
@@ -59,8 +32,6 @@ export interface TenantSettings {
   features: {
     knowledgeBase: boolean;
   };
-  /** AI inference backend configuration */
-  aiBackend?: AiBackendConfig;
 }
 
 export const PLAN_LIMITS: Record<TenantPlan, Pick<TenantSettings, 'maxMembers' | 'maxChannels'>> = {

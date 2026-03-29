@@ -80,6 +80,7 @@ model Tenant {
   endUsers      EndUser[]
   workflows     Workflow[]
   auditLogs     AuditLog[]
+  aiBackends    AiBackend[]
 
   @@map("tenants")
 }
@@ -155,9 +156,12 @@ model EndUser {
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channel       Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
+  selectedBackendId String?    @map("selected_backend_id")
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  selectedBackend AiBackend?     @relation("EndUserSelectedBackend", fields: [selectedBackendId], references: [id], onDelete: SetNull)
+  conversations   Conversation[]
 
   @@unique([tenantId, channelId, externalId])
   @@index([tenantId])
@@ -169,12 +173,14 @@ model Conversation {
   tenantId  String   @map("tenant_id")
   channelId String   @map("channel_id")
   endUserId String   @map("end_user_id")
+  backendId String?  @map("backend_id")
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  channel  Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  endUser  EndUser   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  backend  AiBackend? @relation(fields: [backendId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([tenantId])
@@ -194,6 +200,29 @@ model Message {
 
   @@index([conversationId])
   @@map("messages")
+}
+
+/// Admin-configured AI providers. End-users pick one at the start of a conversation.
+/// Many-to-many with EndUser (via selectedBackend) and Conversation (via backendId).
+model AiBackend {
+  id        String   @id
+  tenantId  String   @map("tenant_id")
+  /// Human-readable name shown to end-users in the selection menu
+  name      String
+  /// Provider type: openai | anthropic | openrouter | pulse | openclaw | custom
+  type      String
+  /// Provider-specific config: { apiKey?, model?, baseUrl?, pulseApiUrl?, openClawUrl? }
+  config    Json     @default("{}")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endUsers      EndUser[]      @relation("EndUserSelectedBackend")
+  conversations Conversation[]
+
+  @@index([tenantId])
+  @@map("ai_backends")
 }
 
 /// Owner-defined automations that the AI agent can invoke during a conversation.

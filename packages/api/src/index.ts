@@ -9,6 +9,7 @@ import { channelsRouter } from './routes/channels.js';
 import { tenantRouter } from './routes/tenant.js';
 import { workflowsRouter } from './routes/workflows.js';
 import { conversationsRouter } from './routes/conversations.js';
+import { aiBackendsRouter } from './routes/ai-backends.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
 import { initWeChatAdapters } from './adapters/wechat.js';
@@ -48,6 +49,7 @@ app.route('/api/channels', channelsRouter);
 app.route('/api/tenant', tenantRouter);
 app.route('/api/workflows', workflowsRouter);
 app.route('/api/conversations', conversationsRouter);
+app.route('/api/ai-backends', aiBackendsRouter);
 
 // ─── Gateway (inbound messages from social channels) ─────────────────────────
 
