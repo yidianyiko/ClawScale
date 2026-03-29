@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Loader2, Plug, PlugZap, Trash2, Radio } from 'lucide-react';
+import { Plus, Loader2, Plug, PlugZap, Trash2, Radio, Pencil, Check, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -118,6 +118,25 @@ export default function Channels() {
     if (res.ok) setChannels((prev) => prev.filter((c) => c.id !== id));
   }
 
+  // Inline rename
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const editRef = useRef<HTMLInputElement>(null);
+
+  function startRename(ch: ChannelRow) {
+    setEditingId(ch.id);
+    setEditName(ch.name);
+    setTimeout(() => editRef.current?.focus(), 0);
+  }
+
+  async function saveRename(id: string) {
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditingId(null); return; }
+    const res = await api.patch<ApiResponse<Channel>>(`/api/channels/${id}`, { name: trimmed });
+    if (res.ok) setChannels((prev) => prev.map((c) => c.id === id ? { ...c, name: trimmed } : c));
+    setEditingId(null);
+  }
+
   const schema = CHANNEL_CONFIG_SCHEMA[addType];
 
   return (
@@ -227,7 +246,24 @@ export default function Channels() {
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{CHANNEL_ICONS[ch.type] ?? '🔌'}</span>
                   <div>
-                    <p className="font-semibold text-gray-900">{ch.name}</p>
+                    {editingId === ch.id ? (
+                      <div className="flex items-center gap-1">
+                        <input ref={editRef} className="input py-0.5 px-1.5 text-sm font-semibold w-32"
+                          value={editName} onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') saveRename(ch.id); if (e.key === 'Escape') setEditingId(null); }} />
+                        <button onClick={() => saveRename(ch.id)} className="text-teal-500 hover:text-teal-700"><Check className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ) : (
+                      <p className="font-semibold text-gray-900 group/name flex items-center gap-1.5">
+                        {ch.name}
+                        {isAdmin && (
+                          <button onClick={() => startRename(ch)} className="opacity-0 group-hover/name:opacity-100 text-gray-400 hover:text-teal-500 transition-opacity">
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-400 capitalize">{ch.type.replace('_', ' ')}</p>
                   </div>
                 </div>

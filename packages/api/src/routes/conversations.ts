@@ -59,4 +59,18 @@ export const conversationsRouter = new Hono()
     if (!conversation) return c.json({ ok: false, error: 'Conversation not found' }, 404);
 
     return c.json({ ok: true, data: conversation });
+  })
+
+  // ── DELETE /api/conversations/:id ─────────────────────────────────────────────
+  .delete('/:id', async (c) => {
+    const { tenantId } = c.get('auth');
+    const id = c.req.param('id');
+
+    const conversation = await db.conversation.findFirst({ where: { id, tenantId } });
+    if (!conversation) return c.json({ ok: false, error: 'Conversation not found' }, 404);
+
+    await db.message.deleteMany({ where: { conversationId: id } });
+    await db.conversation.delete({ where: { id } });
+
+    return c.json({ ok: true });
   });

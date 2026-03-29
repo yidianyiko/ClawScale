@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Loader2, MessageSquare, ChevronRight } from 'lucide-react';
+import { Loader2, MessageSquare, ChevronRight, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -16,6 +16,14 @@ export default function Conversations() {
       setLoading(false);
     });
   }, []);
+
+  async function handleDelete(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Delete this conversation and all its messages?')) return;
+    const res = await api.delete<{ ok: boolean }>(`/api/conversations/${id}`);
+    if (res.ok) setRows((prev) => prev.filter((c) => c.id !== id));
+  }
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>;
 
@@ -54,6 +62,11 @@ export default function Conversations() {
                   <span className="text-xs text-red-500 font-medium">Blocked</span>
                 )}
               </div>
+              <button onClick={(e) => handleDelete(e, conv.id)}
+                className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                title="Delete conversation">
+                <Trash2 className="h-4 w-4" />
+              </button>
               <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-teal-500 transition-colors shrink-0" />
             </Link>
           ))}

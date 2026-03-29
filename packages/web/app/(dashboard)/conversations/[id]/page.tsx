@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Loader2, ArrowLeft, User, Bot } from 'lucide-react';
+import { Loader2, ArrowLeft, User, Bot, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTime, cn } from '@/lib/utils';
 import type { ApiResponse, Conversation } from '@clawscale/shared';
@@ -11,6 +11,7 @@ export default function ConversationDetail() {
   const router = useRouter();
   const [conv, setConv] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     api.get<ApiResponse<Conversation>>(`/api/conversations/${id}`).then((r) => {
@@ -21,6 +22,18 @@ export default function ConversationDetail() {
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>;
   if (!conv) return <div className="p-8 text-gray-500">Conversation not found.</div>;
+
+  async function handleDelete() {
+    if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return;
+    setDeleting(true);
+    const res = await api.delete<{ ok: boolean }>(`/api/conversations/${id}`);
+    if (res.ok) {
+      router.push('/conversations');
+    } else {
+      setDeleting(false);
+      alert('Failed to delete conversation.');
+    }
+  }
 
   const displayName = conv.endUser?.name ?? conv.endUser?.externalId ?? 'Anonymous';
 
@@ -44,6 +57,11 @@ export default function ConversationDetail() {
         {conv.endUser?.status === 'blocked' && (
           <span className="badge-red text-xs">Blocked</span>
         )}
+        <button onClick={handleDelete} disabled={deleting}
+          className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50">
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          Delete
+        </button>
       </div>
 
       <div className="space-y-4">
