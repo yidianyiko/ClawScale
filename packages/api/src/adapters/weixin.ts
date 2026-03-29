@@ -81,8 +81,8 @@ async function loginFlow(channelId: string): Promise<void> {
     state.qr = await qrcode.toDataURL(imgContent);
     console.log(`[weixin:${channelId}] QR code ready`);
 
-    // 2. Poll for scan status (max 480s)
-    const deadline = Date.now() + 480_000;
+    // 2. Poll for scan status (max 8 hours)
+    const deadline = Date.now() + 8 * 60 * 60 * 1000;
 
     while (state.running && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1000));
