@@ -401,14 +401,39 @@ function ProviderFields({ type, config, onChange }: {
     </div>
   );
 
-  if (type === 'openai') return <div className="grid grid-cols-2 gap-4">
-    {inp('apiKey', 'sk-...', 'API Key', { type: 'password', required: true })}
-    {inp('model', 'gpt-4o-mini', 'Model')}
+  const systemPromptField = (
+    <div>
+      <label className="label">
+        System prompt
+        <span className="text-gray-400 font-normal ml-1">(optional)</span>
+      </label>
+      <textarea
+        className="input min-h-[80px] resize-y text-sm"
+        placeholder="You are a helpful assistant."
+        value={(config.systemPrompt as string) ?? ''}
+        maxLength={2000}
+        onChange={(e) => onChange({ systemPrompt: e.target.value })}
+      />
+      <p className="text-xs text-gray-400 mt-1">
+        This backend's own persona. ClawScale does not inject its own prompt.
+      </p>
+    </div>
+  );
+
+  if (type === 'openai') return <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      {inp('apiKey', 'sk-...', 'API Key', { type: 'password', required: true })}
+      {inp('model', 'gpt-4o-mini', 'Model')}
+    </div>
+    {systemPromptField}
   </div>;
 
-  if (type === 'anthropic') return <div className="grid grid-cols-2 gap-4">
-    {inp('apiKey', 'sk-ant-...', 'API Key', { type: 'password', required: true })}
-    {inp('model', 'claude-haiku-4-5-20251001', 'Model')}
+  if (type === 'anthropic') return <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      {inp('apiKey', 'sk-ant-...', 'API Key', { type: 'password', required: true })}
+      {inp('model', 'claude-haiku-4-5-20251001', 'Model')}
+    </div>
+    {systemPromptField}
   </div>;
 
   if (type === 'openrouter') return <div className="space-y-4">
@@ -417,6 +442,7 @@ function ProviderFields({ type, config, onChange }: {
       {inp('model', 'openai/gpt-4o-mini', 'Model')}
     </div>
     {inp('baseUrl', 'https://openrouter.ai/api/v1', 'Base URL (optional)', { hint: 'Leave blank for the default OpenRouter endpoint.' })}
+    {systemPromptField}
   </div>;
 
   if (type === 'openclaw') return <div className="space-y-4">

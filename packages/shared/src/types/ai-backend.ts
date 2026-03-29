@@ -5,6 +5,11 @@ export interface AiBackendProviderConfig {
   apiKey?: string;
   /** Model identifier */
   model?: string;
+  /**
+   * System prompt for basic LLM backends (openai / anthropic / openrouter).
+   * This is the backend's own persona — ClawScale never injects its own prompt.
+   */
+  systemPrompt?: string;
   /** Base URL override — OpenRouter, Custom, OpenClaw */
   baseUrl?: string;
   /** Pulse Editor AI manager streaming endpoint URL */

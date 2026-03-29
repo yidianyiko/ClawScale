@@ -9,11 +9,12 @@ import { audit } from '../lib/audit.js';
 const BACKEND_TYPES = ['openai', 'anthropic', 'openrouter', 'pulse', 'openclaw', 'custom'] as const;
 
 const configSchema = z.object({
-  apiKey:      z.string().optional(),
-  model:       z.string().optional(),
-  baseUrl:     z.string().url().optional(),
-  pulseApiUrl: z.string().url().optional(),
-  openClawUrl: z.string().url().optional(),
+  apiKey:       z.string().optional(),
+  model:        z.string().optional(),
+  systemPrompt: z.string().max(2000).optional(),
+  baseUrl:      z.string().url().optional(),
+  pulseApiUrl:  z.string().url().optional(),
+  openClawUrl:  z.string().url().optional(),
 }).default({});
 
 const createSchema = z.object({

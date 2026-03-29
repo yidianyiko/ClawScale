@@ -1,13 +1,17 @@
 /**
  * AI Backend — pluggable inference provider.
  *
+ * Each backend is a self-contained black box. ClawScale never injects its own
+ * prompt — the system prompt lives in the backend's config (for basic LLM
+ * types) or inside the external service itself (OpenClaw, Pulse, Custom).
+ *
  * Supported providers:
- *   openai     — OpenAI Chat Completions API
- *   anthropic  — Anthropic Messages API (Claude)
- *   openrouter — OpenRouter (OpenAI-compatible endpoint)
- *   pulse      — Pulse Editor AI manager (streaming SSE, LangChain message format)
- *   openclaw   — OpenClaw instance (OpenAI-compatible at <openClawUrl>/v1)
- *   custom     — Any OpenAI-compatible endpoint
+ *   openai     — OpenAI Chat Completions API (basic LLM)
+ *   anthropic  — Anthropic Messages API (basic LLM)
+ *   openrouter — OpenRouter (basic LLM, OpenAI-compatible)
+ *   pulse      — Pulse Editor AI manager (external, self-contained)
+ *   openclaw   — OpenClaw instance (external, self-contained)
+ *   custom     — Any OpenAI-compatible endpoint (external, self-contained)
  */
 
 import OpenAI from 'openai';
@@ -20,8 +24,7 @@ export interface BackendSpec {
 }
 
 export interface GenerateOptions {
-  backend: BackendSpec | undefined;
-  systemPrompt: string;
+  backend: BackendSpec;
   history: { role: 'user' | 'assistant'; content: string }[];
 }
 
@@ -46,6 +49,8 @@ function getAnthropicClient(apiKey: string): Anthropic {
 }
 
 // ── Provider implementations ──────────────────────────────────────────────────
+
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 
 async function generateOpenAI(
   client: OpenAI,
@@ -82,16 +87,14 @@ async function generateAnthropic(
 
 async function generatePulse(
   pulseApiUrl: string,
-  systemPrompt: string,
   history: { role: 'user' | 'assistant'; content: string }[],
 ): Promise<string> {
-  const messages = [
-    { type: 'system', content: systemPrompt },
-    ...history.map((m) => ({
-      type: m.role === 'user' ? 'human' : 'ai',
-      content: m.content,
-    })),
-  ];
+  // Pulse AI manager is self-contained — just forward the conversation history.
+  // No system prompt injected; the Pulse agent has its own personality.
+  const messages = history.map((m) => ({
+    type: m.role === 'user' ? 'human' : 'ai',
+    content: m.content,
+  }));
 
   const res = await fetch(`${pulseApiUrl}/stream`, {
     method: 'POST',
@@ -142,48 +145,58 @@ async function generatePulse(
 
 const FALLBACK_OPENAI_MODEL = 'gpt-4o-mini';
 
-export async function generateReply({ backend, systemPrompt, history }: GenerateOptions): Promise<string> {
-  const type = backend?.type ?? 'openai';
-  const cfg = backend?.config ?? {};
+export async function generateReply({ backend, history }: GenerateOptions): Promise<string> {
+  const { type, config: cfg } = backend;
 
   switch (type) {
+    // ── Basic LLM backends: use config.systemPrompt ─────────────────────
     case 'openai': {
       const apiKey = cfg.apiKey ?? process.env['OPENAI_API_KEY'] ?? '';
       const model = cfg.model || FALLBACK_OPENAI_MODEL;
-      return generateOpenAI(getOpenAIClient(apiKey), model, systemPrompt, history);
+      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      return generateOpenAI(getOpenAIClient(apiKey), model, prompt, history);
     }
 
     case 'anthropic': {
       const apiKey = cfg.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
       const model = cfg.model || 'claude-haiku-4-5-20251001';
-      return generateAnthropic(getAnthropicClient(apiKey), model, systemPrompt, history);
+      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      return generateAnthropic(getAnthropicClient(apiKey), model, prompt, history);
     }
 
     case 'openrouter': {
       const apiKey = cfg.apiKey ?? process.env['OPENROUTER_API_KEY'] ?? '';
       const model = cfg.model || 'openai/gpt-4o-mini';
       const baseURL = cfg.baseUrl || 'https://openrouter.ai/api/v1';
-      return generateOpenAI(getOpenAIClient(apiKey, baseURL), model, systemPrompt, history);
+      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      return generateOpenAI(getOpenAIClient(apiKey, baseURL), model, prompt, history);
     }
 
+    // ── External backends: self-contained, no prompt injection ──────────
     case 'pulse': {
       if (!cfg.pulseApiUrl) throw new Error('Pulse AI backend: pulseApiUrl is required');
-      return generatePulse(cfg.pulseApiUrl, systemPrompt, history);
+      return generatePulse(cfg.pulseApiUrl, history);
     }
 
     case 'openclaw': {
+      // OpenClaw is self-contained — it has its own prompt/tools configured internally.
+      // We just forward messages via the OpenAI-compatible API.
       const url = cfg.openClawUrl ?? cfg.baseUrl;
       if (!url) throw new Error('OpenClaw AI backend: openClawUrl is required');
       const apiKey = cfg.apiKey ?? 'openclaw';
       const model = cfg.model || 'default';
-      return generateOpenAI(getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`), model, systemPrompt, history);
+      // No system prompt — OpenClaw manages its own personality
+      return generateOpenAI(getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`), model, '', history);
     }
 
     case 'custom': {
+      // Custom endpoints are assumed self-contained — they manage their own prompt.
+      // If admin provides a systemPrompt in config, we'll use it (for simple setups).
       if (!cfg.baseUrl) throw new Error('Custom AI backend: baseUrl is required');
       const apiKey = cfg.apiKey ?? 'custom';
       const model = cfg.model || 'default';
-      return generateOpenAI(getOpenAIClient(apiKey, cfg.baseUrl), model, systemPrompt, history);
+      const prompt = cfg.systemPrompt || '';
+      return generateOpenAI(getOpenAIClient(apiKey, cfg.baseUrl), model, prompt, history);
     }
 
     default:

@@ -55,14 +55,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const settings = (tenant?.settings ?? {}) as {
     personaName?: string;
-    personaPrompt?: string;
     endUserAccess?: 'anonymous' | 'whitelist' | 'blacklist';
     allowList?: string[];
     clawscale?: { name?: string; answerStyle?: string; isActive?: boolean };
     blockList?: string[];
   };
   const personaName = settings.personaName ?? 'Assistant';
-  const personaPrompt = settings.personaPrompt ?? 'You are a helpful assistant.';
 
   // 3. Find or create EndUser
   let endUser = await db.endUser.findUnique({
@@ -236,7 +234,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   // 10. Generate replies from all active backends concurrently
   const backendResults = await Promise.allSettled(
     activeBackends.map(async (backend) => {
-      const replyText = await runBackend(backend, personaPrompt, conversation!.id);
+      const replyText = await runBackend(backend, conversation!.id);
       return { backend, replyText };
     }),
   );
@@ -278,9 +276,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function loadHistory(conversationId: string) {
+/**
+ * Load conversation history for a backend, excluding ClawScale agent messages.
+ * Each backend only sees user messages and its own assistant replies.
+ */
+async function loadHistory(conversationId: string, backendId: string) {
   const msgs = await db.message.findMany({
-    where: { conversationId },
+    where: {
+      conversationId,
+      OR: [
+        { role: 'user' },
+        { role: 'assistant', backendId },
+      ],
+    },
     orderBy: { createdAt: 'asc' },
     take: 50,
     select: { role: true, content: true },
@@ -289,30 +297,14 @@ async function loadHistory(conversationId: string) {
 }
 
 async function runBackend(
-  backend: { type: string; config: unknown },
-  personaPrompt: string,
+  backend: { id: string; type: string; config: unknown },
   conversationId: string,
 ): Promise<string> {
-  const history = await loadHistory(conversationId);
-
-  const { tenantId } = (await db.conversation.findUnique({
-    where: { id: conversationId },
-    select: { tenantId: true },
-  }))!;
-
-  const workflows = await db.workflow.findMany({
-    where: { tenantId, isActive: true },
-    select: { name: true, description: true },
-  });
-
-  const systemPrompt = workflows.length > 0
-    ? `${personaPrompt}\n\nYou have access to the following workflows:\n${workflows.map((w) => `- ${w.name}${w.description ? ': ' + w.description : ''}`).join('\n')}`
-    : personaPrompt;
+  const history = await loadHistory(conversationId, backend.id);
 
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   return generateReply({
     backend: { type: backend.type as AiBackendType, config: cfg },
-    systemPrompt,
     history,
   });
 }

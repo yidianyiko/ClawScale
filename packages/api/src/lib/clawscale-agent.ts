@@ -234,19 +234,18 @@ export function clawscaleAgent(
     }
   }
 
-  // ── ClawScale knowledge base ────────────────────────────────────────────
-  const knowledgeReply = matchKnowledge(text);
-  if (knowledgeReply) {
-    if (mode === 'select' && backends.length > 0) {
-      const list = formatBackendList(backends, activeIds);
-      return { reply: styled(`${knowledgeReply}\n\n${list}`) };
-    }
-    return { reply: styled(knowledgeReply) };
+  // ── If user has active backends, stay silent for everything else ─────
+  // ClawScale only handles explicit selection commands when backends are active.
+  // All other messages go straight to the active backends.
+  if (mode === 'select' && activeIds.length > 0) {
+    return { reply: '' };
   }
 
-  // ── Off-topic ─────────────────────────────────────────────────────────
+  // ── No active backends — ClawScale handles knowledge + menu ───────────
 
   if (mode === 'chat') {
+    const knowledgeReply = matchKnowledge(text);
+    if (knowledgeReply) return { reply: styled(knowledgeReply) };
     return {
       reply: styled(
         `I'm the built-in *ClawScale* assistant. I can only answer questions about ClawScale itself.\n\n` +
@@ -255,11 +254,14 @@ export function clawscaleAgent(
     };
   }
 
-  // select mode — if user has active backends, let the message pass through
-  // (the caller will route to active backends). Only show menu if no backends active.
-  if (activeIds.length > 0) {
-    // Return null-ish reply — caller should skip ClawScale reply and route to backends
-    return { reply: '' };
+  // select mode, no active backends
+  const knowledgeReply = matchKnowledge(text);
+  if (knowledgeReply) {
+    if (backends.length > 0) {
+      const list = formatBackendList(backends, activeIds);
+      return { reply: styled(`${knowledgeReply}\n\n${list}`) };
+    }
+    return { reply: styled(knowledgeReply) };
   }
 
   if (backends.length === 0) {
