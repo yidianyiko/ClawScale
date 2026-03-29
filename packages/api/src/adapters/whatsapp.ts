@@ -44,6 +44,7 @@ const AUTH_BASE = process.env['WHATSAPP_AUTH_DIR'] ?? path.join(process.cwd(), '
 interface ChannelState {
   socket: WASocket | null;
   qr: string | null;          // base64 PNG, set while waiting for scan
+  qrUrl: string | null;       // raw string encoded in the QR
   status: 'qr_pending' | 'connected' | 'disconnected';
 }
 
@@ -74,7 +75,7 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
     logger,
   });
 
-  channels.set(channelId, { socket: sock, qr: null, status: 'qr_pending' });
+  channels.set(channelId, { socket: sock, qr: null, qrUrl: null, status: 'qr_pending' });
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -84,7 +85,7 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
     if (qr) {
       const png = await qrcode.toDataURL(qr);
       const ch = channels.get(channelId);
-      if (ch) ch.qr = png;
+      if (ch) { ch.qr = png; ch.qrUrl = qr; }
       console.log(`[whatsapp:${channelId}] QR code ready`);
     }
 
@@ -155,10 +156,12 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
   });
 }
 
-// ── Get current QR code (base64 PNG) ─────────────────────────────────────────
+// ── Get current QR code (base64 PNG + raw URL) ───────────────────────────────
 
-export function getWhatsAppQR(channelId: string): string | null {
-  return channels.get(channelId)?.qr ?? null;
+export function getWhatsAppQR(channelId: string): { image: string; url: string } | null {
+  const ch = channels.get(channelId);
+  if (!ch?.qr) return null;
+  return { image: ch.qr, url: ch.qrUrl ?? '' };
 }
 
 // ── Get current status ────────────────────────────────────────────────────────

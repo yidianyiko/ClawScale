@@ -335,7 +335,7 @@ export const channelsRouter = new Hono()
         });
       }
       const status = getWeixinStatus(id);
-      return c.json({ ok: true, data: { qr, status } });
+      return c.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
     }
 
     // Wait up to 10s for QR to be ready if not yet available
@@ -351,5 +351,5 @@ export const channelsRouter = new Hono()
     }
 
     const status = getWhatsAppStatus(id);
-    return c.json({ ok: true, data: { qr, status } });
+    return c.json({ ok: true, data: { qr: qr?.image ?? null, qrUrl: qr?.url ?? null, status } });
   });

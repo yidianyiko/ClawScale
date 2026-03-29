@@ -25,6 +25,7 @@ interface WeixinState {
   running: boolean;
   cursor: string;
   qr: string | null;         // base64 PNG for dashboard
+  qrUrl: string | null;      // raw string encoded in the QR
   status: 'qr_pending' | 'connected' | 'disconnected';
 }
 
@@ -32,19 +33,21 @@ const channels = new Map<string, WeixinState>();
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-function msgHeaders(token: string): Record<string, string> {
-  return {
+function msgHeaders(token: string, body?: string): Record<string, string> {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'AuthorizationType': 'ilink_bot_token',
     'Authorization': `Bearer ${token}`,
     'X-WECHAT-UIN': Buffer.from(String(Math.floor(Math.random() * 0xffffffff))).toString('base64'),
   };
+  if (body !== undefined) headers['Content-Length'] = String(Buffer.byteLength(body, 'utf-8'));
+  return headers;
 }
 
 // ── QR Login ──────────────────────────────────────────────────────────────────
 
 export async function startWeixinQR(channelId: string): Promise<void> {
-  const state: WeixinState = { running: true, cursor: '', qr: null, status: 'qr_pending' };
+  const state: WeixinState = { running: true, cursor: '', qr: null, qrUrl: null, status: 'qr_pending' };
   channels.set(channelId, state);
 
   // Run login flow in background
@@ -79,6 +82,7 @@ async function loginFlow(channelId: string): Promise<void> {
 
     // Convert QR content to PNG data URL for dashboard display
     state.qr = await qrcode.toDataURL(imgContent);
+    state.qrUrl = imgContent;
     console.log(`[weixin:${channelId}] QR code ready`);
 
     // 2. Poll for scan status (max 8 hours)
@@ -188,21 +192,31 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
 
           const gwData = (await gwRes.json()) as { ok: boolean; data?: { reply: string } };
 
-          if (gwData.ok && gwData.data?.reply && msg.context_token) {
-            await fetch(`${baseUrl}/ilink/bot/sendmessage`, {
+          if (gwData.ok && gwData.data?.reply) {
+            const sendBody = {
+              msg: {
+                from_user_id: '',
+                to_user_id: msg.from_user_id,
+                client_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                message_type: 2,
+                message_state: 2,
+                context_token: msg.context_token ?? '',
+                item_list: [{ type: 1, text_item: { text: gwData.data.reply } }],
+              },
+              base_info: { channel_version: '1.0.0' },
+            };
+            const sendBodyStr = JSON.stringify(sendBody);
+            console.log(`[weixin:${channelId}] Sending reply to ${msg.from_user_id}:`, sendBodyStr);
+            const sendRes = await fetch(`${baseUrl}/ilink/bot/sendmessage`, {
               method: 'POST',
-              headers: msgHeaders(token),
-              body: JSON.stringify({
-                msg: {
-                  to_user_id: msg.from_user_id,
-                  message_type: 2,
-                  message_state: 2,
-                  context_token: msg.context_token,
-                  item_list: [{ type: 1, text_item: { text: gwData.data.reply } }],
-                },
-              }),
+              headers: msgHeaders(token, sendBodyStr),
+              body: sendBodyStr,
               signal: AbortSignal.timeout(15_000),
             });
+            const sendData = await sendRes.text();
+            console.log(`[weixin:${channelId}] sendmessage response (${sendRes.status}):`, sendData);
+          } else {
+            console.warn(`[weixin:${channelId}] Gateway did not return a reply:`, JSON.stringify(gwData));
           }
         } catch (err) {
           console.error(`[weixin:${channelId}] Error routing message:`, err);
@@ -218,8 +232,10 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function getWeixinQR(channelId: string): string | null {
-  return channels.get(channelId)?.qr ?? null;
+export function getWeixinQR(channelId: string): { image: string; url: string } | null {
+  const ch = channels.get(channelId);
+  if (!ch?.qr) return null;
+  return { image: ch.qr, url: ch.qrUrl ?? '' };
 }
 
 export function getWeixinStatus(channelId: string): WeixinState['status'] | null {

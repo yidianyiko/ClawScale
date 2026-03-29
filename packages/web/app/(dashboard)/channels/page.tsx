@@ -35,6 +35,7 @@ export default function Channels() {
   // WhatsApp QR modal
   const [qrChannelId, setQrChannelId] = useState<string | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrStatus, setQrStatus] = useState<string | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -55,9 +56,10 @@ export default function Channels() {
 
     async function pollQR() {
       if (!qrChannelId) return;
-      const res = await api.get<ApiResponse<{ qr: string | null; status: string | null }>>(`/api/channels/${qrChannelId}/qr`);
+      const res = await api.get<ApiResponse<{ qr: string | null; qrUrl: string | null; status: string | null }>>(`/api/channels/${qrChannelId}/qr`);
       if (!res.ok) return;
       setQrImage(res.data.qr);
+      setQrUrl(res.data.qrUrl);
       setQrStatus(res.data.status);
       if (res.data.status === 'connected') {
         setChannels((prev) => prev.map((c) => c.id === qrChannelId ? { ...c, status: 'connected' as const } : c));
@@ -73,6 +75,7 @@ export default function Channels() {
   function closeQrModal() {
     setQrChannelId(null);
     setQrImage(null);
+    setQrUrl(null);
     setQrStatus(null);
   }
 
@@ -181,13 +184,25 @@ export default function Channels() {
                 : 'Open WhatsApp → Linked Devices → Link a device'}
             </p>
             {qrImage ? (
-              <img src={qrImage} alt="WhatsApp QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
+              <img src={qrImage} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
             ) : (
               <div className="mx-auto w-56 h-56 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
                 <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
               </div>
             )}
-            <p className="mt-4 text-xs text-gray-400">
+            {qrUrl && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <span className="truncate text-xs text-gray-600 flex-1">{qrUrl}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                  onClick={() => void navigator.clipboard.writeText(qrUrl)}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+            <p className="mt-3 text-xs text-gray-400">
               {qrStatus === 'qr_pending' ? 'Waiting for scan…' : qrStatus ?? 'Generating QR…'}
             </p>
             <button className="btn-secondary w-full mt-5" onClick={closeQrModal}>Cancel</button>

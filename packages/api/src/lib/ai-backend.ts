@@ -138,7 +138,7 @@ async function generatePulse(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-const FALLBACK_OPENAI_MODEL = 'gpt-4o-mini';
+const FALLBACK_OPENAI_MODEL = 'gpt-5.4-mini';
 
 export async function generateReply({ backend, systemPrompt, history }: GenerateOptions): Promise<string> {
   const type = backend?.type ?? 'openai';
