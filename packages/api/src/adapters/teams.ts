@@ -9,8 +9,8 @@
  */
 
 import { db } from '../db/index.js';
+import { routeInboundMessage } from '../lib/route-message.js';
 
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
 const BOT_FRAMEWORK_TOKEN_URL = 'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token';
 
 interface TeamsBot {
@@ -89,14 +89,9 @@ export async function handleTeamsActivity(channelId: string, activity: {
   console.log(`[teams:${channelId}] Incoming from ${externalId}: "${text}"`);
 
   try {
-    const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ externalId, displayName, text, meta: { platform: 'teams' } }),
-    });
-    const data = (await res.json()) as { ok: boolean; data?: { reply: string } };
+    const result = await routeInboundMessage({ channelId, externalId, displayName, text, meta: { platform: 'teams' } });
 
-    if (data.ok && data.data?.reply && activity.serviceUrl && activity.conversation?.id) {
+    if (result?.reply && activity.serviceUrl && activity.conversation?.id) {
       const token = await getAccessToken(bot);
       const replyUrl = `${activity.serviceUrl}v3/conversations/${encodeURIComponent(activity.conversation.id)}/activities`;
 
@@ -108,7 +103,7 @@ export async function handleTeamsActivity(channelId: string, activity: {
         },
         body: JSON.stringify({
           type: 'message',
-          text: data.data.reply,
+          text: result.reply,
           replyToId: activity.id,
           from: activity.recipient,
           conversation: activity.conversation,

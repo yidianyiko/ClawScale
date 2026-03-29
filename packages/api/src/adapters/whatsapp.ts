@@ -22,6 +22,7 @@ import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode';
 import pino from 'pino';
 import { db } from '../db/index.js';
+import { routeInboundMessage } from '../lib/route-message.js';
 
 const logger = pino({ level: 'silent' });
 
@@ -36,7 +37,6 @@ async function getWAVersion(): Promise<[number, number, number]> {
   return waVersion;
 }
 
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
 const AUTH_BASE = process.env['WHATSAPP_AUTH_DIR'] ?? path.join(process.cwd(), 'data', 'whatsapp');
 
 // ── State per channel ─────────────────────────────────────────────────────────
@@ -133,22 +133,12 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
       const displayName = msg.pushName ?? undefined;
 
       try {
-        const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            externalId,
-            displayName,
-            text: text.trim(),
-            meta: { platform: 'whatsapp', messageId: msg.key.id },
-          }),
+        const result = await routeInboundMessage({
+          channelId, externalId, displayName,
+          text: text.trim(),
+          meta: { platform: 'whatsapp', messageId: msg.key.id },
         });
-
-        const data = (await res.json()) as { ok: boolean; data?: { reply: string } };
-
-        if (data.ok && data.data?.reply && sock) {
-          await sock.sendMessage(externalId, { text: data.data.reply });
-        }
+        if (result?.reply && sock) await sock.sendMessage(externalId, { text: result.reply });
       } catch (err) {
         console.error(`[whatsapp:${channelId}] Error routing message:`, err);
       }

@@ -15,9 +15,9 @@
 
 import qrcode from 'qrcode';
 import { db } from '../db/index.js';
+import { routeInboundMessage } from '../lib/route-message.js';
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -180,19 +180,14 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
         console.log(`[weixin:${channelId}] Incoming from ${msg.from_user_id}: "${text}"`);
 
         try {
-          const gwRes = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              externalId: msg.from_user_id,
-              text,
-              meta: { platform: 'wechat_personal', contextToken: msg.context_token },
-            }),
+          const result = await routeInboundMessage({
+            channelId,
+            externalId: msg.from_user_id,
+            text,
+            meta: { platform: 'wechat_personal', contextToken: msg.context_token },
           });
 
-          const gwData = (await gwRes.json()) as { ok: boolean; data?: { reply: string } };
-
-          if (gwData.ok && gwData.data?.reply) {
+          if (result?.reply) {
             const sendBody = {
               msg: {
                 from_user_id: '',
@@ -201,7 +196,7 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
                 message_type: 2,
                 message_state: 2,
                 context_token: msg.context_token ?? '',
-                item_list: [{ type: 1, text_item: { text: gwData.data.reply } }],
+                item_list: [{ type: 1, text_item: { text: result.reply } }],
               },
               base_info: { channel_version: '1.0.0' },
             };
@@ -216,7 +211,7 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
             const sendData = await sendRes.text();
             console.log(`[weixin:${channelId}] sendmessage response (${sendRes.status}):`, sendData);
           } else {
-            console.warn(`[weixin:${channelId}] Gateway did not return a reply:`, JSON.stringify(gwData));
+            console.warn(`[weixin:${channelId}] No reply returned for message from ${msg.from_user_id}`);
           }
         } catch (err) {
           console.error(`[weixin:${channelId}] Error routing message:`, err);

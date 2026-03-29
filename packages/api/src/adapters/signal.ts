@@ -11,8 +11,7 @@
  */
 
 import { db } from '../db/index.js';
-
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
+import { routeInboundMessage } from '../lib/route-message.js';
 
 interface SignalState {
   running: boolean;
@@ -73,25 +72,13 @@ async function pollLoop(channelId: string, state: SignalState): Promise<void> {
         console.log(`[signal:${channelId}] Incoming from ${externalId}: "${text}"`);
 
         try {
-          const gwRes = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ externalId, text, meta: { platform: 'signal' } }),
-          });
-          const data = (await gwRes.json()) as { ok: boolean; data?: { reply: string } };
-          if (data.ok && data.data?.reply) {
-            await fetch(
-              `${state.signalCliUrl}/v2/send`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  number: state.phoneNumber,
-                  recipients: [externalId],
-                  message: data.data.reply,
-                }),
-              },
-            );
+          const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'signal' } });
+          if (result?.reply) {
+            await fetch(`${state.signalCliUrl}/v2/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ number: state.phoneNumber, recipients: [externalId], message: result.reply }),
+            });
           }
         } catch (err) {
           console.error(`[signal:${channelId}] Error routing message:`, err);

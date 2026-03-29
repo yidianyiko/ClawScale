@@ -10,11 +10,10 @@
 
 import AiBot from '@wecom/aibot-node-sdk';
 import { db } from '../db/index.js';
+import { routeInboundMessage } from '../lib/route-message.js';
 
 // Map of clawscale channelId → WSClient
 const clients = new Map<string, InstanceType<typeof AiBot.WSClient>>();
-
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
 
 // ── Start a bot for a single channel ─────────────────────────────────────────
 
@@ -34,22 +33,16 @@ export async function startWeChatBot(channelId: string, botId: string, secret: s
     console.log(`[wechat:${channelId}] Message from ${userId}: ${text}`);
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          externalId: userId,
-          displayName: frame.body?.from?.name,
-          text,
-          meta: { platform: 'wechat_work' },
-        }),
+      const result = await routeInboundMessage({
+        channelId,
+        externalId: userId,
+        displayName: frame.body?.from?.name,
+        text,
+        meta: { platform: 'wechat_work' },
       });
-
-      const data = (await res.json()) as { ok: boolean; data?: { reply: string }; error?: string };
-
-      if (data.ok && data.data?.reply) {
+      if (result?.reply) {
         const streamId = `stream_${Date.now()}`;
-        await client.replyStream(frame, streamId, data.data.reply, true);
+        await client.replyStream(frame, streamId, result.reply, true);
       }
     } catch (err) {
       console.error(`[wechat:${channelId}] Error routing message:`, err);

@@ -4,8 +4,7 @@
 
 import { Bot } from 'grammy';
 import { db } from '../db/index.js';
-
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
+import { routeInboundMessage } from '../lib/route-message.js';
 
 const bots = new Map<string, Bot>();
 
@@ -22,15 +21,11 @@ export async function startTelegramBot(channelId: string, token: string): Promis
     console.log(`[telegram:${channelId}] Incoming from ${externalId}: "${text}"`);
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ externalId, displayName, text, meta: { platform: 'telegram', chatId: ctx.chat.id } }),
+      const result = await routeInboundMessage({
+        channelId, externalId, displayName, text,
+        meta: { platform: 'telegram', chatId: ctx.chat.id },
       });
-      const data = (await res.json()) as { ok: boolean; data?: { reply: string } };
-      if (data.ok && data.data?.reply) {
-        await ctx.reply(data.data.reply);
-      }
+      if (result?.reply) await ctx.reply(result.reply);
     } catch (err) {
       console.error(`[telegram:${channelId}] Error routing message:`, err);
     }

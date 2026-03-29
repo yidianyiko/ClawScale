@@ -5,8 +5,7 @@
 
 import { App } from '@slack/bolt';
 import { db } from '../db/index.js';
-
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
+import { routeInboundMessage } from '../lib/route-message.js';
 
 const apps = new Map<string, App>();
 
@@ -30,15 +29,8 @@ export async function startSlackBot(channelId: string, botToken: string, appToke
     console.log(`[slack:${channelId}] Incoming from ${externalId}: "${text}"`);
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ externalId, text, meta: { platform: 'slack' } }),
-      });
-      const data = (await res.json()) as { ok: boolean; data?: { reply: string } };
-      if (data.ok && data.data?.reply) {
-        await say(data.data.reply);
-      }
+      const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'slack' } });
+      if (result?.reply) await say(result.reply);
     } catch (err) {
       console.error(`[slack:${channelId}] Error routing message:`, err);
     }

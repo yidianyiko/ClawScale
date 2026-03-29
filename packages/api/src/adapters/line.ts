@@ -8,8 +8,7 @@
 
 import * as line from '@line/bot-sdk';
 import { db } from '../db/index.js';
-
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
+import { routeInboundMessage } from '../lib/route-message.js';
 
 interface LineBot {
   client: line.messagingApi.MessagingApiClient;
@@ -58,16 +57,11 @@ export async function handleLineEvents(channelId: string, events: line.WebhookEv
     console.log(`[line:${channelId}] Incoming from ${externalId}: "${text}"`);
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ externalId, text, meta: { platform: 'line' } }),
-      });
-      const data = (await res.json()) as { ok: boolean; data?: { reply: string } };
-      if (data.ok && data.data?.reply) {
+      const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'line' } });
+      if (result?.reply) {
         await bot.client.replyMessage({
           replyToken,
-          messages: [{ type: 'text', text: data.data.reply }],
+          messages: [{ type: 'text', text: result.reply }],
         });
       }
     } catch (err) {

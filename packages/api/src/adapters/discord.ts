@@ -12,12 +12,10 @@
 
 import { Client, Events, GatewayIntentBits, Message } from 'discord.js';
 import { db } from '../db/index.js';
+import { routeInboundMessage } from '../lib/route-message.js';
 
 // Map of clawscale channelId → discord.js Client
 const clients = new Map<string, Client>();
-
-// Internal gateway base URL — same process, just HTTP to itself
-const GATEWAY_URL = `http://127.0.0.1:${process.env['PORT'] ?? 3001}`;
 
 // ── Start a bot for a single channel ─────────────────────────────────────────
 
@@ -38,26 +36,14 @@ export async function startDiscordBot(channelId: string, botToken: string): Prom
     if (message.author.bot) return;
 
     try {
-      const res = await fetch(`${GATEWAY_URL}/gateway/${channelId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          externalId: message.author.id,
-          displayName: message.author.username,
-          text: message.content,
-          meta: {
-            guildId: message.guildId ?? null,
-            channelId: message.channelId,
-            messageId: message.id,
-          },
-        }),
+      const result = await routeInboundMessage({
+        channelId,
+        externalId: message.author.id,
+        displayName: message.author.username,
+        text: message.content,
+        meta: { guildId: message.guildId ?? null, channelId: message.channelId, messageId: message.id },
       });
-
-      const data = (await res.json()) as { ok: boolean; data?: { reply: string }; error?: string };
-
-      if (data.ok && data.data?.reply) {
-        await message.reply(data.data.reply);
-      }
+      if (result?.reply) await message.reply(result.reply);
     } catch (err) {
       console.error(`[discord:${channelId}] Error routing message:`, err);
     }
