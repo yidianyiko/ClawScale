@@ -1,19 +1,24 @@
-# ClawScale
+<p align="center">
+  <img src="https://clawscale.org/logo.png" alt="ClawScale" width="200" />
+</p>
 
-An open-source, self-hostable multi-tenant AI chatbot platform. Deploy a single bot instance across 12+ messaging platforms — end-users interact with it without needing accounts.
+<h1 align="center">ClawScale</h1>
+<p align="center"><strong>Open-Source Scaling Framework</strong></p>
+
+A multi-tenant user-agent management system for deploying AI agents like OpenClaw at scale. More than an IM gateway — ClawScale handles user isolation, conversation routing, and backend orchestration so that hundreds or thousands of users can interact with AI agents across 12+ messaging platforms without corrupting each other's memory or state.
 
 > **OpenClaw was built for one. ClawScale is built for everyone.**
 
 ## How ClawScale differs from OpenClaw
 
-[OpenClaw](https://github.com/pulseeditor/openclaw) bundles IM gateways and an autonomous AI agent into a single process. ClawScale **splits these apart** — extracting the IM gateway layer so it can be improved independently with multi-tenant management, while the agent layer (OpenClaw or others) can scale horizontally.
+[OpenClaw](https://github.com/pulseeditor/openclaw) bundles IM gateways and an autonomous AI agent into a single process with shared memory. When hundreds of users interact with the same instance, conversations bleed into each other and memory gets corrupted. ClawScale **splits these apart** — extracting the IM gateway layer so it can be improved independently with multi-tenant management, while the agent layer (OpenClaw or others) can scale horizontally.
 
 | | OpenClaw | ClawScale |
 |---|---|---|
 | **Architecture** | Monolithic — gateways + agent in one process | Decoupled — gateway layer manages channels; agent layer is pluggable |
-| **Users** | Single user | Multi-tenant with team accounts and roles |
+| **Users** | Single user, shared memory | Multi-tenant — hundreds/thousands of users with isolated memory and state |
 | **Agents** | One built-in agent | Multiple backends per tenant — OpenClaw, OpenAI, Anthropic, or any OpenAI-compatible endpoint |
-| **Scaling** | One instance | Multiple OpenClaw instances (or other agents) behind a single gateway |
+| **Scaling** | One instance — more users risk corrupting shared memory | Multiple agent instances behind one gateway, each user's context fully isolated |
 | **Admin controls** | None | Dashboard with RBAC, audit logs, access policies |
 | **Channels** | Built-in IM gateways | Same gateways, rebuilt for multi-tenant isolation |
 
@@ -46,20 +51,18 @@ Channels are managed from the dashboard — create one, provide credentials, and
 
 ### AI backends
 
-AI backends are **pluggable LLM providers** that generate replies. You can configure multiple backends and let end-users choose between them.
+AI backends are **pluggable LLM providers** that generate replies. You can configure multiple backends and let end-users choose between them. ClawScale never injects hidden prompts — each backend manages its own system prompt, model, and tools. Scale from one OpenClaw instance to many, or mix in other providers.
 
 | Type | Description |
 |---|---|
+| **OpenClaw** | Route to one or more OpenClaw instances. OpenClaw manages its own tools, memory, and prompts. |
 | **OpenAI** | GPT models via OpenAI API |
 | **Anthropic** | Claude models via Anthropic API |
-| **OpenRouter** | Multi-model aggregator |
-| **OpenClaw** | External OpenClaw instance (manages its own tools and prompts) |
+| **OpenRouter** | Multi-model aggregator — access hundreds of models through one API key |
 | **Pulse** | Pulse Editor AI agent |
-| **Custom** | Any OpenAI-compatible endpoint |
+| **Custom** | Any OpenAI-compatible endpoint (self-hosted models, vLLM, Ollama, etc.) |
 
-Each backend has its own system prompt, API key, and model configuration. ClawScale never injects hidden prompts — what you configure is what the LLM sees.
-
-**Multi-backend conversations**: End-users can have multiple backends active at once. Replies are labeled (e.g. `[GPT-4o]`, `[Claude]`) so users know which model responded.
+**Multi-backend conversations**: End-users can have multiple backends active at once. Messages route to all active backends and replies are labeled by source (e.g. `[GPT-4o]`, `[Claude]`). Users manage their agent team via slash commands.
 
 ### ClawScale orchestrator
 
@@ -91,9 +94,11 @@ Users can also direct a message to a specific backend: `gpt> explain quantum com
 - **Conversations** are scoped per end-user per channel, with full message history
 - **History isolation**: Each backend only sees its own prior replies plus all user messages, preventing cross-contamination between models
 
-### Access control
+### Multi-tenant isolation
 
-Workspace admins can control who interacts with the bot:
+Every user's conversations, memory, and state are fully isolated. Hundreds or thousands of users interact with agents without corrupting each other's context. Data never crosses tenant boundaries.
+
+Workspace admins control who interacts with the bot:
 
 - **Anonymous** — anyone can chat (default)
 - **Whitelist** — only approved external IDs
