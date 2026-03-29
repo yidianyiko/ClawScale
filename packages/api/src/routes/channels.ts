@@ -9,6 +9,12 @@ import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wechat.js';
 import { startWeixinBot, startWeixinQR, stopWeixinBot, getWeixinQR, getWeixinStatus } from '../adapters/weixin.js';
 import { startWhatsAppBot, stopWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
+import { startTelegramBot, stopTelegramBot } from '../adapters/telegram.js';
+import { startSlackBot, stopSlackBot } from '../adapters/slack.js';
+import { startMatrixBot, stopMatrixBot } from '../adapters/matrix.js';
+import { startLineBot, stopLineBot } from '../adapters/line.js';
+import { startSignalBot, stopSignalBot } from '../adapters/signal.js';
+import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
@@ -123,6 +129,18 @@ export const channelsRouter = new Hono()
       stopWeixinBot(id).catch(() => {});
     } else if (existing.type === 'whatsapp') {
       stopWhatsAppBot(id).catch(() => {});
+    } else if (existing.type === 'telegram') {
+      stopTelegramBot(id).catch(() => {});
+    } else if (existing.type === 'slack') {
+      stopSlackBot(id).catch(() => {});
+    } else if (existing.type === 'matrix') {
+      stopMatrixBot(id).catch(() => {});
+    } else if (existing.type === 'line') {
+      stopLineBot(id).catch(() => {});
+    } else if (existing.type === 'signal') {
+      stopSignalBot(id).catch(() => {});
+    } else if (existing.type === 'teams') {
+      stopTeamsBot(id).catch(() => {});
     }
 
     await db.channel.delete({ where: { id } });
@@ -178,6 +196,59 @@ export const channelsRouter = new Hono()
         console.error(`[whatsapp:${id}] Failed to start bot:`, err),
       );
       return c.json({ ok: true, data: { status: 'pending' } });
+    } else if (channel.type === 'telegram') {
+      const config = channel.config as Record<string, string> | null;
+      const botToken = config?.['botToken'];
+      if (botToken) {
+        startTelegramBot(id, botToken).catch((err) =>
+          console.error(`[telegram:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'slack') {
+      const config = channel.config as Record<string, string> | null;
+      const botToken = config?.['botToken'];
+      const appToken = config?.['appToken'];
+      if (botToken && appToken) {
+        startSlackBot(id, botToken, appToken).catch((err) =>
+          console.error(`[slack:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'matrix') {
+      const config = channel.config as Record<string, string> | null;
+      const homeserverUrl = config?.['homeserverUrl'];
+      const accessToken = config?.['accessToken'];
+      if (homeserverUrl && accessToken) {
+        startMatrixBot(id, homeserverUrl, accessToken).catch((err) =>
+          console.error(`[matrix:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'line') {
+      const config = channel.config as Record<string, string> | null;
+      const channelAccessToken = config?.['channelAccessToken'];
+      const channelSecret = config?.['channelSecret'];
+      if (channelAccessToken && channelSecret) {
+        startLineBot(id, channelAccessToken, channelSecret).catch((err) =>
+          console.error(`[line:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'signal') {
+      const config = channel.config as Record<string, string> | null;
+      const phoneNumber = config?.['phoneNumber'];
+      const signalCliUrl = config?.['signalCliUrl'] ?? 'http://localhost:8080';
+      if (phoneNumber) {
+        startSignalBot(id, phoneNumber, signalCliUrl).catch((err) =>
+          console.error(`[signal:${id}] Failed to start bot:`, err),
+        );
+      }
+    } else if (channel.type === 'teams') {
+      const config = channel.config as Record<string, string> | null;
+      const appId = config?.['appId'];
+      const appPassword = config?.['appPassword'];
+      if (appId && appPassword) {
+        startTeamsBot(id, appId, appPassword).catch((err) =>
+          console.error(`[teams:${id}] Failed to start bot:`, err),
+        );
+      }
     }
 
     return c.json({ ok: true, data: { status: 'connected' } });
@@ -210,6 +281,30 @@ export const channelsRouter = new Hono()
     } else if (channel.type === 'whatsapp') {
       stopWhatsAppBot(id).catch((err) =>
         console.error(`[whatsapp:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'telegram') {
+      stopTelegramBot(id).catch((err) =>
+        console.error(`[telegram:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'slack') {
+      stopSlackBot(id).catch((err) =>
+        console.error(`[slack:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'matrix') {
+      stopMatrixBot(id).catch((err) =>
+        console.error(`[matrix:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'line') {
+      stopLineBot(id).catch((err) =>
+        console.error(`[line:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'signal') {
+      stopSignalBot(id).catch((err) =>
+        console.error(`[signal:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'teams') {
+      stopTeamsBot(id).catch((err) =>
+        console.error(`[teams:${id}] Failed to stop bot:`, err),
       );
     }
 

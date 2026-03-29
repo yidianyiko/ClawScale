@@ -14,6 +14,12 @@ import { initDiscordAdapters } from './adapters/discord.js';
 import { initWeChatAdapters } from './adapters/wechat.js';
 import { initWhatsAppAdapters } from './adapters/whatsapp.js';
 import { initWeixinAdapters } from './adapters/weixin.js';
+import { initTelegramAdapters } from './adapters/telegram.js';
+import { initSlackAdapters } from './adapters/slack.js';
+import { initMatrixAdapters } from './adapters/matrix.js';
+import { initLineAdapters } from './adapters/line.js';
+import { initSignalAdapters } from './adapters/signal.js';
+import { initTeamsAdapters } from './adapters/teams.js';
 
 const app = new Hono();
 
@@ -66,4 +72,10 @@ serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));
   initWhatsAppAdapters().catch((err) => console.error('[whatsapp] Init failed:', err));
   initWeixinAdapters().catch((err) => console.error('[weixin] Init failed:', err));
+  initTelegramAdapters().catch((err) => console.error('[telegram] Init failed:', err));
+  initSlackAdapters().catch((err) => console.error('[slack] Init failed:', err));
+  initMatrixAdapters().catch((err) => console.error('[matrix] Init failed:', err));
+  initLineAdapters().catch((err) => console.error('[line] Init failed:', err));
+  initSignalAdapters().catch((err) => console.error('[signal] Init failed:', err));
+  initTeamsAdapters().catch((err) => console.error('[teams] Init failed:', err));
 });

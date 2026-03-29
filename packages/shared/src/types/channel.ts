@@ -66,7 +66,7 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
     label: 'Slack',
     fields: [
       { key: 'botToken', label: 'Bot OAuth Token', type: 'password', required: true, placeholder: 'xoxb-...' },
-      { key: 'signingSecret', label: 'Signing Secret', type: 'password', required: true, placeholder: '' },
+      { key: 'appToken', label: 'App-Level Token (Socket Mode)', type: 'password', required: true, placeholder: 'xapp-...' },
     ],
   },
   discord: {
@@ -102,6 +102,7 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
     label: 'Signal',
     fields: [
       { key: 'phoneNumber', label: 'Phone Number', type: 'text', required: true, placeholder: '+601234567890' },
+      { key: 'signalCliUrl', label: 'signal-cli REST API URL', type: 'text', required: true, placeholder: 'http://localhost:8080' },
     ],
   },
   teams: {

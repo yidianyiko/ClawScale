@@ -17,7 +17,13 @@ An open-source, self-hostable multi-tenant AI chatbot platform. Owners deploy a 
 | Discord | Bot token (discord.js) |
 | WeChat Work (WeCom) | Bot token (WebSocket) |
 | WeChat Personal | QR code scan (iLink Bot API) |
-| Telegram, Slack, LINE, Signal, Teams, Matrix, Web | Coming soon |
+| Telegram | Bot token (grammy long-polling) |
+| Slack | Bot token + App-level token (Socket Mode) |
+| LINE | Channel access token + secret (webhook) |
+| Signal | signal-cli REST API |
+| Microsoft Teams | Azure Bot Service (webhook) |
+| Matrix | Homeserver URL + access token |
+| Web Chat Widget | Webhook |
 
 ## Stack
 

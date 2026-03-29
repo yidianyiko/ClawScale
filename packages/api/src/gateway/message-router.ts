@@ -18,8 +18,11 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import OpenAI from 'openai';
+import * as lineSdk from '@line/bot-sdk';
 import { db } from '../db/index.js';
 import { generateId } from '../lib/id.js';
+import { getLineBot, handleLineEvents } from '../adapters/line.js';
+import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 
 let openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -39,6 +42,43 @@ const inboundSchema = z.object({
 });
 
 export const gatewayRouter = new Hono()
+
+  // ── POST /gateway/line/:channelId ────────────────────────────────────────────
+  // LINE webhook — verifies signature, then delegates to handleLineEvents.
+  .post('/line/:channelId', async (c) => {
+    const channelId = c.req.param('channelId');
+    const bot = getLineBot(channelId);
+    if (!bot) return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
+
+    const signature = c.req.header('x-line-signature') ?? '';
+    const body = await c.req.text();
+
+    if (!lineSdk.validateSignature(body, bot.channelSecret, signature)) {
+      return c.json({ ok: false, error: 'Invalid signature' }, 400);
+    }
+
+    const payload = JSON.parse(body) as { events: lineSdk.WebhookEvent[] };
+    handleLineEvents(channelId, payload.events).catch((err) =>
+      console.error(`[line:${channelId}] Event handling error:`, err),
+    );
+
+    return c.json({ ok: true });
+  })
+
+  // ── POST /gateway/teams/:channelId ───────────────────────────────────────────
+  // Microsoft Teams Bot Framework webhook endpoint.
+  .post('/teams/:channelId', async (c) => {
+    const channelId = c.req.param('channelId');
+    const bot = getTeamsBot(channelId);
+    if (!bot) return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
+
+    const activity = await c.req.json();
+    handleTeamsActivity(channelId, activity).catch((err) =>
+      console.error(`[teams:${channelId}] Activity handling error:`, err),
+    );
+
+    return c.json({ ok: true });
+  })
 
   // ── POST /gateway/:channelId ─────────────────────────────────────────────────
   // Called by platform-specific webhook adapters after they parse the raw payload.
