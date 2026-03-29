@@ -14,7 +14,8 @@ export type ChannelType =
   | 'teams'
   | 'matrix'
   | 'web'
-  | 'wechat_work';
+  | 'wechat_work'
+  | 'wechat_personal';
 
 export type ChannelStatus = 'connected' | 'disconnected' | 'pending' | 'error';
 
@@ -119,6 +120,10 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   },
   web: {
     label: 'Web Chat Widget',
+    fields: [],
+  },
+  wechat_personal: {
+    label: 'WeChat Personal',
     fields: [],
   },
   wechat_work: {

@@ -10,3 +10,4 @@ data/
 packages/web/dist
 packages/*/dist
 drizzle/
+.claude/

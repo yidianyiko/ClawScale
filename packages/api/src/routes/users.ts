@@ -52,19 +52,6 @@ export const usersRouter = new Hono()
     const { tenantId, userId: actorId } = c.get('auth');
     const body = c.req.valid('json');
 
-    // Check plan limit
-    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
-    const settings = tenant?.settings as { maxMembers?: number } | undefined;
-    const maxMembers = settings?.maxMembers ?? 5;
-
-    const activeCount = await db.member.count({
-      where: { tenantId, isActive: true },
-    });
-
-    if (activeCount >= maxMembers) {
-      return c.json({ ok: false, error: `Plan limit reached (${maxMembers} members max)` }, 422);
-    }
-
     // Check duplicate email within tenant
     const existing = await db.member.findUnique({
       where: { tenantId_email: { tenantId, email: body.email.toLowerCase() } },

@@ -10,7 +10,7 @@ import type { ApiResponse } from '@clawscale/shared';
 const CHANNEL_ICONS: Record<string, string> = {
   whatsapp: '📱', whatsapp_business: '🟢', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
   facebook: '👥', line: '💚', signal: '🔒', teams: '🏢', matrix: '🔷', web: '🌐',
-  wechat_work: '💼',
+  wechat_work: '💼', wechat_personal: '💚',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -95,7 +95,7 @@ export default function Channels() {
       if (!res.ok) return;
       const newStatus = res.data.status as ChannelRow['status'];
       setChannels((prev) => prev.map((c) => c.id === ch.id ? { ...c, status: newStatus } : c));
-      if (ch.type === 'whatsapp') {
+      if (ch.type === 'whatsapp' || ch.type === 'wechat_personal') {
         setQrChannelId(ch.id);
       }
     } finally { setActionLoading(null); }
@@ -146,7 +146,7 @@ export default function Channels() {
                 <label className="label">Display name</label>
                 <input className="input" placeholder={`My ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
               </div>
-              {addType === 'whatsapp' && (
+              {(addType === 'whatsapp' || addType === 'wechat_personal') && (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
                   After adding, click <strong>Connect</strong> to get a QR code to scan with your phone.
                 </p>
@@ -175,7 +175,11 @@ export default function Channels() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-sm p-6 text-center">
             <h2 className="text-lg font-semibold mb-1">Scan QR Code</h2>
-            <p className="text-sm text-gray-500 mb-5">Open WhatsApp → Linked Devices → Link a device</p>
+            <p className="text-sm text-gray-500 mb-5">
+              {channels.find((c) => c.id === qrChannelId)?.type === 'wechat_personal'
+                ? 'Open WeChat → Me → WeChat ID → scan the code'
+                : 'Open WhatsApp → Linked Devices → Link a device'}
+            </p>
             {qrImage ? (
               <img src={qrImage} alt="WhatsApp QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
             ) : (
@@ -221,8 +225,8 @@ export default function Channels() {
                       {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} Disconnect
                     </button>
                   ) : ch.status === 'pending' ? (
-                    <button className="btn-primary flex-1 text-xs" onClick={() => setQrChannelId(ch.id)} disabled={ch.type !== 'whatsapp'}>
-                      {ch.type === 'whatsapp' ? '📷 Show QR' : 'Connecting…'}
+                    <button className="btn-primary flex-1 text-xs" onClick={() => setQrChannelId(ch.id)} disabled={ch.type !== 'whatsapp' && ch.type !== 'wechat_personal'}>
+                      {ch.type === 'whatsapp' || ch.type === 'wechat_personal' ? '📷 Show QR' : 'Connecting…'}
                     </button>
                   ) : (
                     <button className="btn-primary flex-1 text-xs" onClick={() => handleConnect(ch)} disabled={actionLoading === ch.id}>

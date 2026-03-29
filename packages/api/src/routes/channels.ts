@@ -7,11 +7,12 @@ import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wechat.js';
+import { startWeixinBot, startWeixinQR, stopWeixinBot, getWeixinQR, getWeixinStatus } from '../adapters/weixin.js';
 import { startWhatsAppBot, stopWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'wechat_personal',
 ] as const;
 
 const createSchema = z.object({
@@ -55,17 +56,6 @@ export const channelsRouter = new Hono()
   .post('/', requireAdmin, zValidator('json', createSchema), async (c) => {
     const { tenantId, userId } = c.get('auth');
     const body = c.req.valid('json');
-
-    // Check plan channel limit
-    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
-    const settings = tenant?.settings as { maxChannels?: number } | undefined;
-    const maxChannels = settings?.maxChannels ?? 3;
-
-    const channelCount = await db.channel.count({ where: { tenantId } });
-
-    if (channelCount >= maxChannels) {
-      return c.json({ ok: false, error: `Plan limit reached (${maxChannels} channels max)` }, 422);
-    }
 
     const id = generateId('ch');
     await db.channel.create({
@@ -129,6 +119,8 @@ export const channelsRouter = new Hono()
       stopDiscordBot(id).catch(() => {});
     } else if (existing.type === 'wechat_work') {
       stopWeChatBot(id).catch(() => {});
+    } else if (existing.type === 'wechat_personal') {
+      stopWeixinBot(id).catch(() => {});
     } else if (existing.type === 'whatsapp') {
       stopWhatsAppBot(id).catch(() => {});
     }
@@ -173,6 +165,12 @@ export const channelsRouter = new Hono()
           console.error(`[wechat:${id}] Failed to start bot:`, err),
         );
       }
+    } else if (channel.type === 'wechat_personal') {
+      await db.channel.update({ where: { id }, data: { status: 'pending' } });
+      startWeixinQR(id).catch((err) =>
+        console.error(`[weixin:${id}] Failed to start QR:`, err),
+      );
+      return c.json({ ok: true, data: { status: 'pending' } });
     } else if (channel.type === 'whatsapp') {
       // WhatsApp: start QR flow, status stays 'pending' until phone scans
       await db.channel.update({ where: { id }, data: { status: 'pending' } });
@@ -205,6 +203,10 @@ export const channelsRouter = new Hono()
       stopWeChatBot(id).catch((err) =>
         console.error(`[wechat:${id}] Failed to stop bot:`, err),
       );
+    } else if (channel.type === 'wechat_personal') {
+      stopWeixinBot(id).catch((err) =>
+        console.error(`[weixin:${id}] Failed to stop:`, err),
+      );
     } else if (channel.type === 'whatsapp') {
       stopWhatsAppBot(id).catch((err) =>
         console.error(`[whatsapp:${id}] Failed to stop bot:`, err),
@@ -222,7 +224,24 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId }, select: { id: true, type: true } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
-    if (channel.type !== 'whatsapp') return c.json({ ok: false, error: 'Not a WhatsApp channel' }, 400);
+    if (channel.type !== 'whatsapp' && channel.type !== 'wechat_personal') {
+      return c.json({ ok: false, error: 'Channel does not support QR login' }, 400);
+    }
+
+    if (channel.type === 'wechat_personal') {
+      let qr = getWeixinQR(id);
+      if (!qr && getWeixinStatus(id) === 'qr_pending') {
+        await new Promise<void>((resolve) => {
+          const deadline = Date.now() + 35_000;
+          const check = setInterval(() => {
+            qr = getWeixinQR(id);
+            if (qr || Date.now() > deadline) { clearInterval(check); resolve(); }
+          }, 300);
+        });
+      }
+      const status = getWeixinStatus(id);
+      return c.json({ ok: true, data: { qr, status } });
+    }
 
     // Wait up to 10s for QR to be ready if not yet available
     let qr = getWhatsAppQR(id);

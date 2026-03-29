@@ -13,6 +13,7 @@ import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
 import { initWeChatAdapters } from './adapters/wechat.js';
 import { initWhatsAppAdapters } from './adapters/whatsapp.js';
+import { initWeixinAdapters } from './adapters/weixin.js';
 
 const app = new Hono();
 
@@ -64,4 +65,5 @@ serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   initDiscordAdapters().catch((err) => console.error('[discord] Init failed:', err));
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));
   initWhatsAppAdapters().catch((err) => console.error('[whatsapp] Init failed:', err));
+  initWeixinAdapters().catch((err) => console.error('[weixin] Init failed:', err));
 });
