@@ -15,6 +15,7 @@ const configSchema = z.object({
   baseUrl:      z.string().url().optional(),
   pulseApiUrl:  z.string().url().optional(),
   openClawUrl:  z.string().url().optional(),
+  commandAlias: z.string().max(30).regex(/^\S*$/, 'Alias must not contain spaces').optional(),
 }).default({});
 
 const createSchema = z.object({

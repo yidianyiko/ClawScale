@@ -123,6 +123,9 @@ function matchKnowledge(text: string): string | null {
       `• *Remove backends*: say "remove <number>"\n` +
       `• *List active*: say "list" or "active"\n` +
       `• *Clear all*: say "clear"\n\n` +
+      `You can also use slash commands:\n` +
+      `• \`/clawscale <message>\` — talk to me directly\n` +
+      `• \`/<backend> <message>\` — talk to a specific backend\n\n` +
       `I can also answer questions about ClawScale:\n` +
       `• What is ClawScale?\n` +
       `• How does it work?\n` +
@@ -162,6 +165,9 @@ function formatActiveList(backends: BackendOption[], activeIds: string[]): strin
  * @param mode
  *   - `'select'` (default): normal mode. The agent presents the menu,
  *     parses add/remove commands, and answers ClawScale questions.
+ *     Stays silent when backends are active and message isn't a command.
+ *   - `'direct'`: user explicitly invoked via /clawscale. Same as select
+ *     but always responds (never stays silent).
  *   - `'chat'`: user has explicitly selected the ClawScale backend. Only
  *     answers ClawScale questions and declines off-topic ones.
  */
@@ -170,7 +176,7 @@ export function clawscaleAgent(
   backends: BackendOption[],
   activeIds: string[],
   personaName: string,
-  mode: 'select' | 'chat' = 'select',
+  mode: 'select' | 'direct' | 'chat' = 'select',
   answerStyle?: string,
 ): AgentResponse {
   const styled = (reply: string) =>
@@ -178,7 +184,7 @@ export function clawscaleAgent(
 
   const t = text.trim().toLowerCase();
 
-  if (mode === 'select') {
+  if (mode === 'select' || mode === 'direct') {
     // ── "clear" / "remove all" ──────────────────────────────────────────
     if (/^(clear|remove all|reset)$/.test(t)) {
       if (activeIds.length === 0) {
@@ -234,27 +240,16 @@ export function clawscaleAgent(
     }
   }
 
-  // ── If user has active backends, stay silent for everything else ─────
+  // ── If user has active backends and this is a regular message, stay silent ──
   // ClawScale only handles explicit selection commands when backends are active.
   // All other messages go straight to the active backends.
+  // In 'direct' mode (/clawscale), always respond.
   if (mode === 'select' && activeIds.length > 0) {
     return { reply: '' };
   }
 
-  // ── No active backends — ClawScale handles knowledge + menu ───────────
+  // ── Knowledge base + fallback ─────────────────────────────────────────
 
-  if (mode === 'chat') {
-    const knowledgeReply = matchKnowledge(text);
-    if (knowledgeReply) return { reply: styled(knowledgeReply) };
-    return {
-      reply: styled(
-        `I'm the built-in *ClawScale* assistant. I can only answer questions about ClawScale itself.\n\n` +
-        `For general questions, please start a new conversation and choose a different AI backend.`,
-      ),
-    };
-  }
-
-  // select mode, no active backends
   const knowledgeReply = matchKnowledge(text);
   if (knowledgeReply) {
     if (backends.length > 0) {
@@ -262,6 +257,16 @@ export function clawscaleAgent(
       return { reply: styled(`${knowledgeReply}\n\n${list}`) };
     }
     return { reply: styled(knowledgeReply) };
+  }
+
+  // Off-topic fallback
+  if (mode === 'chat') {
+    return {
+      reply: styled(
+        `I'm the built-in *ClawScale* assistant. I can only answer questions about ClawScale itself.\n\n` +
+        `For general questions, please start a new conversation and choose a different AI backend.`,
+      ),
+    };
   }
 
   if (backends.length === 0) {
@@ -276,10 +281,10 @@ export function clawscaleAgent(
   const list = formatBackendList(backends, activeIds);
   return {
     reply: styled(
-      `I'm the *ClawScale* default assistant — I can only answer questions about ClawScale ` +
-      `or help you choose an AI backend.\n\n` +
-      `Please choose a backend to continue:\n\n${list}\n\n` +
-      `Reply with a number to add one, or ask me: *"What is ClawScale?"*, *"How does it work?"*, or *"help"*`,
+      `I'm the *ClawScale* default assistant — I can help you manage your AI backends ` +
+      `or answer questions about ClawScale.\n\n` +
+      `Your backends:\n\n${list}\n\n` +
+      `Reply with a number to add one, "remove <number>" to remove, or ask me: *"help"*`,
     ),
   };
 }

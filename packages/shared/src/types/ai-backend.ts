@@ -16,6 +16,8 @@ export interface AiBackendProviderConfig {
   pulseApiUrl?: string;
   /** OpenClaw instance base URL */
   openClawUrl?: string;
+  /** Short alias for /say command (e.g. "gpt" so users can type /say gpt hello) */
+  commandAlias?: string;
 }
 
 export interface AiBackend {

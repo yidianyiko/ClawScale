@@ -289,6 +289,19 @@ export default function AiBackendsPage() {
               <ProviderFields type={form.type} config={form.config}
                 onChange={(patch) => setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))} />
 
+              <div>
+                <label className="label">
+                  Command alias
+                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                </label>
+                <input className="input font-mono text-xs" placeholder="e.g. gpt" maxLength={30}
+                  value={(form.config.commandAlias as string) ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, config: { ...f.config, commandAlias: e.target.value.replace(/\s/g, '') } }))} />
+                <p className="text-xs text-gray-400 mt-1">
+                  Short name for slash commands. Users can type <code>/{form.config.commandAlias || 'alias'} hello</code> to message this backend directly.
+                </p>
+              </div>
+
               <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="checkbox" checked={form.isActive}
