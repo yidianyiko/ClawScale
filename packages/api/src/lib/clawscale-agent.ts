@@ -100,11 +100,11 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     },
     {
       name: 'run_command',
-      description: `Execute a ClawScale slash command. Available: ${commandSummary()}`,
+      description: `Execute a ClawScale slash command. The command MUST start with "/". Available: ${commandSummary()}. To kick an agent: "/team kick <name>". To invite: "/team invite <name>". To list team: "/team".`,
       schema: z.object({
         command: z
           .string()
-          .describe('The slash command to execute, e.g. "/backends", "/team invite gpt", "/team kick 2"'),
+          .describe('The exact slash command to execute. MUST start with "/". Examples: "/team kick elie", "/team invite gpt", "/backends", "/team"'),
       }),
     },
   );

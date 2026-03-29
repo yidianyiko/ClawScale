@@ -66,6 +66,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     where: { tenantId_channelId_externalId: { tenantId, channelId, externalId } },
     include: { activeBackends: { select: { backendId: true } } },
   });
+  const isNewUser = !endUser;
   if (!endUser) {
     endUser = await db.endUser.create({
       data: { id: generateId('eu'), tenantId, channelId, externalId, name: displayName ?? null, status: 'allowed' },
@@ -134,7 +135,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
       ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
       executeCommand: async (command) => {
-        const result = await routeInboundMessage({ ...input, text: command });
+        // Ensure command starts with "/" — reject plain-text commands
+        // that would be routed as regular messages instead of executed.
+        const trimmed = command.trim();
+        if (!trimmed.startsWith('/')) {
+          return `Error: "${trimmed}" is not a valid command. Commands must start with "/". Example: /team kick elie`;
+        }
+        const result = await routeInboundMessage({ ...input, text: trimmed });
         return result?.reply ?? '(no result)';
       },
     });
@@ -237,11 +244,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
               agents.push(`• *${clawscaleName}* — ClawScale assistant`);
             }
             for (const b of allBackends) {
-              const active = activeBackendIds.includes(b.id) ? ' ✅' : '';
-              agents.push(`• *${b.name}*${active}`);
+              if (activeBackendIds.includes(b.id)) {
+                agents.push(`• *${b.name}*`);
+              }
             }
             if (agents.length === 0) {
-              return reply('No agents in your team yet. Ask your admin to configure AI backends.');
+              return reply('No agents in your team yet. Use `/team invite <name|#>` to add one.');
             }
             return reply(`*Your team:*\n\n${agents.join('\n')}`);
           }
@@ -343,13 +351,15 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     return routeToBackends(activeBackends);
   }
 
-  // No active backends — try auto-select
-  const defaultBackend = allBackends.find((b) => b.isDefault);
-  const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
+  // No active backends — auto-select only for brand-new users
+  if (isNewUser) {
+    const defaultBackend = allBackends.find((b) => b.isDefault);
+    const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
 
-  if (autoSelect) {
-    await addBackend(autoSelect.id);
-    return routeToBackends([autoSelect]);
+    if (autoSelect) {
+      await addBackend(autoSelect.id);
+      return routeToBackends([autoSelect]);
+    }
   }
 
   // Run ClawScale agent loop (handles knowledge base + command execution)
