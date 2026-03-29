@@ -156,16 +156,29 @@ model EndUser {
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
 
-  selectedBackendId String?    @map("selected_backend_id")
-
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  selectedBackend AiBackend?     @relation("EndUserSelectedBackend", fields: [selectedBackendId], references: [id], onDelete: SetNull)
   conversations   Conversation[]
+  activeBackends  EndUserBackend[]
 
   @@unique([tenantId, channelId, externalId])
   @@index([tenantId])
   @@map("end_users")
+}
+
+/// Many-to-many join: which AI backends an end-user has active in their session.
+model EndUserBackend {
+  endUserId String   @map("end_user_id")
+  backendId String   @map("backend_id")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  endUser   EndUser   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  backend   AiBackend @relation(fields: [backendId], references: [id], onDelete: Cascade)
+
+  @@id([endUserId, backendId])
+  @@index([endUserId])
+  @@index([backendId])
+  @@map("end_user_backends")
 }
 
 model Conversation {
@@ -193,10 +206,13 @@ model Message {
   conversationId String      @map("conversation_id")
   role           MessageRole
   content        String
+  /// Which AI backend generated this assistant message (null for user messages & ClawScale agent)
+  backendId      String?     @map("backend_id")
   metadata       Json        @default("{}")
   createdAt      DateTime    @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  backend      AiBackend?   @relation(fields: [backendId], references: [id], onDelete: SetNull)
 
   @@index([conversationId])
   @@map("messages")
@@ -217,9 +233,13 @@ model AiBackend {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// True for the built-in ClawScale default agent (one per tenant, cannot be deleted)
+  isDefault     Boolean  @default(false) @map("is_default")
+
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  endUsers      EndUser[]      @relation("EndUserSelectedBackend")
+  endUsers      EndUserBackend[]
   conversations Conversation[]
+  messages      Message[]
 
   @@index([tenantId])
   @@map("ai_backends")

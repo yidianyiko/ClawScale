@@ -20,6 +20,8 @@ export interface AiBackend {
   type: AiBackendType;
   config: AiBackendProviderConfig;
   isActive: boolean;
+  /** True for the built-in ClawScale default agent (one per tenant). */
+  isDefault: boolean;
   createdAt: string;
   updatedAt: string;
 }

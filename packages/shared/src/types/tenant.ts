@@ -11,6 +11,19 @@ export interface Tenant {
 
 // ── Tenant Settings ───────────────────────────────────────────────────────────
 
+export interface ClawScaleAgentSettings {
+  /** Display name shown to end-users (default: "ClawScale Assistant") */
+  name?: string;
+  /**
+   * Optional style/postscript appended to knowledge-base and off-topic replies.
+   * The backend-selection menu is always shown as-is.
+   * Example: "Always be concise. Contact support@acme.com for help."
+   */
+  answerStyle?: string;
+  /** Whether the orchestrator responds at all (default: true) */
+  isActive?: boolean;
+}
+
 export interface TenantSettings {
   /** Display name for the AI persona shown to end-users */
   personaName: string;
@@ -32,6 +45,8 @@ export interface TenantSettings {
   features: {
     knowledgeBase: boolean;
   };
+  /** Built-in ClawScale orchestrator agent configuration */
+  clawscale?: ClawScaleAgentSettings;
 }
 
 export const PLAN_LIMITS: Record<TenantPlan, Pick<TenantSettings, 'maxMembers' | 'maxChannels'>> = {

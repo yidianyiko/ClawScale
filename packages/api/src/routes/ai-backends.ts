@@ -17,17 +17,19 @@ const configSchema = z.object({
 }).default({});
 
 const createSchema = z.object({
-  name:     z.string().min(1).max(80),
-  type:     z.enum(BACKEND_TYPES),
-  config:   configSchema,
-  isActive: z.boolean().default(true),
+  name:      z.string().min(1).max(80),
+  type:      z.enum(BACKEND_TYPES),
+  config:    configSchema,
+  isActive:  z.boolean().default(true),
+  isDefault: z.boolean().default(false),
 });
 
 const updateSchema = z.object({
-  name:     z.string().min(1).max(80).optional(),
-  type:     z.enum(BACKEND_TYPES).optional(),
-  config:   configSchema.optional(),
-  isActive: z.boolean().optional(),
+  name:      z.string().min(1).max(80).optional(),
+  type:      z.enum(BACKEND_TYPES).optional(),
+  config:    configSchema.optional(),
+  isActive:  z.boolean().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const aiBackendsRouter = new Hono()
@@ -39,11 +41,10 @@ export const aiBackendsRouter = new Hono()
 
     const rows = await db.aiBackend.findMany({
       where: { tenantId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }],
       select: {
         id: true, tenantId: true, name: true, type: true,
-        isActive: true, createdAt: true, updatedAt: true,
-        // config omitted in list view (may contain API keys)
+        isActive: true, isDefault: true, createdAt: true, updatedAt: true,
       },
     });
 
@@ -55,31 +56,30 @@ export const aiBackendsRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const body = c.req.valid('json');
 
+    // If marking as default, unset any existing default first
+    if (body.isDefault) {
+      await db.aiBackend.updateMany({
+        where: { tenantId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
     const id = generateId('aib');
     await db.aiBackend.create({
-      data: {
-        id, tenantId,
-        name: body.name,
-        type: body.type,
-        config: body.config,
-        isActive: body.isActive,
-      },
+      data: { id, tenantId, name: body.name, type: body.type, config: body.config, isActive: body.isActive, isDefault: body.isDefault },
     });
 
     await audit({ tenantId, memberId: userId, action: 'create_ai_backend', resource: 'ai_backend', resourceId: id });
 
-    const created = await db.aiBackend.findUnique({ where: { id } });
-    return c.json({ ok: true, data: created }, 201);
+    return c.json({ ok: true, data: await db.aiBackend.findUnique({ where: { id } }) }, 201);
   })
 
   // ── GET /api/ai-backends/:id ─────────────────────────────────────────────────
   .get('/:id', requireAdmin, async (c) => {
     const { tenantId } = c.get('auth');
     const id = c.req.param('id');
-
     const backend = await db.aiBackend.findFirst({ where: { id, tenantId } });
     if (!backend) return c.json({ ok: false, error: 'AI backend not found' }, 404);
-
     return c.json({ ok: true, data: backend });
   })
 
@@ -89,14 +89,20 @@ export const aiBackendsRouter = new Hono()
     const id = c.req.param('id');
     const body = c.req.valid('json');
 
-    const existing = await db.aiBackend.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await db.aiBackend.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'AI backend not found' }, 404);
 
-    await db.aiBackend.update({ where: { id }, data: body });
-    await audit({ tenantId, memberId: userId, action: 'update_ai_backend', resource: 'ai_backend', resourceId: id });
+    if (body.isDefault) {
+      await db.aiBackend.updateMany({
+        where: { tenantId, isDefault: true, id: { not: id } },
+        data: { isDefault: false },
+      });
+    }
 
-    const updated = await db.aiBackend.findUnique({ where: { id } });
-    return c.json({ ok: true, data: updated });
+    await db.aiBackend.update({ where: { id }, data: body });
+
+    await audit({ tenantId, memberId: userId, action: 'update_ai_backend', resource: 'ai_backend', resourceId: id });
+    return c.json({ ok: true, data: await db.aiBackend.findUnique({ where: { id } }) });
   })
 
   // ── DELETE /api/ai-backends/:id ──────────────────────────────────────────────
@@ -104,12 +110,10 @@ export const aiBackendsRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const id = c.req.param('id');
 
-    const existing = await db.aiBackend.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await db.aiBackend.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'AI backend not found' }, 404);
 
-    // Clear selectedBackendId from any end-users pointing to this backend
-    await db.endUser.updateMany({ where: { tenantId, selectedBackendId: id }, data: { selectedBackendId: null } });
-
+    await db.endUserBackend.deleteMany({ where: { backendId: id } });
     await db.aiBackend.delete({ where: { id } });
     await audit({ tenantId, memberId: userId, action: 'delete_ai_backend', resource: 'ai_backend', resourceId: id });
 

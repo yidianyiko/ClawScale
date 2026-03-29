@@ -2,15 +2,14 @@
  * ClawScale Default Agent
  *
  * A built-in, rule-based agent that runs before any external AI backend is
- * selected. It handles two things:
+ * selected. It handles:
  *
- *   1. Backend selection — presents the menu, parses the user's choice.
+ *   1. Backend selection — parses add/remove commands, presents the menu.
  *   2. ClawScale knowledge — answers questions about what ClawScale is and
  *      how it works, without calling any external LLM.
  *
- * If the user sends something that is neither a backend selection nor a
- * ClawScale question, the agent prompts them to choose a backend first.
- * It never attempts to answer general or off-topic queries.
+ * Users can select multiple backends simultaneously. All active backends
+ * respond to each message independently.
  */
 
 export interface BackendOption {
@@ -22,10 +21,14 @@ export interface AgentResponse {
   /** The reply text to send back to the user. */
   reply: string;
   /**
-   * If the user successfully chose a backend, this is set to its id.
-   * The caller should persist this as the user's selectedBackendId.
+   * Backend IDs to add to the user's active set.
+   * The caller should persist these in the EndUserBackend join table.
    */
-  selectedBackendId?: string;
+  addBackendIds?: string[];
+  /**
+   * Backend IDs to remove from the user's active set.
+   */
+  removeBackendIds?: string[];
 }
 
 // ── ClawScale knowledge base ──────────────────────────────────────────────────
@@ -44,7 +47,7 @@ function matchKnowledge(text: string): string | null {
       `It connects any messaging platform (WhatsApp, Telegram, Discord, Slack, LINE, Teams, Signal, Matrix, WeChat, and more) ` +
       `to one or more AI backends — so your team can deploy a smart assistant without ` +
       `end-users needing accounts or technical knowledge.\n\n` +
-      `Reply with a number to choose an AI assistant and get started.`
+      `You can add multiple AI assistants to your session and they'll all respond to your messages.`
     );
   }
 
@@ -54,9 +57,9 @@ function matchKnowledge(text: string): string | null {
       `Here's how ClawScale works:\n\n` +
       `1️⃣  An admin connects one or more messaging platforms (e.g. WhatsApp, Telegram).\n` +
       `2️⃣  The admin configures AI backends — any LLM or OpenClaw instance.\n` +
-      `3️⃣  When you start a conversation, ClawScale asks you to choose a backend.\n` +
-      `4️⃣  From then on, all your messages are routed to the AI you picked.\n\n` +
-      `Reply with a number to choose your AI assistant now.`
+      `3️⃣  You choose which AI backends to add to your session.\n` +
+      `4️⃣  All your active backends respond to each message independently.\n\n` +
+      `Reply with a number to add an AI assistant, or say "remove <number>" to remove one.`
     );
   }
 
@@ -72,16 +75,18 @@ function matchKnowledge(text: string): string | null {
       `• *Pulse Editor AI* (Pulse's built-in AI manager)\n` +
       `• *Custom* (any OpenAI-compatible endpoint)\n\n` +
       `Your admin decides which backends are available in this workspace.\n` +
-      `Reply with a number to choose the one you'd like to use.`
+      `You can add multiple backends at once — they'll each respond to your messages.`
     );
   }
 
   // How do I switch / change backend?
   if (/switch|change (backend|ai|model|assistant)|use (a )?different|reset/.test(t)) {
     return (
-      `To switch AI assistants, simply start a new conversation or ask your workspace admin ` +
-      `to reset your selection.\n\n` +
-      `Reply with a number below to choose your AI assistant for this conversation.`
+      `You can manage your active AI assistants at any time:\n\n` +
+      `• Reply with a *number* to add a backend\n` +
+      `• Say *"remove <number>"* to remove one\n` +
+      `• Say *"list"* to see your active backends\n` +
+      `• Say *"clear"* to remove all and start fresh`
     );
   }
 
@@ -99,93 +104,188 @@ function matchKnowledge(text: string): string | null {
       `• Matrix\n` +
       `• WeChat Work (WeCom)\n` +
       `• WeChat Personal\n\n` +
-      `Admins can connect platforms from the *Channels* section of the dashboard.\n\n` +
-      `Reply with a number to choose your AI assistant.`
+      `Admins can connect platforms from the *Channels* section of the dashboard.`
     );
   }
 
   // Who made / built ClawScale?
   if (/who (made|built|created|developed)|by (pulse|who)/.test(t)) {
     return (
-      `ClawScale is built by *Pulse* — a developer tools company focused on AI workflows.\n\n` +
-      `Reply with a number to choose your AI assistant.`
+      `ClawScale is built by *Pulse* — a developer tools company focused on AI workflows.`
     );
   }
 
   // Help
   if (/^help$|what can you do|what do you know|commands/.test(t)) {
     return (
-      `I'm the *ClawScale* default assistant. Before you pick an AI backend, I can answer:\n\n` +
+      `I'm the *ClawScale* default assistant. I can help you:\n\n` +
+      `• *Add backends*: reply with a number from the menu\n` +
+      `• *Remove backends*: say "remove <number>"\n` +
+      `• *List active*: say "list" or "active"\n` +
+      `• *Clear all*: say "clear"\n\n` +
+      `I can also answer questions about ClawScale:\n` +
       `• What is ClawScale?\n` +
       `• How does it work?\n` +
       `• What AI backends are available?\n` +
-      `• What platforms are supported?\n` +
-      `• How do I switch backends?\n\n` +
-      `Once you've chosen a backend, all further questions go to your chosen AI.`
+      `• What platforms are supported?`
     );
   }
 
   return null; // off-topic
 }
 
+// ── Backend list formatting ───────────────────────────────────────────────────
+
+function formatBackendList(backends: BackendOption[], activeIds: string[]): string {
+  return backends.map((b, i) => {
+    const active = activeIds.includes(b.id) ? ' ✅' : '';
+    return `${i + 1}. ${b.name}${active}`;
+  }).join('\n');
+}
+
+function formatActiveList(backends: BackendOption[], activeIds: string[]): string {
+  const active = backends.filter((b) => activeIds.includes(b.id));
+  if (active.length === 0) return 'You have no active AI assistants.';
+  return `Your active AI assistants:\n\n` +
+    active.map((b) => `• ${b.name}`).join('\n');
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Run the ClawScale default agent for a user who has not yet selected a backend.
+ * Run the ClawScale default agent.
  *
- * @param text       The user's message text.
- * @param backends   Active backends the user can choose from.
- * @param personaName The persona display name configured by the admin.
+ * @param text          The user's message text.
+ * @param backends      Active backends the user can choose from.
+ * @param activeIds     IDs of backends currently active for this user.
+ * @param personaName   The persona display name configured by the admin.
+ * @param mode
+ *   - `'select'` (default): normal mode. The agent presents the menu,
+ *     parses add/remove commands, and answers ClawScale questions.
+ *   - `'chat'`: user has explicitly selected the ClawScale backend. Only
+ *     answers ClawScale questions and declines off-topic ones.
  */
 export function clawscaleAgent(
   text: string,
   backends: BackendOption[],
+  activeIds: string[],
   personaName: string,
+  mode: 'select' | 'chat' = 'select',
+  answerStyle?: string,
 ): AgentResponse {
-  // 1. Check if the user is selecting a backend by number
-  const choice = parseInt(text.trim(), 10);
-  if (!isNaN(choice) && choice >= 1 && choice <= backends.length) {
-    const selected = backends[choice - 1];
-    return {
-      reply: `✅ Connected to *${selected.name}*. How can I help you today?`,
-      selectedBackendId: selected.id,
-    };
+  const styled = (reply: string) =>
+    answerStyle ? `${reply}\n\n${answerStyle}` : reply;
+
+  const t = text.trim().toLowerCase();
+
+  if (mode === 'select') {
+    // ── "clear" / "remove all" ──────────────────────────────────────────
+    if (/^(clear|remove all|reset)$/.test(t)) {
+      if (activeIds.length === 0) {
+        const list = formatBackendList(backends, []);
+        return { reply: styled(`You have no active backends to clear.\n\nAvailable:\n\n${list}`) };
+      }
+      const list = formatBackendList(backends, []);
+      return {
+        reply: styled(`✅ Cleared all active AI assistants.\n\nAvailable:\n\n${list}\n\nReply with a number to add one.`),
+        removeBackendIds: [...activeIds],
+      };
+    }
+
+    // ── "list" / "active" ───────────────────────────────────────────────
+    if (/^(list|active|status|my backends)$/.test(t)) {
+      const activeList = formatActiveList(backends, activeIds);
+      const list = formatBackendList(backends, activeIds);
+      return { reply: styled(`${activeList}\n\nAll available:\n\n${list}`) };
+    }
+
+    // ── "remove <N>" ────────────────────────────────────────────────────
+    const removeMatch = t.match(/^remove\s+(\d+)$/);
+    if (removeMatch) {
+      const idx = parseInt(removeMatch[1], 10) - 1;
+      if (idx >= 0 && idx < backends.length) {
+        const target = backends[idx];
+        if (!activeIds.includes(target.id)) {
+          return { reply: styled(`*${target.name}* is not currently active.`) };
+        }
+        const newActiveIds = activeIds.filter((id) => id !== target.id);
+        const list = formatBackendList(backends, newActiveIds);
+        return {
+          reply: styled(`✅ Removed *${target.name}*.\n\nActive backends:\n\n${list}`),
+          removeBackendIds: [target.id],
+        };
+      }
+      return { reply: styled(`Invalid number. Reply with a number between 1 and ${backends.length}.`) };
+    }
+
+    // ── Add by number ───────────────────────────────────────────────────
+    const choice = parseInt(t, 10);
+    if (!isNaN(choice) && choice >= 1 && choice <= backends.length) {
+      const selected = backends[choice - 1];
+      if (activeIds.includes(selected.id)) {
+        return { reply: styled(`*${selected.name}* is already active. Say "remove ${choice}" to remove it.`) };
+      }
+      const newActiveIds = [...activeIds, selected.id];
+      const list = formatBackendList(backends, newActiveIds);
+      return {
+        reply: styled(`✅ Added *${selected.name}*. It will now respond to your messages.\n\nActive backends:\n\n${list}\n\nReply with another number to add more, or just send a message.`),
+        addBackendIds: [selected.id],
+      };
+    }
   }
 
-  // 2. Check ClawScale knowledge base
+  // ── ClawScale knowledge base ────────────────────────────────────────────
   const knowledgeReply = matchKnowledge(text);
   if (knowledgeReply) {
-    // Append the backend list so the user can still choose after reading the answer
-    if (backends.length > 0) {
-      const list = backends.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
-      return { reply: `${knowledgeReply}\n\n${list}` };
+    if (mode === 'select' && backends.length > 0) {
+      const list = formatBackendList(backends, activeIds);
+      return { reply: styled(`${knowledgeReply}\n\n${list}`) };
     }
-    return { reply: knowledgeReply };
+    return { reply: styled(knowledgeReply) };
   }
 
-  // 3. Off-topic — do not answer; redirect to backend selection
-  if (backends.length === 0) {
+  // ── Off-topic ─────────────────────────────────────────────────────────
+
+  if (mode === 'chat') {
     return {
-      reply:
-        `I can only answer questions about ClawScale before an AI backend is selected. ` +
-        `Ask your admin to configure at least one AI backend in the dashboard.`,
+      reply: styled(
+        `I'm the built-in *ClawScale* assistant. I can only answer questions about ClawScale itself.\n\n` +
+        `For general questions, please start a new conversation and choose a different AI backend.`,
+      ),
     };
   }
 
-  const list = backends.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
+  // select mode — if user has active backends, let the message pass through
+  // (the caller will route to active backends). Only show menu if no backends active.
+  if (activeIds.length > 0) {
+    // Return null-ish reply — caller should skip ClawScale reply and route to backends
+    return { reply: '' };
+  }
+
+  if (backends.length === 0) {
+    return {
+      reply: styled(
+        `I can only answer questions about ClawScale before an AI backend is selected. ` +
+        `Ask your admin to configure at least one AI backend in the dashboard.`,
+      ),
+    };
+  }
+
+  const list = formatBackendList(backends, activeIds);
   return {
-    reply:
+    reply: styled(
       `I'm the *ClawScale* default assistant — I can only answer questions about ClawScale ` +
       `or help you choose an AI backend.\n\n` +
       `Please choose a backend to continue:\n\n${list}\n\n` +
-      `Or ask me: *"What is ClawScale?"*, *"How does it work?"*, or *"What backends are available?"*`,
+      `Reply with a number to add one, or ask me: *"What is ClawScale?"*, *"How does it work?"*, or *"help"*`,
+    ),
   };
 }
 
 /**
  * Build the initial greeting + backend selection menu.
  */
-export function buildSelectionMenu(personaName: string, backends: BackendOption[]): string {
+export function buildSelectionMenu(personaName: string, backends: BackendOption[], activeIds: string[] = []): string {
   if (backends.length === 0) {
     return (
       `👋 Welcome to ClawScale!\n\n` +
@@ -195,12 +295,12 @@ export function buildSelectionMenu(personaName: string, backends: BackendOption[
     );
   }
 
-  const list = backends.map((b, i) => `${i + 1}. ${b.name}`).join('\n');
+  const list = formatBackendList(backends, activeIds);
   return (
     `👋 Welcome to ClawScale!\n\n` +
     `I'm ${personaName}, your AI-powered assistant. ClawScale connects you to multiple AI backends ` +
-    `so you can choose the one that works best for you — all through this chat.\n\n` +
-    `Please choose an AI assistant to get started:\n\n${list}\n\n` +
-    `Reply with a number to continue, or ask me *"What is ClawScale?"* to learn more.`
+    `— you can add as many as you like and they'll all respond to your messages.\n\n` +
+    `Available AI assistants:\n\n${list}\n\n` +
+    `Reply with a number to add one, or ask me *"What is ClawScale?"* to learn more.`
   );
 }

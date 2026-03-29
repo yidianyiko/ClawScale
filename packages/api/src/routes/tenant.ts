@@ -9,9 +9,14 @@ const updateSettingsSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   settings: z
     .object({
-      personaName: z.string().min(1).max(80).optional(),
+      personaName:   z.string().min(1).max(80).optional(),
       personaPrompt: z.string().max(4000).optional(),
       endUserAccess: z.enum(['anonymous', 'whitelist', 'blacklist']).optional(),
+      clawscale: z.object({
+        name:        z.string().min(1).max(80).optional(),
+        answerStyle: z.string().max(500).optional(),
+        isActive:    z.boolean().optional(),
+      }).optional(),
     })
     .optional(),
 });
@@ -35,10 +40,14 @@ export const tenantRouter = new Hono()
     const current = await db.tenant.findUnique({ where: { id: tenantId } });
     if (!current) return c.json({ ok: false, error: 'Tenant not found' }, 404);
 
-    const updatedSettings =
-      body.settings != null
-        ? { ...(current.settings as object), ...body.settings }
-        : current.settings;
+    let updatedSettings = current.settings as Record<string, unknown>;
+    if (body.settings != null) {
+      const { clawscale, ...flatSettings } = body.settings;
+      updatedSettings = { ...updatedSettings, ...flatSettings };
+      if (clawscale !== undefined) {
+        updatedSettings.clawscale = { ...((updatedSettings.clawscale as object) ?? {}), ...clawscale };
+      }
+    }
 
     await db.tenant.update({
       where: { id: tenantId },
