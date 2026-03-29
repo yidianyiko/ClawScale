@@ -6,19 +6,18 @@ An open-source, self-hostable multi-tenant AI chatbot platform. Deploy a single 
 
 ## How ClawScale differs from OpenClaw
 
-[OpenClaw](https://github.com/pulseeditor/openclaw) is a personal AI assistant designed for individual use. ClawScale extends it into an organizational tool:
+[OpenClaw](https://github.com/pulseeditor/openclaw) bundles IM gateways and an autonomous AI agent into a single process. ClawScale **splits these apart** — extracting the IM gateway layer so it can be improved independently with multi-tenant management, while the agent layer (OpenClaw or others) can scale horizontally.
 
 | | OpenClaw | ClawScale |
 |---|---|---|
+| **Architecture** | Monolithic — gateways + agent in one process | Decoupled — gateway layer manages channels; agent layer is pluggable |
 | **Users** | Single user | Multi-tenant with team accounts and roles |
-| **Channels** | Direct CLI / web | 12+ messaging platforms (WhatsApp, Discord, Telegram, etc.) |
-| **AI providers** | Built-in engine | Pluggable backends — OpenAI, Anthropic, OpenRouter, OpenClaw, or any OpenAI-compatible endpoint |
-| **Memory** | Session-specific | Per-conversation history with per-backend context isolation |
+| **Agents** | One built-in agent | Multiple backends per tenant — OpenClaw, OpenAI, Anthropic, or any OpenAI-compatible endpoint |
+| **Scaling** | One instance | Multiple OpenClaw instances (or other agents) behind a single gateway |
 | **Admin controls** | None | Dashboard with RBAC, audit logs, access policies |
-| **Knowledge** | Open internet | Custom system prompts and personas per workspace |
-| **Deployment** | Local | Self-hosted or managed, handles concurrent users |
+| **Channels** | Built-in IM gateways | Same gateways, rebuilt for multi-tenant isolation |
 
-ClawScale can use OpenClaw as one of its AI backends — routing messages to an OpenClaw instance via its OpenAI-compatible API.
+ClawScale connects to OpenClaw instances as AI backends via their OpenAI-compatible API, letting you run multiple OpenClaw agents behind one unified gateway.
 
 ## Key concepts
 
