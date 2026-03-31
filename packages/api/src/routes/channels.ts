@@ -9,6 +9,7 @@ import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wechat.js';
 import { startWeixinBot, startWeixinQR, stopWeixinBot, getWeixinQR, getWeixinStatus } from '../adapters/weixin.js';
 import { startWhatsAppBot, stopWhatsAppBot, getWhatsAppQR, getWhatsAppStatus } from '../adapters/whatsapp.js';
+import { startWABusinessBot, stopWABusinessBot, reloadWABusinessBot } from '../adapters/whatsapp-business.js';
 import { startTelegramBot, stopTelegramBot } from '../adapters/telegram.js';
 import { startSlackBot, stopSlackBot } from '../adapters/slack.js';
 import { startMatrixBot, stopMatrixBot } from '../adapters/matrix.js';
@@ -109,6 +110,14 @@ export const channelsRouter = new Hono()
     await db.channel.update({ where: { id }, data: body });
     await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
 
+    // Reload in-memory config for adapters that cache it
+    const full = await db.channel.findUnique({ where: { id } });
+    if (full?.type === 'whatsapp_business') {
+      reloadWABusinessBot(id).catch((err) =>
+        console.error(`[wa-business:${id}] Failed to reload config:`, err),
+      );
+    }
+
     const updated = await db.channel.findUnique({ where: { id }, select: channelListSelect });
     return c.json({ ok: true, data: updated });
   })
@@ -129,6 +138,8 @@ export const channelsRouter = new Hono()
       stopWeixinBot(id).catch(() => {});
     } else if (existing.type === 'whatsapp') {
       stopWhatsAppBot(id).catch(() => {});
+    } else if (existing.type === 'whatsapp_business') {
+      stopWABusinessBot(id).catch(() => {});
     } else if (existing.type === 'telegram') {
       stopTelegramBot(id).catch(() => {});
     } else if (existing.type === 'slack') {
@@ -196,6 +207,10 @@ export const channelsRouter = new Hono()
         console.error(`[whatsapp:${id}] Failed to start bot:`, err),
       );
       return c.json({ ok: true, data: { status: 'pending' } });
+    } else if (channel.type === 'whatsapp_business') {
+      startWABusinessBot(id).catch((err) =>
+        console.error(`[wa-business:${id}] Failed to start:`, err),
+      );
     } else if (channel.type === 'telegram') {
       const config = channel.config as Record<string, string> | null;
       const botToken = config?.['botToken'];
@@ -281,6 +296,10 @@ export const channelsRouter = new Hono()
     } else if (channel.type === 'whatsapp') {
       stopWhatsAppBot(id).catch((err) =>
         console.error(`[whatsapp:${id}] Failed to stop bot:`, err),
+      );
+    } else if (channel.type === 'whatsapp_business') {
+      stopWABusinessBot(id).catch((err) =>
+        console.error(`[wa-business:${id}] Failed to stop:`, err),
       );
     } else if (channel.type === 'telegram') {
       stopTelegramBot(id).catch((err) =>

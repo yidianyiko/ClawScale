@@ -118,7 +118,7 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      if (msg.key.fromMe && msg.key.remoteJid === 'status@broadcast') continue;
+      if (msg.key.fromMe) continue;
       if (!msg.message) continue;
 
       const text =

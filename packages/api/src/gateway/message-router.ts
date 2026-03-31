@@ -14,6 +14,7 @@ import * as lineSdk from '@line/bot-sdk';
 import { routeInboundMessage } from '../lib/route-message.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
+import { verifyWebhook, handleWABusinessWebhook, getWABusinessConfig } from '../adapters/whatsapp-business.js';
 
 const inboundSchema = z.object({
   externalId:  z.string().min(1),
@@ -23,6 +24,33 @@ const inboundSchema = z.object({
 });
 
 export const gatewayRouter = new Hono()
+
+  // ── GET /gateway/whatsapp/:channelId ────────────────────────────────────────
+  // Meta webhook verification — responds with hub.challenge.
+  .get('/whatsapp/:channelId', async (c) => {
+    const channelId = c.req.param('channelId');
+    const mode = c.req.query('hub.mode') ?? '';
+    const token = c.req.query('hub.verify_token') ?? '';
+    const challenge = c.req.query('hub.challenge') ?? '';
+
+    const result = await verifyWebhook(channelId, mode, token, challenge);
+    if (result) return c.text(result, 200);
+    return c.json({ ok: false, error: 'Verification failed' }, 403);
+  })
+
+  // ── POST /gateway/whatsapp/:channelId ───────────────────────────────────────
+  // Meta sends inbound WhatsApp Business messages here.
+  .post('/whatsapp/:channelId', async (c) => {
+    const channelId = c.req.param('channelId');
+
+    const body = await c.req.json();
+    handleWABusinessWebhook(channelId, body).catch((err) =>
+      console.error(`[wa-business:${channelId}] Webhook handling error:`, err),
+    );
+
+    // Always return 200 quickly so Meta doesn't retry
+    return c.json({ ok: true });
+  })
 
   // ── POST /gateway/line/:channelId ────────────────────────────────────────────
   // LINE webhook — verifies signature, then delegates to the LINE adapter.

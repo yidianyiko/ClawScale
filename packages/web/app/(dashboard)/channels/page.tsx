@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Loader2, Plug, PlugZap, Trash2, Radio, Pencil, Check, X } from 'lucide-react';
+import { Plus, Loader2, Plug, PlugZap, Trash2, Radio, Pencil, Check, X, Copy, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -137,7 +137,58 @@ export default function Channels() {
     setEditingId(null);
   }
 
+  // Edit channel modal
+  const [editChannelId, setEditChannelId] = useState<string | null>(null);
+  const [editChannelType, setEditChannelType] = useState<ChannelType>('whatsapp');
+  const [editChannelName, setEditChannelName] = useState('');
+  const [editChannelConfig, setEditChannelConfig] = useState<Record<string, string>>({});
+  const [editChannelError, setEditChannelError] = useState('');
+  const [editChannelLoading, setEditChannelLoading] = useState(false);
+  const [editChannelSaving, setEditChannelSaving] = useState(false);
+
+  async function openEditChannel(ch: ChannelRow) {
+    setEditChannelId(ch.id);
+    setEditChannelType(ch.type as ChannelType);
+    setEditChannelName(ch.name);
+    setEditChannelConfig({});
+    setEditChannelError('');
+    setEditChannelLoading(true);
+    try {
+      const res = await api.get<ApiResponse<Channel>>(`/api/channels/${ch.id}`);
+      if (res.ok && res.data.config) {
+        const cfg: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.data.config)) {
+          cfg[k] = String(v ?? '');
+        }
+        setEditChannelConfig(cfg);
+      }
+    } finally { setEditChannelLoading(false); }
+  }
+
+  function closeEditChannel() {
+    setEditChannelId(null);
+    setEditChannelError('');
+  }
+
+  async function saveEditChannel(e: React.FormEvent) {
+    e.preventDefault();
+    setEditChannelError('');
+    setEditChannelSaving(true);
+    try {
+      const res = await api.patch<ApiResponse<Channel>>(`/api/channels/${editChannelId}`, {
+        name: editChannelName,
+        config: editChannelConfig,
+      });
+      if (!res.ok) { setEditChannelError(res.error); return; }
+      setChannels((prev) => prev.map((c) => c.id === editChannelId ? { ...c, name: editChannelName } : c));
+      closeEditChannel();
+    } finally { setEditChannelSaving(false); }
+  }
+
   const schema = CHANNEL_CONFIG_SCHEMA[addType];
+  const editSchema = CHANNEL_CONFIG_SCHEMA[editChannelType];
+
+  const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
 
   return (
     <div className="p-8">
@@ -229,6 +280,48 @@ export default function Channels() {
         </div>
       )}
 
+      {/* Edit channel modal */}
+      {editChannelId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="card w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Edit channel</h2>
+              <button onClick={closeEditChannel} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+            </div>
+            {editChannelLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-teal-500" />
+              </div>
+            ) : (
+              <form onSubmit={saveEditChannel} className="space-y-4">
+                {editChannelError && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{editChannelError}</div>}
+                <div>
+                  <label className="label">Display name</label>
+                  <input className="input" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} required />
+                </div>
+                {editSchema.fields.map((field) => (
+                  <div key={field.key}>
+                    <label className="label">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
+                    <input className="input" type={field.type} placeholder={field.placeholder}
+                      value={editChannelConfig[field.key] ?? ''} onChange={(e) => setEditChannelConfig((p) => ({ ...p, [field.key]: e.target.value }))}
+                      required={field.required} />
+                  </div>
+                ))}
+                {editSchema.fields.length === 0 && (
+                  <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">This channel type has no configurable settings.</p>
+                )}
+                <div className="flex gap-3 pt-2">
+                  <button type="submit" className="btn-primary flex-1" disabled={editChannelSaving}>
+                    {editChannelSaving && <Loader2 className="h-4 w-4 animate-spin" />} Save changes
+                  </button>
+                  <button type="button" className="btn-secondary flex-1" onClick={closeEditChannel}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>
       ) : channels.length === 0 ? (
@@ -241,7 +334,7 @@ export default function Channels() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {channels.map((ch) => (
-            <div key={ch.id} className="card p-5">
+            <div key={ch.id} className="card p-5 relative">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">{CHANNEL_ICONS[ch.type] ?? '🔌'}</span>
@@ -264,7 +357,12 @@ export default function Channels() {
                         )}
                       </p>
                     )}
-                    <p className="text-xs text-gray-400 capitalize">{ch.type.replace('_', ' ')}</p>
+                    <p className="text-xs text-gray-400 capitalize leading-none">
+                      {ch.type.replace('_', ' ')}
+                      {ch.type === 'whatsapp_business' && (
+                        <> · <WebhookToggle channelId={ch.id} apiBase={apiBase} /></>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <span className={cn(STATUS_BADGE[ch.status])}>{ch.status}</span>
@@ -284,6 +382,9 @@ export default function Channels() {
                       {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />} Connect
                     </button>
                   )}
+                  <button className="text-gray-400 hover:text-gray-700 transition-colors p-1" onClick={() => openEditChannel(ch)} title="Settings">
+                    <Settings className="h-4 w-4" />
+                  </button>
                   <button className="text-gray-400 hover:text-red-500 transition-colors p-1" onClick={() => handleDelete(ch.id)} title="Delete channel">
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -294,5 +395,49 @@ export default function Channels() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── WhatsApp Business webhook setup instructions ─────────────────────────────
+
+function WebhookToggle({ channelId, apiBase }: { channelId: string; apiBase: string }) {
+  const webhookUrl = `${apiBase}/gateway/whatsapp/${channelId}`;
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  function copy(text: string, key: string) {
+    void navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="text-blue-500 hover:text-blue-700 hover:underline"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? 'hide setup' : 'how to setup'}
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-800 space-y-2">
+          <p>In the <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Meta App Dashboard</a>, go to <strong>WhatsApp &rarr; Configuration</strong> and set:</p>
+          <div className="space-y-1.5">
+            <div>
+              <span className="text-blue-600 font-medium">Callback URL:</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <code className="flex-1 bg-white rounded px-2 py-1 text-[11px] border border-blue-200 truncate select-all">{webhookUrl}</code>
+                <button type="button" onClick={() => copy(webhookUrl, 'url')} className="shrink-0 text-blue-500 hover:text-blue-700" title="Copy">
+                  {copied === 'url' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+            <p><span className="text-blue-600 font-medium">Verify token:</span> the token you entered when creating this channel.</p>
+            <p><span className="text-blue-600 font-medium">Webhook fields:</span> subscribe to <code className="bg-white rounded px-1 py-0.5 border border-blue-200">messages</code></p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

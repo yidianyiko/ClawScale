@@ -51,7 +51,7 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   whatsapp_business: {
     label: 'WhatsApp Business API',
     fields: [
-      { key: 'phoneNumberId', label: 'Phone Number ID', type: 'text', required: true, placeholder: '123456789012345' },
+      { key: 'phoneNumberId', label: 'Phone Number ID', type: 'text', required: true, placeholder: '123456789012345 (not the phone number itself)' },
       { key: 'accessToken', label: 'Access Token', type: 'password', required: true, placeholder: 'EAAxxxxxxx...' },
       { key: 'verifyToken', label: 'Webhook Verify Token', type: 'text', required: true, placeholder: 'any-secret-string-you-choose' },
     ],

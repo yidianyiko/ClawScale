@@ -21,6 +21,7 @@ import { initMatrixAdapters } from './adapters/matrix.js';
 import { initLineAdapters } from './adapters/line.js';
 import { initSignalAdapters } from './adapters/signal.js';
 import { initTeamsAdapters } from './adapters/teams.js';
+import { initWABusinessAdapters } from './adapters/whatsapp-business.js';
 
 const app = new Hono();
 
@@ -80,4 +81,5 @@ serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   initLineAdapters().catch((err) => console.error('[line] Init failed:', err));
   initSignalAdapters().catch((err) => console.error('[signal] Init failed:', err));
   initTeamsAdapters().catch((err) => console.error('[teams] Init failed:', err));
+  initWABusinessAdapters().catch((err) => console.error('[wa-business] Init failed:', err));
 });
