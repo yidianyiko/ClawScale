@@ -2,7 +2,8 @@
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Hexagon, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { storeAuth } from '@/lib/auth';
 import type { ApiResponse, AuthResult } from '@clawscale/shared';
@@ -40,7 +41,7 @@ export default function Register() {
     <div className="flex min-h-screen items-center justify-center bg-navy-950 px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <Hexagon className="h-8 w-8 text-teal-500" strokeWidth={1.5} />
+          <Image src="/logo.png" alt="ClawScale" width={32} height={32} className="h-8 w-8" />
           <span className="text-2xl font-semibold text-white">ClawScale</span>
         </div>
 

@@ -1,23 +1,20 @@
-export type AiBackendType = 'openai' | 'anthropic' | 'openrouter' | 'pulse' | 'openclaw' | 'custom';
+export type AiBackendType = 'llm' | 'openclaw' | 'palmos' | 'upstream';
 
 export interface AiBackendProviderConfig {
-  /** API key (OpenAI / Anthropic / OpenRouter / Custom) */
+  /** API key */
   apiKey?: string;
-  /** Model identifier */
+  /** Model identifier (LLM / OpenClaw) */
   model?: string;
-  /**
-   * System prompt for basic LLM backends (openai / anthropic / openrouter).
-   * This is the backend's own persona — ClawScale never injects its own prompt.
-   */
+  /** System prompt (LLM only) */
   systemPrompt?: string;
-  /** Base URL override — OpenRouter, Custom, OpenClaw */
+  /** Base URL — LLM endpoint, OpenClaw instance, Palmos instance, or upstream URL */
   baseUrl?: string;
-  /** Pulse Editor AI manager streaming endpoint URL */
-  pulseApiUrl?: string;
-  /** OpenClaw instance base URL */
-  openClawUrl?: string;
   /** Short alias for /say command (e.g. "gpt" so users can type /say gpt hello) */
   commandAlias?: string;
+  /** Optional Authorization header value sent to the backend */
+  authHeader?: string;
+  /** Webhook response mode: 'json' (default) or 'sse' (streamed) */
+  upstreamStream?: boolean;
 }
 
 export interface AiBackend {
@@ -34,14 +31,12 @@ export interface AiBackend {
 }
 
 export const AI_PROVIDER_LABELS: Record<AiBackendType, string> = {
-  openai:     'OpenAI',
-  anthropic:  'Claude (Anthropic)',
-  openrouter: 'OpenRouter',
-  pulse:      'Pulse Editor AI',
-  openclaw:   'OpenClaw',
-  custom:     'Custom (OpenAI-compatible)',
+  llm:      'LLM',
+  openclaw: 'OpenClaw',
+  palmos:   'Palmos',
+  upstream:  'Custom API',
 };
 
 export const AI_PROVIDER_TYPES: AiBackendType[] = [
-  'openai', 'anthropic', 'openrouter', 'openclaw', 'pulse', 'custom',
+  'llm', 'openclaw', 'palmos', 'upstream',
 ];

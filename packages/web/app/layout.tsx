@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ClawScale",
   description: "Multi-tenant OpenClaw workspace",
+  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({

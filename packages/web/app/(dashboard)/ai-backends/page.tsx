@@ -30,7 +30,7 @@ interface FormState {
   config: AiBackendProviderConfig;
 }
 
-const EMPTY_FORM: FormState = { name: '', type: 'openai', isActive: true, isDefault: false, config: {} };
+const EMPTY_FORM: FormState = { name: '', type: 'llm', isActive: true, isDefault: false, config: {} };
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -359,7 +359,7 @@ export default function AiBackendsPage() {
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
                 </div>
                 <div>
-                  <label className="label">Provider</label>
+                  <label className="label">Upstream type</label>
                   <select className="input" value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AiBackendType, config: {} }))}>
                     {AI_PROVIDER_TYPES.map((t) => (
@@ -516,48 +516,36 @@ function ProviderFields({ type, config, onChange }: {
     </div>
   );
 
-  if (type === 'openai') return <div className="space-y-4">
+  if (type === 'llm') return <div className="space-y-4">
     <div className="grid grid-cols-2 gap-4">
       {inp('apiKey', 'sk-...', 'API Key', { type: 'password', required: true })}
       {inp('model', 'gpt-4o-mini', 'Model')}
     </div>
-    {systemPromptField}
-  </div>;
-
-  if (type === 'anthropic') return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      {inp('apiKey', 'sk-ant-...', 'API Key', { type: 'password', required: true })}
-      {inp('model', 'claude-haiku-4-5-20251001', 'Model')}
-    </div>
-    {systemPromptField}
-  </div>;
-
-  if (type === 'openrouter') return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      {inp('apiKey', 'sk-or-...', 'API Key', { type: 'password', required: true })}
-      {inp('model', 'openai/gpt-4o-mini', 'Model')}
-    </div>
-    {inp('baseUrl', 'https://openrouter.ai/api/v1', 'Base URL (optional)', { hint: 'Leave blank for the default OpenRouter endpoint.' })}
+    {inp('baseUrl', 'https://api.openai.com/v1', 'Base URL (optional)', { hint: 'Leave blank for OpenAI. Set for other OpenAI-compatible providers.' })}
     {systemPromptField}
   </div>;
 
   if (type === 'openclaw') return <div className="space-y-4">
-    {inp('openClawUrl', 'http://localhost:8080', 'OpenClaw URL', { required: true, hint: 'Base URL of your OpenClaw instance. /v1 is appended automatically.' })}
+    {inp('baseUrl', 'http://localhost:8080', 'OpenClaw URL', { required: true, hint: 'Base URL of your OpenClaw instance. /v1 is appended automatically.' })}
     <div className="grid grid-cols-2 gap-4">
       {inp('apiKey', 'optional', 'API Key (optional)', { type: 'password' })}
       {inp('model', 'default', 'Model (optional)')}
     </div>
   </div>;
 
-  if (type === 'pulse') return inp('pulseApiUrl', 'http://localhost:5000', 'Pulse API URL',
-    { required: true, hint: 'Base URL of the Pulse Editor AI manager. /stream is appended automatically.' });
+  if (type === 'palmos') return <div className="space-y-4">
+    {inp('apiKey', 'plm-...', 'API Key', { type: 'password', required: true, hint: 'API key from your Palmos account, sent as a Bearer token.' })}
+  </div>;
 
-  if (type === 'custom') return <div className="space-y-4">
-    {inp('baseUrl', 'https://your-api/v1', 'Base URL', { required: true, hint: 'Must expose an OpenAI-compatible /chat/completions endpoint.' })}
-    <div className="grid grid-cols-2 gap-4">
-      {inp('apiKey', 'optional', 'API Key (optional)', { type: 'password' })}
-      {inp('model', 'model-name', 'Model')}
-    </div>
+  if (type === 'upstream') return <div className="space-y-4">
+    {inp('baseUrl', 'https://your-server/chat', 'API URL', { required: true, hint: 'ClawScale POSTs { messages } and expects text back.' })}
+    {inp('authHeader', 'Bearer your-token', 'Authorization header (optional)', { type: 'password', hint: 'Sent as the Authorization header.' })}
+    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+      <input type="checkbox" checked={!!config.upstreamStream}
+        onChange={(e) => onChange({ upstreamStream: e.target.checked })}
+        className="h-4 w-4 rounded border-gray-300 text-teal-500" />
+      Streaming response (SSE)
+    </label>
   </div>;
 
   return null;

@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Radio, Settings, LogOut, Hexagon, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
+import Image from 'next/image';
+import { LayoutDashboard, Users, Radio, Settings, LogOut, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen bg-gray-50">
       <aside className="flex w-60 flex-col bg-navy-900 text-white">
         <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
-          <Hexagon className="h-7 w-7 text-teal-500" strokeWidth={1.5} />
+          <Image src="/logo.png" alt="ClawScale" width={28} height={28} className="h-7 w-7" />
           <div>
             <span className="font-semibold text-white text-base">ClawScale</span>
             <p className="text-[10px] text-white/40 leading-none mt-0.5">by Pulse</p>

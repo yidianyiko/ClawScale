@@ -1,21 +1,17 @@
 /**
  * AI Backend — pluggable inference provider.
  *
- * Each backend is a self-contained black box. ClawScale never injects its own
- * prompt — the system prompt lives in the backend's config (for basic LLM
- * types) or inside the external service itself (OpenClaw, Pulse, Custom).
+ * ClawScale is a pure forwarder: it sends the user's messages to the backend
+ * and returns whatever text (or streamed text) the backend responds with.
  *
- * Supported providers:
- *   openai     — OpenAI Chat Completions API (basic LLM)
- *   anthropic  — Anthropic Messages API (basic LLM)
- *   openrouter — OpenRouter (basic LLM, OpenAI-compatible)
- *   pulse      — Pulse Editor AI manager (external, self-contained)
- *   openclaw   — OpenClaw instance (external, self-contained)
- *   custom     — Any OpenAI-compatible endpoint (external, self-contained)
+ * Supported types:
+ *   llm      — OpenAI-compatible Chat Completions API
+ *   openclaw — OpenClaw instance (OpenAI-compatible, self-contained)
+ *   palmos   — Palmos instance (POST messages, SSE stream back)
+ *   upstream  — Generic HTTP endpoint (POST messages, get text back)
  */
 
 import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
 export interface BackendSpec {
@@ -31,7 +27,6 @@ export interface GenerateOptions {
 // ── Lazy singletons per config hash ──────────────────────────────────────────
 
 const openaiClients = new Map<string, OpenAI>();
-const anthropicClients = new Map<string, Anthropic>();
 
 function getOpenAIClient(apiKey: string, baseURL?: string): OpenAI {
   const key = `${apiKey}::${baseURL ?? ''}`;
@@ -41,73 +36,17 @@ function getOpenAIClient(apiKey: string, baseURL?: string): OpenAI {
   return openaiClients.get(key)!;
 }
 
-function getAnthropicClient(apiKey: string): Anthropic {
-  if (!anthropicClients.has(apiKey)) {
-    anthropicClients.set(apiKey, new Anthropic({ apiKey }));
-  }
-  return anthropicClients.get(apiKey)!;
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function authHeaders(cfg: AiBackendProviderConfig): Record<string, string> {
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (cfg.authHeader) h['Authorization'] = cfg.authHeader;
+  return h;
 }
 
-// ── Provider implementations ──────────────────────────────────────────────────
-
-const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
-
-async function generateOpenAI(
-  client: OpenAI,
-  model: string,
-  systemPrompt: string,
-  history: { role: 'user' | 'assistant'; content: string }[],
-): Promise<string> {
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-    ],
-    max_completion_tokens: 1024,
-  });
-  return response.choices[0]?.message?.content?.trim() ?? '';
-}
-
-async function generateAnthropic(
-  client: Anthropic,
-  model: string,
-  systemPrompt: string,
-  history: { role: 'user' | 'assistant'; content: string }[],
-): Promise<string> {
-  const response = await client.messages.create({
-    model,
-    system: systemPrompt,
-    messages: history.map((m) => ({ role: m.role, content: m.content })),
-    max_tokens: 1024,
-  });
-  const block = response.content[0];
-  return block?.type === 'text' ? block.text.trim() : '';
-}
-
-async function generatePulse(
-  pulseApiUrl: string,
-  history: { role: 'user' | 'assistant'; content: string }[],
-): Promise<string> {
-  // Pulse AI manager is self-contained — just forward the conversation history.
-  // No system prompt injected; the Pulse agent has its own personality.
-  const messages = history.map((m) => ({
-    type: m.role === 'user' ? 'human' : 'ai',
-    content: m.content,
-  }));
-
-  const res = await fetch(`${pulseApiUrl}/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
-    signal: AbortSignal.timeout(60_000),
-  });
-
-  if (!res.ok || !res.body) {
-    throw new Error(`Pulse AI stream error: ${res.status}`);
-  }
-
-  const reader = res.body.getReader();
+/** Read a simple SSE stream and accumulate text chunks (used by upstream/webhook) */
+async function readSseStream(body: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let accumulated = '';
   let buffer = '';
@@ -125,15 +64,71 @@ async function generatePulse(
       const data = line.slice(5).trim();
       if (data === '[DONE]') break;
       try {
-        const parsed = JSON.parse(data) as {
-          type?: string;
-          content?: string;
-          delta?: { content?: string };
-        };
-        const chunk = parsed.delta?.content ?? (parsed.type === 'ai' ? parsed.content : null);
+        const parsed = JSON.parse(data) as { content?: string; delta?: string; text?: string };
+        const chunk = parsed.content ?? parsed.delta ?? parsed.text;
         if (chunk) accumulated += chunk;
       } catch {
-        // non-JSON line, skip
+        // Plain text chunk
+        if (data) accumulated += data;
+      }
+    }
+  }
+
+  return accumulated.trim();
+}
+
+/** Read a LangGraph SSE stream (event: + data: pairs separated by blank lines) */
+async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() ?? '';
+
+    for (const part of parts) {
+      if (!part.trim()) continue;
+
+      let eventType = '';
+      let dataStr = '';
+
+      for (const line of part.split('\n')) {
+        if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+        else if (line.startsWith('data: ')) dataStr += line.slice(6);
+      }
+
+      if (!eventType || !dataStr) continue;
+
+      let parsed: any;
+      try { parsed = JSON.parse(dataStr); } catch { continue; }
+
+      if (eventType === 'messages') {
+        // LangGraph format: [chunk, metadata] or [namespace, "messages", [chunk, metadata]]
+        if (!Array.isArray(parsed) || parsed.length < 2) continue;
+        let chunk: any;
+        if (parsed.length >= 3 && typeof parsed[0] === 'string' && Array.isArray(parsed[2])) {
+          chunk = parsed[2][0];
+        } else {
+          chunk = parsed[0];
+        }
+        if (!chunk) continue;
+        const kwargs = chunk.kwargs ?? chunk;
+        const content = kwargs.content ?? '';
+        if (typeof content === 'string' && content) accumulated += content;
+      } else if (eventType === 'values' || eventType === 'result') {
+        if (typeof parsed !== 'object' || parsed === null) continue;
+        // Check for final text result
+        if (typeof parsed.text === 'string' && parsed.text) {
+          accumulated = parsed.text; // Final result replaces streamed tokens
+        } else if (typeof parsed.agentMessage === 'string' && parsed.agentMessage) {
+          accumulated = parsed.agentMessage;
+        }
       }
     }
   }
@@ -143,60 +138,78 @@ async function generatePulse(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-const FALLBACK_OPENAI_MODEL = 'gpt-4o-mini';
-
 export async function generateReply({ backend, history }: GenerateOptions): Promise<string> {
   const { type, config: cfg } = backend;
 
   switch (type) {
-    // ── Basic LLM backends: use config.systemPrompt ─────────────────────
-    case 'openai': {
-      const apiKey = cfg.apiKey ?? process.env['OPENAI_API_KEY'] ?? '';
-      const model = cfg.model || FALLBACK_OPENAI_MODEL;
-      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-      return generateOpenAI(getOpenAIClient(apiKey), model, prompt, history);
+    // ── LLM: OpenAI-compatible Chat Completions ────────────────────────
+    case 'llm': {
+      const apiKey = cfg.apiKey ?? '';
+      if (!apiKey) throw new Error('LLM backend: apiKey is required');
+      const baseURL = cfg.baseUrl;
+      const model = cfg.model || 'gpt-4o-mini';
+      const systemPrompt = cfg.systemPrompt || '';
+      const client = getOpenAIClient(apiKey, baseURL);
+      const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+      if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+      messages.push(...history.map((m) => ({ role: m.role, content: m.content })));
+      const response = await client.chat.completions.create({ model, messages, max_completion_tokens: 1024 });
+      return response.choices[0]?.message?.content?.trim() ?? '';
     }
 
-    case 'anthropic': {
-      const apiKey = cfg.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
-      const model = cfg.model || 'claude-haiku-4-5-20251001';
-      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-      return generateAnthropic(getAnthropicClient(apiKey), model, prompt, history);
-    }
-
-    case 'openrouter': {
-      const apiKey = cfg.apiKey ?? process.env['OPENROUTER_API_KEY'] ?? '';
-      const model = cfg.model || 'openai/gpt-4o-mini';
-      const baseURL = cfg.baseUrl || 'https://openrouter.ai/api/v1';
-      const prompt = cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-      return generateOpenAI(getOpenAIClient(apiKey, baseURL), model, prompt, history);
-    }
-
-    // ── External backends: self-contained, no prompt injection ──────────
-    case 'pulse': {
-      if (!cfg.pulseApiUrl) throw new Error('Pulse AI backend: pulseApiUrl is required');
-      return generatePulse(cfg.pulseApiUrl, history);
-    }
-
+    // ── OpenClaw: self-contained, OpenAI-compatible ────────────────────
     case 'openclaw': {
-      // OpenClaw is self-contained — it has its own prompt/tools configured internally.
-      // We just forward messages via the OpenAI-compatible API.
-      const url = cfg.openClawUrl ?? cfg.baseUrl;
-      if (!url) throw new Error('OpenClaw AI backend: openClawUrl is required');
+      const url = cfg.baseUrl;
+      if (!url) throw new Error('OpenClaw backend: baseUrl is required');
       const apiKey = cfg.apiKey ?? 'openclaw';
       const model = cfg.model || 'default';
-      // No system prompt — OpenClaw manages its own personality
-      return generateOpenAI(getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`), model, '', history);
+      const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
+      const response = await client.chat.completions.create({
+        model,
+        messages: history.map((m) => ({ role: m.role, content: m.content })),
+        max_completion_tokens: 1024,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? '';
     }
 
-    case 'custom': {
-      // Custom endpoints are assumed self-contained — they manage their own prompt.
-      // If admin provides a systemPrompt in config, we'll use it (for simple setups).
-      if (!cfg.baseUrl) throw new Error('Custom AI backend: baseUrl is required');
-      const apiKey = cfg.apiKey ?? 'custom';
-      const model = cfg.model || 'default';
-      const prompt = cfg.systemPrompt || '';
-      return generateOpenAI(getOpenAIClient(apiKey, cfg.baseUrl), model, prompt, history);
+    // ── Palmos: POST messages, SSE stream response ─────────────────────
+    case 'palmos': {
+      if (!cfg.apiKey) throw new Error('Palmos backend: apiKey is required');
+      const url = 'https://pulse-editor.com/api/agent/manager/stream';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfg.apiKey}`,
+      };
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ messages: history }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!res.ok) throw new Error(`Palmos error: ${res.status}`);
+      if (res.body) return readLangGraphStream(res.body);
+      const text = await res.text();
+      return text.trim();
+    }
+
+    // ── Webhook: POST messages, get text response (JSON or SSE) ────────
+    case 'upstream': {
+      if (!cfg.baseUrl) throw new Error('Webhook backend: baseUrl is required');
+      const res = await fetch(cfg.baseUrl, {
+        method: 'POST',
+        headers: authHeaders(cfg),
+        body: JSON.stringify({ messages: history }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!res.ok) throw new Error(`Webhook error: ${res.status}`);
+
+      if (cfg.upstreamStream && res.body) {
+        return readSseStream(res.body);
+      }
+
+      // JSON response — look for common fields
+      const data = (await res.json()) as { reply?: string; content?: string; message?: string; text?: string };
+      return (data.reply ?? data.content ?? data.message ?? data.text ?? '').trim();
     }
 
     default:
