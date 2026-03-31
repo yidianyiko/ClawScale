@@ -1,0 +1,15 @@
+{
+  "name": "@clawscale/claude-code-channel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP channel server that bridges ClawScale messaging platforms into a Claude Code session",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.4"
+  }
+}

@@ -54,7 +54,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {tenant && (
           <div className="mx-4 mt-4 rounded-lg bg-white/5 px-3 py-2">
             <p className="text-xs font-medium text-white/80 truncate">{tenant.name}</p>
-            <p className="text-[10px] text-white/40 mt-0.5 uppercase tracking-wide">{tenant.plan}</p>
           </div>
         )}
 

@@ -30,8 +30,6 @@ const loginSchema = z.object({
 const defaultSettings: TenantSettings = {
   personaName: 'Assistant',
   personaPrompt: 'You are a helpful assistant.',
-  maxMembers: 5,
-  maxChannels: 3,
   endUserAccess: 'anonymous',
   features: { knowledgeBase: false },
 };
@@ -69,7 +67,6 @@ export const authRouter = new Hono()
           id: tenantId,
           slug,
           name: body.tenantName,
-          plan: 'starter',
           settings: defaultSettings as object,
         },
       });

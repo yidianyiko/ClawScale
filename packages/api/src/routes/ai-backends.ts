@@ -6,7 +6,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 
-const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'upstream'] as const;
+const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'upstream', 'claude-code'] as const;
 
 const configSchema = z.object({
   apiKey:        z.string().optional(),

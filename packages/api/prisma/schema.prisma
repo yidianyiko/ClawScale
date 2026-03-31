@@ -9,12 +9,6 @@ datasource db {
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-enum TenantPlan {
-  starter
-  business
-  enterprise
-}
-
 enum MemberRole {
   admin
   member
@@ -69,7 +63,6 @@ model Tenant {
   id        String     @id
   slug      String     @unique
   name      String
-  plan      TenantPlan @default(starter)
   settings  Json       @default("{}")
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")

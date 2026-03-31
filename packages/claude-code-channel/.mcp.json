@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "clawscale": {
+      "command": "bun",
+      "args": ["./server.ts"]
+    }
+  }
+}

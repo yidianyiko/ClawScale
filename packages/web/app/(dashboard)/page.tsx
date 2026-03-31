@@ -7,7 +7,6 @@ import { getTenant } from '@/lib/auth';
 import type { ApiResponse } from '@clawscale/shared';
 
 interface Stats {
-  plan: string;
   totalMembers: number;
   activeMembers: number;
   totalConversations: number;
@@ -43,7 +42,7 @@ export default function Dashboard() {
           value={stats?.activeChannels ?? '—'} sub={`${channels.length} configured`} />
         <StatCard icon={<Zap className="h-5 w-5 text-teal-500" />} label="AI persona"
           value={stats?.settings.personaName ?? 'Assistant'}
-          sub={<span className="capitalize">{stats?.plan ?? 'starter'} plan</span>} />
+          sub="self-hosted" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">

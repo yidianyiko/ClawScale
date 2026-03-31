@@ -124,7 +124,6 @@ export const tenantRouter = new Hono()
     return c.json({
       ok: true,
       data: {
-        plan: tenant?.plan ?? 'starter',
         totalMembers,
         activeMembers,
         totalConversations,

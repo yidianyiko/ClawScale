@@ -1,4 +1,4 @@
-export type AiBackendType = 'llm' | 'openclaw' | 'palmos' | 'upstream';
+export type AiBackendType = 'llm' | 'openclaw' | 'palmos' | 'upstream' | 'claude-code';
 
 export interface AiBackendProviderConfig {
   /** API key */
@@ -31,12 +31,13 @@ export interface AiBackend {
 }
 
 export const AI_PROVIDER_LABELS: Record<AiBackendType, string> = {
-  llm:      'LLM',
-  openclaw: 'OpenClaw',
-  palmos:   'Palmos',
-  upstream:  'Custom API',
+  llm:            'LLM',
+  openclaw:       'OpenClaw',
+  palmos:         'Palmos',
+  upstream:       'Custom API',
+  'claude-code':  'Claude Code',
 };
 
 export const AI_PROVIDER_TYPES: AiBackendType[] = [
-  'llm', 'openclaw', 'palmos', 'upstream',
+  'llm', 'openclaw', 'palmos', 'upstream', 'claude-code',
 ];

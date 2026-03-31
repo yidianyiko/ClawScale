@@ -73,10 +73,6 @@ export default function Settings() {
               <input className="input bg-gray-50" value={tenant?.slug ?? ''} disabled />
               <p className="text-xs text-gray-400 mt-1">Slug cannot be changed after creation.</p>
             </div>
-            <div>
-              <label className="label">Plan</label>
-              <input className="input bg-gray-50 capitalize" value={tenant?.plan ?? 'starter'} disabled />
-            </div>
           </div>
         </div>
 

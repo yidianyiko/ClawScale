@@ -8,7 +8,8 @@
  *   llm      — OpenAI-compatible Chat Completions API
  *   openclaw — OpenClaw instance (OpenAI-compatible, self-contained)
  *   palmos   — Palmos instance (POST messages, SSE stream back)
- *   upstream  — Generic HTTP endpoint (POST messages, get text back)
+ *   upstream    — Generic HTTP endpoint (POST messages, get text back)
+ *   claude-code — Claude Code session via MCP channel server bridge
  */
 
 import OpenAI from 'openai';
@@ -210,6 +211,32 @@ export async function generateReply({ backend, history }: GenerateOptions): Prom
       // JSON response — look for common fields
       const data = (await res.json()) as { reply?: string; content?: string; message?: string; text?: string };
       return (data.reply ?? data.content ?? data.message ?? data.text ?? '').trim();
+    }
+
+    // ── Claude Code: MCP channel server bridge ──────────────────────────
+    case 'claude-code': {
+      if (!cfg.baseUrl) throw new Error('Claude Code backend: baseUrl is required (channel server URL)');
+      const url = `${cfg.baseUrl.replace(/\/$/, '')}/message`;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (cfg.authHeader) headers['Authorization'] = cfg.authHeader;
+      else if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          messages: history,
+          system_prompt: cfg.systemPrompt,
+        }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Claude Code channel error: ${res.status} ${errBody}`);
+      }
+      const data = (await res.json()) as { ok: boolean; reply?: string; error?: string };
+      if (!data.ok) throw new Error(`Claude Code channel error: ${data.error ?? 'unknown'}`);
+      return (data.reply ?? '').trim();
     }
 
     default:
