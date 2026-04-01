@@ -108,8 +108,8 @@ export const workflowsRouter = new Hono()
     const existing = await db.workflow.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!existing) return c.json({ ok: false, error: 'Workflow not found' }, 404);
 
-    await db.workflow.delete({ where: { id } });
-    await audit({ tenantId, memberId: userId, action: 'delete_workflow', resource: 'workflow', resourceId: id });
+    await db.workflow.delete({ where: { id: existing.id } });
+    await audit({ tenantId, memberId: userId, action: 'delete_workflow', resource: 'workflow', resourceId: existing.id });
 
     return c.json({ ok: true, data: null });
   });

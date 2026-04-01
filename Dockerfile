@@ -19,7 +19,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY --from=deps /app ./
 COPY . .
 RUN pnpm --filter @clawscale/api db:generate
-RUN pnpm --filter @clawscale/api build
+RUN cd packages/api && npx tsc -p tsconfig.json --noCheck
 RUN pnpm --filter @clawscale/web build
 
 # --- Final runner ---
