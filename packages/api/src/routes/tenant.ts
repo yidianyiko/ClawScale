@@ -18,6 +18,7 @@ const updateSettingsSchema = z.object({
         isActive:    z.boolean().optional(),
         llm: z.object({
           model: z.string().min(1).max(100),
+          apiKey: z.string().max(500).optional(),
         }).nullable().optional(),
       }).optional(),
     })
@@ -32,7 +33,7 @@ export const tenantRouter = new Hono()
     const { tenantId } = c.get('auth');
     const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) return c.json({ ok: false, error: 'Tenant not found' }, 404);
-    return c.json({ ok: true, data: tenant });
+    return c.json({ ok: true, data: maskTenantSecrets(tenant) });
   })
 
   // ── PATCH /api/tenant ────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ export const tenantRouter = new Hono()
     await audit({ tenantId, memberId: userId, action: 'update_tenant_settings', resource: 'tenant', resourceId: tenantId });
 
     const updated = await db.tenant.findUnique({ where: { id: tenantId } });
-    return c.json({ ok: true, data: updated });
+    return c.json({ ok: true, data: maskTenantSecrets(updated) });
   })
 
   // ── GET /api/tenant/audit ────────────────────────────────────────────────────
@@ -134,3 +135,24 @@ export const tenantRouter = new Hono()
       },
     });
   });
+
+/** Strip secrets from tenant before sending to the client. */
+function maskTenantSecrets(tenant: unknown) {
+  if (!tenant || typeof tenant !== 'object') return tenant;
+  const t = tenant as Record<string, unknown>;
+  const settings = t.settings as Record<string, unknown> | undefined;
+  if (!settings?.clawscale) return tenant;
+  const cs = settings.clawscale as Record<string, unknown>;
+  const llm = cs.llm as Record<string, unknown> | undefined;
+  if (!llm?.apiKey) return tenant;
+  return {
+    ...t,
+    settings: {
+      ...settings,
+      clawscale: {
+        ...cs,
+        llm: { ...llm, apiKey: '••••••••' },
+      },
+    },
+  };
+}

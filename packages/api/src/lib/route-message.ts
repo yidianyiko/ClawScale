@@ -110,7 +110,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const clawscaleName = clawscaleCfg.name ?? 'ClawScale Assistant';
   const clawscaleStyle = clawscaleCfg.answerStyle;
   const clawscaleActive = clawscaleCfg.isActive !== false;
-  const clawscaleLlm = clawscaleCfg.llm;
+  const clawscaleLlm = clawscaleCfg.llm ?? { model: 'openai:gpt-5.4-mini' };
 
   const allBackends = await db.aiBackend.findMany({
     where: { tenantId, isActive: true },

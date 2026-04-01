@@ -17,6 +17,9 @@ export default function Settings() {
   const [personaName, setPersonaName] = useState('');
   const [personaPrompt, setPersonaPrompt] = useState('');
   const [endUserAccess, setEndUserAccess] = useState<TenantSettings['endUserAccess']>('anonymous');
+  const [clawscaleModel, setClawscaleModel] = useState('openai:gpt-5.4-mini');
+  const [clawscaleApiKey, setClawscaleApiKey] = useState('');
+  const [apiKeySet, setApiKeySet] = useState(false);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -27,6 +30,8 @@ export default function Settings() {
         setPersonaName(s.personaName ?? 'Assistant');
         setPersonaPrompt(s.personaPrompt ?? '');
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
+        setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
+        setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
       }
       setLoading(false);
     });
@@ -37,7 +42,15 @@ export default function Settings() {
     try {
       const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
         name,
-        settings: { personaName, personaPrompt, endUserAccess },
+        settings: {
+          personaName, personaPrompt, endUserAccess,
+          clawscale: {
+            llm: {
+              model: clawscaleModel,
+              ...(clawscaleApiKey ? { apiKey: clawscaleApiKey } : {}),
+            },
+          },
+        },
       });
       if (!res.ok) { setError(res.error); return; }
       setTenant(res.data); setSuccess(true);
@@ -88,6 +101,23 @@ export default function Settings() {
               <label className="label">System prompt</label>
               <textarea className="input min-h-[120px] resize-y font-mono text-xs" placeholder="You are a helpful assistant for Acme Corp..."
                 value={personaPrompt} onChange={(e) => setPersonaPrompt(e.target.value)} disabled={!isAdmin} />
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="font-semibold text-gray-900 mb-1">ClawScale Assistant</h2>
+          <p className="text-sm text-gray-500 mb-4">Configure the built-in AI assistant that helps end-users navigate your bot.</p>
+          <div className="space-y-4">
+            <div>
+              <label className="label">Model</label>
+              <input className="input" placeholder="openai:gpt-5.4-mini" value={clawscaleModel} onChange={(e) => setClawscaleModel(e.target.value)} disabled={!isAdmin} />
+              <p className="text-xs text-gray-400 mt-1">LangChain format, e.g. &quot;openai:gpt-5.4-mini&quot;, &quot;anthropic:claude-haiku-4-5-20251001&quot;</p>
+            </div>
+            <div>
+              <label className="label">API key</label>
+              <input className="input font-mono text-xs" type="password" placeholder={apiKeySet ? '••••••••••••••••' : 'sk-...'} value={clawscaleApiKey} onChange={(e) => setClawscaleApiKey(e.target.value)} disabled={!isAdmin} />
+              {apiKeySet && !clawscaleApiKey && <p className="text-xs text-emerald-600 mt-1">API key is saved. Enter a new value to replace it.</p>}
             </div>
           </div>
         </div>

@@ -24,6 +24,8 @@ export interface BackendOption {
 export interface AgentLlmConfig {
   /** Model string in langchain format, e.g. "openai:gpt-5.4-mini", "anthropic:claude-haiku-4-5-20251001" */
   model: string;
+  /** API key for the LLM provider */
+  apiKey?: string;
 }
 
 export interface AgentContext {
@@ -114,6 +116,7 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     tools: [runCommand],
     systemPrompt: buildSystemPrompt(ctx),
     name: 'clawscale_agent',
+    ...(ctx.llmConfig.apiKey && { apiKey: ctx.llmConfig.apiKey }),
   });
 
   try {

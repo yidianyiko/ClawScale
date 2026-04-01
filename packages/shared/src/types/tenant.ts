@@ -23,6 +23,8 @@ export interface ClawScaleAgentSettings {
   llm?: {
     /** LangChain model string, e.g. "openai:gpt-5.4-mini", "anthropic:claude-haiku-4-5-20251001" */
     model: string;
+    /** API key for the LLM provider */
+    apiKey?: string;
   };
 }
 
