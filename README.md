@@ -4,6 +4,7 @@
 
 <h1 align="center">ClawScale</h1>
 <p align="center"><strong>Connect your AI agents to any messaging platform</strong></p>
+<p align="center">English | <a href="README.zh-CN.md">中文</a></p>
 
 ClawScale is an open-source gateway that connects AI agents — OpenClaw, Claude Code, LLMs, or any custom agent — to WhatsApp, Discord, Slack, Telegram, and 10+ other messaging platforms. It handles multi-tenant isolation, conversation routing, and backend orchestration so hundreds of users can talk to your agents without interfering with each other.
 
