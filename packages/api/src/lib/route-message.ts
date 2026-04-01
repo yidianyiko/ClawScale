@@ -105,6 +105,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: (meta ?? {}) as any },
   });
 
+  // 6b. Resolve all conversation IDs for linked accounts (cross-channel history)
+  const historyConvIds = endUser.linkedTo
+    ? await getLinkedConversationIds(endUser.id, endUser.linkedTo, tenantId)
+    : [conversation.id];
+
   // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
   const clawscaleName = clawscaleCfg.name ?? 'ClawScale Assistant';
@@ -126,12 +131,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
    * Slash commands are executed via a callback that re-enters routeInboundMessage.
    */
   async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
+    const agentHistory = await loadHistory(historyConvIds, null);
     const agentReply = await runClawscaleAgent({
       text: userText,
       backends: allBackends.map((b) => ({ id: b.id, name: b.name })),
       activeIds: [...activeBackendIds],
       personaName: clawscaleName,
       mode,
+      history: agentHistory,
       ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
       ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
       executeCommand: async (command) => {
@@ -194,16 +201,18 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   }
 
   async function routeToBackends(backends: typeof allBackends): Promise<RouteResult> {
-    const primaryEndUserId = endUser!.linkedTo ?? endUser!.id;
-    const palmosCtx = {
-      endUserId: primaryEndUserId,
-      tenantId,
-      conversationId: conversation!.id,
-      displayName: endUser!.name ?? displayName,
-    };
+    const hasPalmos = backends.some((b) => b.type === 'palmos');
+    const palmosCtx = hasPalmos
+      ? {
+          endUserId: endUser!.linkedTo ?? endUser!.id,
+          tenantId,
+          conversationId: conversation!.id,
+          displayName: endUser!.name ?? displayName,
+        }
+      : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, conversation!.id, palmosCtx);
+        const replyText = await runBackend(backend, historyConvIds, palmosCtx);
         return { backend, replyText };
       }),
     );
@@ -393,6 +402,62 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           });
           return reply('✅ Unlinked. This channel now has its own separate identity.');
         }
+
+        case 'linked': {
+          const primaryId = endUser!.linkedTo ?? endUser!.id;
+
+          const linkedUsers = await db.endUser.findMany({
+            where: {
+              tenantId,
+              OR: [
+                { id: primaryId },
+                { linkedTo: primaryId },
+              ],
+            },
+            include: { channel: { select: { name: true, type: true } } },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          if (linkedUsers.length <= 1) {
+            return reply('No linked accounts. Use `/link` to generate a link code and connect another channel.');
+          }
+
+          const lines = linkedUsers.map((u) => {
+            const name = u.name ?? u.externalId;
+            const isCurrent = u.id === endUser!.id ? ' ← you' : '';
+            const isPrimary = u.id === primaryId ? ' (primary)' : '';
+            return `• *${name}* — ${u.channel.name} (${u.channel.type})${isPrimary}${isCurrent}`;
+          });
+
+          return reply(`*Linked accounts:*\n\n${lines.join('\n')}`);
+        }
+
+        case 'deleteaccount': {
+          if (cmd.arg.toLowerCase() !== 'confirm') {
+            return reply(
+              '⚠️ *This will permanently delete your account and all associated data* (conversations, messages, linked accounts, and backend selections).\n\n' +
+              'This action cannot be undone.\n\n' +
+              'To confirm, type: `/deleteaccount confirm`',
+            );
+          }
+
+          const userId = endUser!.id;
+          const confirmMsg = '✅ Your account and all associated data have been permanently deleted. Your next message will create a new account.';
+
+          // Reply BEFORE deleting — deletion cascades to conversations/messages
+          const result = await reply(confirmMsg);
+
+          // Unlink any accounts that point to this user as primary
+          await db.endUser.updateMany({
+            where: { linkedTo: userId },
+            data: { linkedTo: null },
+          });
+
+          // Delete the EndUser (cascades to conversations, messages, backends, link codes)
+          await db.endUser.delete({ where: { id: userId } });
+
+          return result;
+        }
       }
     }
 
@@ -460,10 +525,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function loadHistory(conversationId: string, backendId: string) {
+async function loadHistory(conversationIds: string | string[], backendId: string | null) {
+  const ids = Array.isArray(conversationIds) ? conversationIds : [conversationIds];
   const msgs = await db.message.findMany({
     where: {
-      conversationId,
+      conversationId: { in: ids },
       OR: [
         { role: 'user' },
         { role: 'assistant', backendId },
@@ -476,12 +542,36 @@ async function loadHistory(conversationId: string, backendId: string) {
   return msgs.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 }
 
+/** Get all conversation IDs for a linked user group (primary + all linked accounts). */
+async function getLinkedConversationIds(endUserId: string, linkedTo: string | null, tenantId: string): Promise<string[]> {
+  const primaryId = linkedTo ?? endUserId;
+
+  // Find all EndUser IDs in this linked group
+  const linkedUsers = await db.endUser.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { id: primaryId },
+        { linkedTo: primaryId },
+      ],
+    },
+    select: { id: true },
+  });
+  const userIds = linkedUsers.map((u) => u.id);
+
+  const conversations = await db.conversation.findMany({
+    where: { endUserId: { in: userIds } },
+    select: { id: true },
+  });
+  return conversations.map((c) => c.id);
+}
+
 async function runBackend(
   backend: { id: string; type: string; config: unknown },
-  conversationId: string,
+  conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
 ): Promise<string> {
-  const history = await loadHistory(conversationId, backend.id);
+  const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   return generateReply({
     backend: {

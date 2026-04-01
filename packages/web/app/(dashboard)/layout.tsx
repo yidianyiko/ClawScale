@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import { LayoutDashboard, Users, Radio, Settings, LogOut, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/channels', icon: Radio, label: 'Channels' },
   { href: '/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
   { href: '/workflows', icon: Zap, label: 'Workflows' },
+  { href: '/end-users', icon: UserCheck, label: 'End Users' },
   { href: '/users', icon: Users, label: 'Team' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ];

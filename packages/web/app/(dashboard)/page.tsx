@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MessageSquare, Radio, ArrowRight, Zap, Users, Bot } from 'lucide-react';
+import { MessageSquare, Radio, ArrowRight, Zap, Users, Bot, UserCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getTenant } from '@/lib/auth';
 import type { ApiResponse } from '@clawscale/shared';
@@ -12,6 +12,7 @@ interface Stats {
   totalConversations: number;
   activeChannels: number;
   totalBackends: number;
+  totalEndUsers: number;
 }
 
 interface ChannelRow { id: string; name: string; type: string; status: string }
@@ -35,11 +36,13 @@ export default function Dashboard() {
         <p className="text-gray-500 mt-1">Here&apos;s an overview of your chatbot.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
         <StatCard icon={<MessageSquare className="h-5 w-5 text-teal-500" />} label="Total conversations"
           value={stats?.totalConversations ?? '—'} sub="across all channels" />
         <StatCard icon={<Radio className="h-5 w-5 text-teal-500" />} label="Active channels"
           value={stats?.activeChannels ?? '—'} sub={`${channels.length} configured`} />
+        <StatCard icon={<UserCheck className="h-5 w-5 text-teal-500" />} label="End users"
+          value={stats?.totalEndUsers ?? '—'} sub="registered" />
         <StatCard icon={<Users className="h-5 w-5 text-teal-500" />} label="Team members"
           value={stats?.totalMembers ?? '—'} sub={`${stats?.activeMembers ?? 0} active`} />
         <StatCard icon={<Bot className="h-5 w-5 text-teal-500" />} label="AI backends"

@@ -36,6 +36,8 @@ export interface AgentContext {
   mode: 'select' | 'direct';
   answerStyle?: string;
   llmConfig?: AgentLlmConfig;
+  /** Prior conversation history for context continuity. */
+  history?: { role: 'user' | 'assistant'; content: string }[];
   /** Callback to execute a slash command. Returns the command's output text. */
   executeCommand: (command: string) => Promise<string>;
 }
@@ -123,8 +125,12 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
   });
 
   try {
+    const historyMessages = (ctx.history ?? []).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
     const result = await agent.invoke({
-      messages: [{ role: 'user', content: ctx.text }],
+      messages: [...historyMessages, { role: 'user', content: ctx.text }],
     });
 
     // Extract the last assistant message

@@ -206,8 +206,13 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
           }),
         });
         if (regRes.ok) {
-          const regData = (await regRes.json()) as { palmosUserId: string };
-          palmosUserId = regData.palmosUserId;
+          const regCt = regRes.headers.get('content-type') ?? '';
+          if (regCt.includes('application/json')) {
+            const regData = (await regRes.json()) as { palmosUserId: string };
+            palmosUserId = regData.palmosUserId;
+          } else {
+            console.warn(`[palmos] Registration returned non-JSON (${regCt}):`, (await regRes.text()).slice(0, 200));
+          }
         }
       }
 
@@ -242,6 +247,13 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         return readSseStream(res.body);
       }
 
+      // Guard against non-JSON responses (e.g. HTML error pages)
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Upstream returned non-JSON response (${contentType || 'no content-type'}): ${body.slice(0, 200)}`);
+      }
+
       // JSON response — look for common fields
       const data = (await res.json()) as { reply?: string; content?: string; message?: string; text?: string };
       return (data.reply ?? data.content ?? data.message ?? data.text ?? '').trim();
@@ -266,7 +278,12 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
       });
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
-        throw new Error(`Claude Code channel error: ${res.status} ${errBody}`);
+        throw new Error(`Claude Code channel error: ${res.status} ${errBody.slice(0, 200)}`);
+      }
+      const ccContentType = res.headers.get('content-type') ?? '';
+      if (!ccContentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Claude Code returned non-JSON response (${ccContentType || 'no content-type'}): ${body.slice(0, 200)}`);
       }
       const data = (await res.json()) as { ok: boolean; reply?: string; error?: string };
       if (!data.ok) throw new Error(`Claude Code channel error: ${data.error ?? 'unknown'}`);

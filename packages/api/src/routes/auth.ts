@@ -161,4 +161,34 @@ export const authRouter = new Hono()
     const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
 
     return c.json({ ok: true, data: { user: member, tenant } });
+  })
+
+  // ── DELETE /auth/account ────────────────────────────────────────────────────
+  .delete('/account', requireAuth, async (c) => {
+    const { userId, tenantId } = c.get('auth');
+
+    const member = await db.member.findUnique({ where: { id: userId } });
+    if (!member) {
+      return c.json({ ok: false, error: 'Member not found' }, 404);
+    }
+
+    // If user is the only admin, prevent deletion to avoid orphaning the tenant
+    if (member.role === 'admin') {
+      const adminCount = await db.member.count({
+        where: { tenantId, role: 'admin', isActive: true },
+      });
+      if (adminCount <= 1) {
+        return c.json(
+          { ok: false, error: 'You are the only admin. Transfer ownership or delete the workspace first.' },
+          422,
+        );
+      }
+    }
+
+    await audit({ tenantId, memberId: userId, action: 'delete_own_account', resource: 'member', resourceId: userId });
+
+    // Hard delete — cascades to sessions and sets auditLog.memberId to null
+    await db.member.delete({ where: { id: userId } });
+
+    return c.json({ ok: true, data: null });
   });
