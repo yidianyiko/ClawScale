@@ -13,7 +13,6 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=http://localhost:4041
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/web/node_modules ./packages/web/node_modules
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web

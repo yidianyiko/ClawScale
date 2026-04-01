@@ -12,7 +12,6 @@ FROM base AS build
 WORKDIR /app
 ENV DATABASE_PROVIDER=postgresql
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
