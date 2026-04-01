@@ -1,4 +1,4 @@
-name: Publish Docker Images
+name: Publish Docker Image
 
 on:
   push:
@@ -7,19 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_PREFIX: ${{ vars.DOCKERHUB_REPO || 'clawscale/clawscale' }}
+  IMAGE: ${{ vars.DOCKERHUB_REPO || 'clawscale/clawscale' }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        include:
-          - image: api
-            dockerfile: packages/api/Dockerfile
-          - image: web
-            dockerfile: packages/web/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +24,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          images: ${{ env.IMAGE }}
           tags: |
             type=sha
             type=ref,event=branch
@@ -42,7 +34,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
