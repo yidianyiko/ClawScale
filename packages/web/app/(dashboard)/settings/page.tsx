@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { getUser } from '@/lib/auth';
+import { getUser, clearAuth } from '@/lib/auth';
 import type { ApiResponse, Tenant, TenantSettings } from '@clawscale/shared';
 
 export default function Settings() {
+  const router = useRouter();
   const me = getUser();
   const isAdmin = me?.role === 'admin';
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -13,6 +15,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
   const [name, setName] = useState('');
   const [personaName, setPersonaName] = useState('');
   const [personaPrompt, setPersonaPrompt] = useState('');
@@ -160,6 +164,45 @@ export default function Settings() {
           </div>
         )}
       </form>
+
+      <div className="mt-10 border-t border-red-200 pt-8">
+        <div className="card border-red-200 p-6">
+          <h2 className="font-semibold text-red-700 mb-1">Danger Zone</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Permanently delete your account. This removes your member profile and logs you out. This action cannot be undone.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <label className="label text-red-700">Type &quot;delete my account&quot; to confirm</label>
+              <input
+                className="input border-red-300 focus:border-red-500 focus:ring-red-500"
+                placeholder="delete my account"
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={deleteConfirm !== 'delete my account' || deleting}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={async () => {
+                setDeleting(true);
+                setError('');
+                try {
+                  const res = await api.delete<ApiResponse<null>>('/auth/account');
+                  if (!res.ok) { setError(res.error); return; }
+                  clearAuth();
+                  router.push('/login');
+                } finally { setDeleting(false); }
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete my account
+            </button>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

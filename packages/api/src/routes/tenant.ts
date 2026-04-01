@@ -120,12 +120,13 @@ export const tenantRouter = new Hono()
 
     const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
 
-    const [totalMembers, activeMembers, totalConversations, activeChannels, totalBackends] = await Promise.all([
+    const [totalMembers, activeMembers, totalConversations, activeChannels, totalBackends, totalEndUsers] = await Promise.all([
       db.member.count({ where: { tenantId } }),
       db.member.count({ where: { tenantId, isActive: true } }),
       db.conversation.count({ where: { tenantId } }),
       db.channel.count({ where: { tenantId, status: 'connected' } }),
       db.aiBackend.count({ where: { tenantId } }),
+      db.endUser.count({ where: { tenantId } }),
     ]);
 
     return c.json({
@@ -136,6 +137,7 @@ export const tenantRouter = new Hono()
         totalConversations,
         activeChannels,
         totalBackends,
+        totalEndUsers,
         settings: tenant?.settings,
       },
     });

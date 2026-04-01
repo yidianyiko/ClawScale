@@ -15,9 +15,18 @@
 import OpenAI from 'openai';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
+export interface PalmosContext {
+  endUserId: string;
+  tenantId: string;
+  conversationId: string;
+  displayName?: string;
+}
+
 export interface BackendSpec {
   type: AiBackendType;
   config: AiBackendProviderConfig;
+  /** Palmos integration context — only used when type is 'palmos' */
+  palmosCtx?: PalmosContext;
 }
 
 export interface GenerateOptions {
@@ -139,7 +148,8 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function generateReply({ backend, history }: GenerateOptions): Promise<string> {
+export async function generateReply(options: GenerateOptions): Promise<string> {
+  const { backend, history } = options;
   const { type, config: cfg } = backend;
 
   switch (type) {
@@ -176,15 +186,44 @@ export async function generateReply({ backend, history }: GenerateOptions): Prom
     // ── Palmos: POST messages, SSE stream response ─────────────────────
     case 'palmos': {
       if (!cfg.apiKey) throw new Error('Palmos backend: apiKey is required');
-      const url = 'https://pulse-editor.com/api/agent/manager/stream';
-      const headers: Record<string, string> = {
+      const baseUrl = (cfg.baseUrl ?? 'https://pulse-editor.com').replace(/\/$/, '');
+      const palmosHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cfg.apiKey}`,
       };
-      const res = await fetch(url, {
+
+      // Auto-register external user in Palmos and resolve their Palmos userId
+      let palmosUserId: string | undefined;
+      const ctx = backend.palmosCtx;
+      if (ctx) {
+        const regRes = await fetch(`${baseUrl}/api/external-auth/register`, {
+          method: 'POST',
+          headers: palmosHeaders,
+          body: JSON.stringify({
+            externalId: ctx.endUserId,
+            tenantId: ctx.tenantId,
+            userName: ctx.displayName,
+          }),
+        });
+        if (regRes.ok) {
+          const regCt = regRes.headers.get('content-type') ?? '';
+          if (regCt.includes('application/json')) {
+            const regData = (await regRes.json()) as { palmosUserId: string };
+            palmosUserId = regData.palmosUserId;
+          } else {
+            console.warn(`[palmos] Registration returned non-JSON (${regCt}):`, (await regRes.text()).slice(0, 200));
+          }
+        }
+      }
+
+      const res = await fetch(`${baseUrl}/api/agent/manager/stream`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ messages: history }),
+        headers: palmosHeaders,
+        body: JSON.stringify({
+          messages: history,
+          ...(palmosUserId ? { userId: palmosUserId } : {}),
+          ...(ctx?.conversationId ? { threadId: ctx.conversationId } : {}),
+        }),
         signal: AbortSignal.timeout(120_000),
       });
       if (!res.ok) throw new Error(`Palmos error: ${res.status}`);
@@ -206,6 +245,13 @@ export async function generateReply({ backend, history }: GenerateOptions): Prom
 
       if (cfg.upstreamStream && res.body) {
         return readSseStream(res.body);
+      }
+
+      // Guard against non-JSON responses (e.g. HTML error pages)
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Upstream returned non-JSON response (${contentType || 'no content-type'}): ${body.slice(0, 200)}`);
       }
 
       // JSON response — look for common fields
@@ -232,7 +278,12 @@ export async function generateReply({ backend, history }: GenerateOptions): Prom
       });
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
-        throw new Error(`Claude Code channel error: ${res.status} ${errBody}`);
+        throw new Error(`Claude Code channel error: ${res.status} ${errBody.slice(0, 200)}`);
+      }
+      const ccContentType = res.headers.get('content-type') ?? '';
+      if (!ccContentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Claude Code returned non-JSON response (${ccContentType || 'no content-type'}): ${body.slice(0, 200)}`);
       }
       const data = (await res.json()) as { ok: boolean; reply?: string; error?: string };
       if (!data.ok) throw new Error(`Claude Code channel error: ${data.error ?? 'unknown'}`);
