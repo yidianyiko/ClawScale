@@ -63,7 +63,7 @@ export const workflowsRouter = new Hono()
         description: body.description,
         type: body.type,
         code: body.code,
-        config: body.config,
+        config: body.config as any,
       },
     });
 
@@ -76,7 +76,7 @@ export const workflowsRouter = new Hono()
   // ── GET /api/workflows/:id ───────────────────────────────────────────────────
   .get('/:id', requireAdmin, async (c) => {
     const { tenantId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const workflow = await db.workflow.findFirst({ where: { id, tenantId } });
     if (!workflow) return c.json({ ok: false, error: 'Workflow not found' }, 404);
@@ -87,13 +87,13 @@ export const workflowsRouter = new Hono()
   // ── PATCH /api/workflows/:id ─────────────────────────────────────────────────
   .patch('/:id', requireAdmin, zValidator('json', updateSchema), async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     const body = c.req.valid('json');
 
     const existing = await db.workflow.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!existing) return c.json({ ok: false, error: 'Workflow not found' }, 404);
 
-    await db.workflow.update({ where: { id }, data: body });
+    await db.workflow.update({ where: { id }, data: body as any });
     await audit({ tenantId, memberId: userId, action: 'update_workflow', resource: 'workflow', resourceId: id });
 
     const updated = await db.workflow.findUnique({ where: { id } });
@@ -103,7 +103,7 @@ export const workflowsRouter = new Hono()
   // ── DELETE /api/workflows/:id ────────────────────────────────────────────────
   .delete('/:id', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const existing = await db.workflow.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!existing) return c.json({ ok: false, error: 'Workflow not found' }, 404);

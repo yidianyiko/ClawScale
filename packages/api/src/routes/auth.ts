@@ -50,7 +50,7 @@ export const authRouter = new Hono()
   .post('/register', zValidator('json', registerSchema), async (c) => {
     const body = c.req.valid('json');
 
-    const slug = slugify(body.tenantSlug, { lower: true, strict: true });
+    const slug = (slugify as any)(body.tenantSlug, { lower: true, strict: true }) as string;
 
     const existing = await db.tenant.findUnique({ where: { slug } });
     if (existing) {

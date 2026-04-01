@@ -1,4 +1,5 @@
 export type MemberRole = 'admin' | 'member' | 'viewer';
+export type UserRole = MemberRole;
 
 /** Internal staff member who manages the bot via the dashboard */
 export interface Member {

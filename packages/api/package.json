@@ -17,6 +17,7 @@
     "@anthropic-ai/sdk": "^0.80.0",
     "@clawscale/shared": "workspace:*",
     "@grammyjs/runner": "^2.0.3",
+    "@hapi/boom": "9.1.4",
     "@hono/node-server": "^1.14.3",
     "@hono/zod-validator": "^0.4.3",
     "@langchain/core": "^1.1.36",

@@ -71,7 +71,7 @@ export const channelsRouter = new Hono()
         tenantId,
         type: body.type,
         name: body.name,
-        config: body.config,
+        config: body.config as any,
         status: 'disconnected',
       },
     });
@@ -85,7 +85,7 @@ export const channelsRouter = new Hono()
   // ── GET /api/channels/:id ────────────────────────────────────────────────────
   .get('/:id', requireAdmin, async (c) => {
     const { tenantId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     // Return config only on single-channel fetch (for editing)
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
@@ -97,7 +97,7 @@ export const channelsRouter = new Hono()
   // ── PATCH /api/channels/:id ──────────────────────────────────────────────────
   .patch('/:id', requireAdmin, zValidator('json', updateSchema), async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     const body = c.req.valid('json');
 
     const existing = await db.channel.findFirst({
@@ -107,7 +107,7 @@ export const channelsRouter = new Hono()
 
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
-    await db.channel.update({ where: { id }, data: body });
+    await db.channel.update({ where: { id }, data: body as any });
     await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
 
     // Reload in-memory config for adapters that cache it
@@ -125,7 +125,7 @@ export const channelsRouter = new Hono()
   // ── DELETE /api/channels/:id ─────────────────────────────────────────────────
   .delete('/:id', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const existing = await db.channel.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
@@ -165,7 +165,7 @@ export const channelsRouter = new Hono()
   // (e.g. set the webhook URL on the social platform to point at /gateway/:channelId).
   .post('/:id/connect', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
@@ -272,7 +272,7 @@ export const channelsRouter = new Hono()
   // ── POST /api/channels/:id/disconnect ───────────────────────────────────────
   .post('/:id/disconnect', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
@@ -334,7 +334,7 @@ export const channelsRouter = new Hono()
   // Poll this endpoint after connecting a WhatsApp channel to get the QR code.
   .get('/:id/qr', requireAdmin, async (c) => {
     const { tenantId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const channel = await db.channel.findFirst({ where: { id, tenantId }, select: { id: true, type: true } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);

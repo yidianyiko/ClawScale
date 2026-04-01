@@ -17,7 +17,7 @@ export async function audit(params: {
       action: params.action,
       resource: params.resource,
       resourceId: params.resourceId ?? null,
-      meta: params.meta ?? undefined,
+      meta: (params.meta ?? undefined) as any,
     },
   });
 }

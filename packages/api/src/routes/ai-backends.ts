@@ -79,7 +79,7 @@ export const aiBackendsRouter = new Hono()
   // ── GET /api/ai-backends/:id ─────────────────────────────────────────────────
   .get('/:id', requireAdmin, async (c) => {
     const { tenantId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     const backend = await db.aiBackend.findFirst({ where: { id, tenantId } });
     if (!backend) return c.json({ ok: false, error: 'AI backend not found' }, 404);
     return c.json({ ok: true, data: backend });
@@ -88,7 +88,7 @@ export const aiBackendsRouter = new Hono()
   // ── PATCH /api/ai-backends/:id ───────────────────────────────────────────────
   .patch('/:id', requireAdmin, zValidator('json', updateSchema), async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     const body = c.req.valid('json');
 
     const existing = await db.aiBackend.findFirst({ where: { id, tenantId } });
@@ -110,7 +110,7 @@ export const aiBackendsRouter = new Hono()
   // ── DELETE /api/ai-backends/:id ──────────────────────────────────────────────
   .delete('/:id', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
 
     const existing = await db.aiBackend.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'AI backend not found' }, 404);

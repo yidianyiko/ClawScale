@@ -51,7 +51,7 @@ export const tenantRouter = new Hono()
         const merged = { ...((updatedSettings.clawscale as Record<string, unknown>) ?? {}), ...clawscale };
         // Remove keys explicitly set to null (e.g. llm: null → delete llm)
         for (const key of Object.keys(merged)) {
-          if (merged[key] === null) delete merged[key];
+          if ((merged as any)[key] === null) delete (merged as any)[key];
         }
         updatedSettings.clawscale = merged;
       }

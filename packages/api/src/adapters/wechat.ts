@@ -42,7 +42,7 @@ export async function startWeChatBot(channelId: string, botId: string, secret: s
       });
       if (result?.reply) {
         const streamId = `stream_${Date.now()}`;
-        await client.replyStream(frame, streamId, result.reply, true);
+        await client.replyStream(frame as any, streamId, result.reply, true);
       }
     } catch (err) {
       console.error(`[wechat:${channelId}] Error routing message:`, err);

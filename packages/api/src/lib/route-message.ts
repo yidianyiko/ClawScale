@@ -102,7 +102,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 6. Persist inbound message
   await db.message.create({
-    data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: meta ?? {} },
+    data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: (meta ?? {}) as any },
   });
 
   // 7. Load backends and ClawScale config

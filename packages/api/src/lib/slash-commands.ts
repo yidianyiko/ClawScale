@@ -54,7 +54,7 @@ export function parseCommand(text: string): ParsedCommand | null {
   //    but only when ">" appears after a word at the start.
   const directMatch = trimmed.match(/^(.+?)>\s*([\s\S]*)$/);
   if (directMatch) {
-    const target = directMatch[1].trim().toLowerCase();
+    const target = directMatch[1]!.trim().toLowerCase();
     const message = (directMatch[2] ?? '').trim();
     // Avoid false positives: target must be non-empty and not look like
     // a comparison (e.g. "this is > than that" — target would be very long)
@@ -69,7 +69,7 @@ export function parseCommand(text: string): ParsedCommand | null {
   const slashMatch = trimmed.match(/^\/(\S+)(?:\s+([\s\S]+))?$/);
   if (!slashMatch) return null;
 
-  const cmd = slashMatch[1].toLowerCase();
+  const cmd = slashMatch[1]!.toLowerCase();
   const arg = (slashMatch[2] ?? '').trim();
 
   if (SYSTEM_COMMANDS.has(cmd as CommandType)) {
@@ -157,7 +157,7 @@ export function resolveTarget(
   // Prefix match (unambiguous only)
   const prefixMatches = backends.filter((b) => b.name.toLowerCase().startsWith(target));
   if (prefixMatches.length === 1) {
-    return { type: 'backend', backendId: prefixMatches[0].id, backendName: prefixMatches[0].name };
+    return { type: 'backend', backendId: prefixMatches[0]!.id, backendName: prefixMatches[0]!.name };
   }
 
   return { type: 'not_found' };
@@ -175,7 +175,7 @@ export function resolveAddRemoveArg(
   const num = parseInt(arg, 10);
   if (!isNaN(num) && num >= 1 && num <= backends.length) {
     const b = backends[num - 1];
-    return { type: 'backend', backendId: b.id, backendName: b.name };
+    return { type: 'backend', backendId: b!.id, backendName: b!.name };
   }
 
   // Fall back to name resolution (without "clawscale" as valid target)
@@ -196,7 +196,7 @@ export function resolveAddRemoveArg(
 
   const prefixMatches = backends.filter((b) => b.name.toLowerCase().startsWith(target));
   if (prefixMatches.length === 1) {
-    return { type: 'backend', backendId: prefixMatches[0].id, backendName: prefixMatches[0].name };
+    return { type: 'backend', backendId: prefixMatches[0]!.id, backendName: prefixMatches[0]!.name };
   }
 
   return { type: 'not_found' };

@@ -146,11 +146,12 @@ async function loginFlow(channelId: string): Promise<void> {
 // ── Message poll loop ─────────────────────────────────────────────────────────
 
 async function pollLoop(channelId: string, baseUrl: string, token: string): Promise<void> {
-  let state = channels.get(channelId);
-  if (!state) {
-    state = { running: true, cursor: '', qr: null, status: 'connected' };
-    channels.set(channelId, state);
+  let existing = channels.get(channelId);
+  if (!existing) {
+    existing = { running: true, cursor: '', qr: null, qrUrl: null, status: 'connected' };
+    channels.set(channelId, existing);
   }
+  const state = existing;
   state.status = 'connected';
 
   while (state.running) {
