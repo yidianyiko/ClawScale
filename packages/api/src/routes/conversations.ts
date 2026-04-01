@@ -22,7 +22,7 @@ export const conversationsRouter = new Hono()
         createdAt: true,
         updatedAt: true,
         endUser: {
-          select: { id: true, externalId: true, name: true, email: true, status: true },
+          select: { id: true, externalId: true, name: true, email: true, status: true, linkedTo: true },
         },
         channel: {
           select: { id: true, name: true, type: true },

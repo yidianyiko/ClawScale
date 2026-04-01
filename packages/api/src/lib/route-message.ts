@@ -194,9 +194,16 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   }
 
   async function routeToBackends(backends: typeof allBackends): Promise<RouteResult> {
+    const primaryEndUserId = endUser!.linkedTo ?? endUser!.id;
+    const palmosCtx = {
+      endUserId: primaryEndUserId,
+      tenantId,
+      conversationId: conversation!.id,
+      displayName: endUser!.name ?? displayName,
+    };
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, conversation!.id);
+        const replyText = await runBackend(backend, conversation!.id, palmosCtx);
         return { backend, replyText };
       }),
     );
@@ -311,6 +318,81 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           await db.message.deleteMany({ where: { conversationId: conversation.id } });
           return reply('✅ Conversation context cleared.');
         }
+
+        case 'link': {
+          if (!cmd.arg) {
+            // Generate a link code
+            const code = String(Math.floor(100000 + Math.random() * 900000));
+            await db.linkCode.create({
+              data: {
+                code,
+                tenantId,
+                endUserId: endUser!.id,
+                expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+              },
+            });
+            return reply(`Your link code: **${code}**\n\nEnter this code from your other channel within 10 minutes:\n\`/link ${code}\``);
+          }
+
+          // Consume a link code
+          const linkCode = await db.linkCode.findFirst({
+            where: {
+              code: cmd.arg,
+              used: false,
+              tenantId,
+              expiresAt: { gt: new Date() },
+            },
+            include: { endUser: true },
+          });
+
+          if (!linkCode) {
+            return reply('Invalid or expired link code.');
+          }
+          if (linkCode.endUserId === endUser!.id) {
+            return reply("You can't link to yourself.");
+          }
+
+          // Resolve primary: if source is already linked, follow to its primary
+          const primaryId = linkCode.endUser.linkedTo ?? linkCode.endUserId;
+
+          // Set current EndUser's linkedTo
+          await db.endUser.update({
+            where: { id: endUser!.id },
+            data: { linkedTo: primaryId },
+          });
+
+          // Mark code as used
+          await db.linkCode.update({
+            where: { id: linkCode.id },
+            data: { used: true },
+          });
+
+          // Copy active backends from primary
+          const primaryBackends = await db.endUserBackend.findMany({
+            where: { endUserId: primaryId },
+          });
+          for (const pb of primaryBackends) {
+            await db.endUserBackend.upsert({
+              where: { endUserId_backendId: { endUserId: endUser!.id, backendId: pb.backendId } },
+              create: { endUserId: endUser!.id, backendId: pb.backendId },
+              update: {},
+            });
+          }
+
+          const sourceName = linkCode.endUser.name ?? linkCode.endUser.externalId;
+          return reply(`✅ Linked to *${sourceName}*'s account. Your identities are now connected across channels.`);
+        }
+
+        case 'unlink': {
+          if (!endUser!.linkedTo) {
+            return reply('This channel is not linked to another account.');
+          }
+          await db.endUser.update({
+            where: { id: endUser!.id },
+            data: { linkedTo: null },
+          });
+          return reply('✅ Unlinked. This channel now has its own separate identity.');
+        }
       }
     }
 
@@ -397,11 +479,16 @@ async function loadHistory(conversationId: string, backendId: string) {
 async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationId: string,
+  palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
 ): Promise<string> {
   const history = await loadHistory(conversationId, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   return generateReply({
-    backend: { type: backend.type as AiBackendType, config: cfg },
+    backend: {
+      type: backend.type as AiBackendType,
+      config: cfg,
+      ...(backend.type === 'palmos' && palmosCtx ? { palmosCtx } : {}),
+    },
     history,
   });
 }

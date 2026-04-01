@@ -19,7 +19,7 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CommandType = 'backends' | 'clear' | 'team' | 'help';
+export type CommandType = 'backends' | 'clear' | 'team' | 'help' | 'link' | 'unlink';
 
 export interface SystemCommand {
   kind: 'system';
@@ -40,7 +40,7 @@ export type ParsedCommand = SystemCommand | DirectMessage;
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
-const SYSTEM_COMMANDS = new Set<CommandType>(['backends', 'clear', 'team', 'help']);
+const SYSTEM_COMMANDS = new Set<CommandType>(['backends', 'clear', 'team', 'help', 'link', 'unlink']);
 
 /**
  * Parse user text for commands.
@@ -90,6 +90,9 @@ export const COMMAND_REFERENCE = [
   { command: '/team kick <name|#>', description: 'kick an agent from your team' },
   { command: '/team kick', description: 'kick all agents' },
   { command: '/clear', description: 'clear conversation context' },
+  { command: '/link', description: 'generate a link code for this channel' },
+  { command: '/link <code>', description: 'link this channel to another using a code' },
+  { command: '/unlink', description: 'remove the link from this channel' },
   { command: '/help', description: 'show all commands' },
 ] as const;
 

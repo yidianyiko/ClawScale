@@ -149,10 +149,16 @@ model EndUser {
   createdAt  DateTime      @default(now()) @map("created_at")
   updatedAt  DateTime      @updatedAt @map("updated_at")
 
+  /// When set, this EndUser defers to the primary EndUser for cross-channel identity.
+  linkedTo      String?   @map("linked_to")
+
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  linkedPrimary   EndUser?       @relation("EndUserLink", fields: [linkedTo], references: [id], onDelete: SetNull)
+  linkedFrom      EndUser[]      @relation("EndUserLink")
   conversations   Conversation[]
   activeBackends  EndUserBackend[]
+  linkCodes       LinkCode[]
 
   @@unique([tenantId, channelId, externalId])
   @@index([tenantId])
@@ -277,4 +283,20 @@ model AuditLog {
 
   @@index([tenantId])
   @@map("audit_logs")
+}
+
+/// Short-lived codes for cross-channel account linking.
+model LinkCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  tenantId  String   @map("tenant_id")
+  endUserId String   @map("end_user_id")
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  endUser EndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@index([code, used])
+  @@map("link_codes")
 }
