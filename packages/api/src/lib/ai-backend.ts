@@ -186,7 +186,7 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
     // ── Palmos: POST messages, SSE stream response ─────────────────────
     case 'palmos': {
       if (!cfg.apiKey) throw new Error('Palmos backend: apiKey is required');
-      const baseUrl = (cfg.baseUrl ?? 'https://pulse-editor.com').replace(/\/$/, '');
+      const baseUrl = (process.env.PALMOS_BASE_URL ?? cfg.baseUrl ?? 'https://pulse-editor.com').replace(/\/$/, '');
       const palmosHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cfg.apiKey}`,
