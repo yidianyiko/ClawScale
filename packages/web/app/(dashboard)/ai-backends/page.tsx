@@ -127,6 +127,7 @@ export default function AiBackendsPage() {
   // ── ClawScale settings ────────────────────────────────────────────────────────
 
   const [inlineModel, setInlineModel] = useState('');
+  const [inlineApiKey, setInlineApiKey] = useState('');
   const [savingInlineModel, setSavingInlineModel] = useState(false);
 
   async function saveInlineModel() {
@@ -134,12 +135,12 @@ export default function AiBackendsPage() {
     setSavingInlineModel(true);
     try {
       const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
-        settings: { clawscale: { ...clawscale, llm: { model: inlineModel.trim() } } },
+        settings: { clawscale: { ...clawscale, llm: { model: inlineModel.trim(), ...(inlineApiKey.trim() ? { apiKey: inlineApiKey.trim() } : {}) } } },
       });
       if (res.ok) {
         const cfg = (res.data.settings as { clawscale?: ClawScaleAgentSettings }).clawscale ?? {};
         setClawscale(cfg); setClawscaleForm(cfg);
-        setInlineModel('');
+        setInlineModel(''); setInlineApiKey('');
       }
     } finally { setSavingInlineModel(false); }
   }
@@ -159,8 +160,14 @@ export default function AiBackendsPage() {
     setClawscaleError('');
     setSavingClawscale(true);
     try {
+      const payload = { ...clawscaleForm };
+      if (payload.llm) {
+        const { apiKey, ...llmRest } = payload.llm as { model: string; apiKey?: string };
+        // Only send apiKey if user entered a new value (not masked placeholder)
+        payload.llm = apiKey && apiKey !== '••••••••' ? { ...llmRest, apiKey } : llmRest;
+      }
       const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
-        settings: { clawscale: clawscaleForm },
+        settings: { clawscale: payload },
       });
       if (!res.ok) { setClawscaleError((res as { error: string }).error); return; }
       const cfg = (res.data.settings as { clawscale?: ClawScaleAgentSettings }).clawscale ?? {};
@@ -212,37 +219,53 @@ export default function AiBackendsPage() {
                   <span>Selection prompt is locked — name, visibility, and answer style can be changed.</span>
                 </div>
                 {clawscale.llm?.model ? (
-                  <div className="mt-2 flex items-center gap-2">
-                    <p className="text-xs text-gray-500 font-mono">Model: {clawscale.llm.model}</p>
-                    {isAdmin && (
-                      <button
-                        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                        title="Clear model"
-                        onClick={clearModel}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-gray-500 font-mono">Model: {clawscale.llm.model}</p>
+                      {isAdmin && (
+                        <button
+                          className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                          title="Clear model"
+                          onClick={clearModel}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      API key: {clawscale.llm.apiKey ? <span className="text-emerald-600">configured</span> : <span className="text-amber-600">not set</span>}
+                    </p>
                   </div>
                 ) : (
                   <div className="mt-2">
                     <p className="text-xs text-amber-600 mb-1.5">No LLM configured — agent will not respond to messages.</p>
                     {isAdmin && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          className="input font-mono text-xs py-1 px-2 flex-1 max-w-xs"
-                          placeholder="openai:gpt-5.4-mini"
-                          value={inlineModel}
-                          onChange={(e) => setInlineModel(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveInlineModel(); } }}
-                        />
-                        <button
-                          className="btn-primary text-xs py-1 px-3"
-                          disabled={!inlineModel.trim() || savingInlineModel}
-                          onClick={saveInlineModel}
-                        >
-                          {savingInlineModel ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Set'}
-                        </button>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="input font-mono text-xs py-1 px-2 flex-1 max-w-xs"
+                            placeholder="openai:gpt-5.4-mini"
+                            value={inlineModel}
+                            onChange={(e) => setInlineModel(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="input font-mono text-xs py-1 px-2 flex-1 max-w-xs"
+                            type="password"
+                            placeholder="API key (sk-...)"
+                            value={inlineApiKey}
+                            onChange={(e) => setInlineApiKey(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveInlineModel(); } }}
+                          />
+                          <button
+                            className="btn-primary text-xs py-1 px-3"
+                            disabled={!inlineModel.trim() || savingInlineModel}
+                            onClick={saveInlineModel}
+                          >
+                            {savingInlineModel ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Set'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -310,6 +333,24 @@ export default function AiBackendsPage() {
                 <p className="text-xs text-gray-400 mt-1">
                   LangChain model string. Examples: openai:gpt-5.4-mini, anthropic:claude-haiku-4-5-20251001, openrouter:openai/gpt-4o
                 </p>
+              </div>
+
+              <div>
+                <label className="label">
+                  API Key
+                  <span className="text-gray-400 font-normal ml-1">(required)</span>
+                </label>
+                <input
+                  className="input font-mono text-xs"
+                  type="password"
+                  placeholder={clawscale.llm?.apiKey ? '••••••••••••••••' : 'sk-...'}
+                  value={clawscaleForm.llm?.apiKey === '••••••••' ? '' : (clawscaleForm.llm?.apiKey ?? '')}
+                  onChange={(e) => setClawscaleForm((f) => ({
+                    ...f,
+                    llm: { ...f.llm, model: f.llm?.model ?? 'openai:gpt-5.4-mini', apiKey: e.target.value || undefined },
+                  }))}
+                />
+                {clawscale.llm?.apiKey && <p className="text-xs text-emerald-600 mt-1">API key is saved. Enter a new value to replace it.</p>}
               </div>
 
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">

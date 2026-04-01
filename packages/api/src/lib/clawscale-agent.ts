@@ -11,7 +11,7 @@
  *   - Falls back to a simple rule-based agent when no LLM is configured
  */
 
-import { createAgent, tool } from 'langchain';
+import { createAgent, initChatModel, tool } from 'langchain';
 import { z } from 'zod/v4';
 import { commandList, commandSummary } from './slash-commands.js';
 
@@ -87,8 +87,8 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     return '';
   }
 
-  if (!ctx.llmConfig) {
-    return 'ClawScale agent is not configured. Ask your admin to set up an LLM in the dashboard.';
+  if (!ctx.llmConfig || !ctx.llmConfig.apiKey) {
+    return 'ClawScale assistant is not fully configured yet. Please go to the admin dashboard → Settings to set up your AI model and API key.';
   }
 
   // Build the run_command tool with the executeCommand callback
@@ -111,12 +111,15 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     },
   );
 
+  const model = await initChatModel(ctx.llmConfig.model, {
+    ...(ctx.llmConfig.apiKey && { apiKey: ctx.llmConfig.apiKey }),
+  });
+
   const agent = createAgent({
-    model: ctx.llmConfig.model,
+    model,
     tools: [runCommand],
     systemPrompt: buildSystemPrompt(ctx),
     name: 'clawscale_agent',
-    ...(ctx.llmConfig.apiKey && { apiKey: ctx.llmConfig.apiKey }),
   });
 
   try {
