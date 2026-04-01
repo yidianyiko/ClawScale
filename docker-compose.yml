@@ -1,57 +1,41 @@
-version: '3.9'
-
 services:
-  postgres:
-    image: postgres:16-alpine
+  db:
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: clawscale
       POSTGRES_PASSWORD: clawscale
       POSTGRES_DB: clawscale
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U clawscale']
+      test: ["CMD-SHELL", "pg_isready -U clawscale"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
-  api:
-    build:
-      context: .
-      dockerfile: packages/api/Dockerfile
+  app:
+    build: .
     restart: unless-stopped
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
+    ports:
+      - "4040:4040"
+      - "4041:4041"
     environment:
-      DATABASE_PROVIDER: postgresql
-      DATABASE_URL: postgresql://clawscale:clawscale@postgres:5432/clawscale
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      PORT: 4041
+      DATABASE_URL: postgresql://clawscale:clawscale@db:5432/clawscale
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-in-production}
       HOST: 0.0.0.0
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4040}
-      OPENCLAW_DATA_DIR: /data/tenants
-    ports:
-      - '4041:4041'
-    volumes:
-      - tenant_data:/data/tenants
-
-  web:
-    build:
-      context: .
-      dockerfile: packages/web/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4041}
-    restart: unless-stopped
-    depends_on:
-      - api
-    ports:
-      - '4040:4040'
+      PORT: 4041
+      CORS_ORIGIN: http://localhost:4040
+      NEXT_PUBLIC_API_URL: http://localhost:4041
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    env_file:
+      - path: .env
+        required: false
 
 volumes:
-  postgres_data:
-  tenant_data:
+  pgdata:
