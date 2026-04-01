@@ -4,9 +4,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @clawscale/api db:generate
-RUN pnpm --filter @clawscale/api build
-RUN pnpm --filter @clawscale/web build
+RUN pnpm run build
 
 ENV NODE_ENV=production
 
