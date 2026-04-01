@@ -53,7 +53,7 @@ export const tenantRouter = new Hono()
         const merged = { ...existing, ...clawscale };
         // Deep-merge llm so partial updates (e.g. model only) don't wipe apiKey
         if (clawscale.llm && typeof clawscale.llm === 'object' && existing.llm && typeof existing.llm === 'object') {
-          merged.llm = { ...(existing.llm as Record<string, unknown>), ...(clawscale.llm as Record<string, unknown>) };
+          merged.llm = { ...(existing.llm as Record<string, unknown>), ...(clawscale.llm as Record<string, unknown>) } as typeof clawscale.llm;
         }
         // Remove keys explicitly set to null (e.g. llm: null → delete llm)
         for (const key of Object.keys(merged)) {
