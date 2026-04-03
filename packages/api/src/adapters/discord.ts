@@ -41,7 +41,7 @@ export async function startDiscordBot(channelId: string, botToken: string): Prom
         externalId: message.author.id,
         displayName: message.author.username,
         text: message.content,
-        meta: { guildId: message.guildId ?? null, channelId: message.channelId, messageId: message.id },
+        meta: { platform: 'discord', guildId: message.guildId ?? null, channelId: message.channelId, messageId: message.id },
       });
       if (result?.reply) await message.reply(result.reply);
     } catch (err) {

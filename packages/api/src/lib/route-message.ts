@@ -43,6 +43,9 @@ export interface RouteResult {
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, meta } = input;
 
+  const platform = (meta?.platform as string) ?? 'unknown';
+  console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
+
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
     where: { id: channelId },

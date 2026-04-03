@@ -148,10 +148,19 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+const CONNECTION_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET']);
+
+function isConnectionError(err: unknown): string | null {
+  const code = (err as { cause?: { code?: string } })?.cause?.code
+    ?? (err as { code?: string })?.code;
+  return code && CONNECTION_ERROR_CODES.has(code) ? code : null;
+}
+
 export async function generateReply(options: GenerateOptions): Promise<string> {
   const { backend, history } = options;
   const { type, config: cfg } = backend;
 
+  try {
   switch (type) {
     // ── LLM: OpenAI-compatible Chat Completions ────────────────────────
     case 'llm': {
@@ -292,5 +301,13 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
 
     default:
       throw new Error(`Unknown AI backend type: ${type}`);
+  }
+  } catch (err: unknown) {
+    const code = isConnectionError(err);
+    if (code) {
+      console.warn(`[${type}] Backend unavailable (${code}), skipping`);
+      return `⚠️ The ${type} backend is currently unavailable (${code}). Please try again later.`;
+    }
+    throw err;
   }
 }
