@@ -145,6 +145,15 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
    * Slash commands are executed via a callback that re-enters routeInboundMessage.
    */
   async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
+    // If attachments are present but multimodal is not enabled, nudge the admin
+    if (attachments?.length && !clawscaleLlm?.multimodal) {
+      return reply(
+        `I received your ${attachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
+        'Ask your admin to enable **multimodal input** in the ClawScale dashboard:\n' +
+        '**Settings → ClawScale Assistant → Enable multimodal input**',
+      );
+    }
+
     const agentHistory = await loadHistory(historyConvIds, null);
     const agentReply = await runClawscaleAgent({
       text: userText,
@@ -153,6 +162,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       personaName: clawscaleName,
       mode,
       history: agentHistory,
+      attachments,
       ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
       ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
       executeCommand: async (command) => {

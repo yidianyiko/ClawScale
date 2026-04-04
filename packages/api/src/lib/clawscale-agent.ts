@@ -26,6 +26,15 @@ export interface AgentLlmConfig {
   model: string;
   /** API key for the LLM provider */
   apiKey?: string;
+  /** Enable multimodal input (images, files, audio) */
+  multimodal?: boolean;
+}
+
+interface HistoryAttachment {
+  url: string;
+  filename: string;
+  contentType: string;
+  size?: number;
 }
 
 export interface AgentContext {
@@ -37,7 +46,9 @@ export interface AgentContext {
   answerStyle?: string;
   llmConfig?: AgentLlmConfig;
   /** Prior conversation history for context continuity. */
-  history?: { role: 'user' | 'assistant'; content: string }[];
+  history?: { role: 'user' | 'assistant'; content: string; attachments?: HistoryAttachment[] }[];
+  /** Attachments on the current inbound message. */
+  attachments?: HistoryAttachment[];
   /** Callback to execute a slash command. Returns the command's output text. */
   executeCommand: (command: string) => Promise<string>;
 }
@@ -125,12 +136,29 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
   });
 
   try {
+    const multimodal = ctx.llmConfig.multimodal === true;
+
+    function buildContent(text: string, attachments?: HistoryAttachment[]): string | any[] {
+      const imageAttachments = attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
+      if (!multimodal || imageAttachments.length === 0) return text;
+      const parts: any[] = [];
+      if (text) parts.push({ type: 'text', text });
+      for (const att of imageAttachments) {
+        parts.push({ type: 'image_url', image_url: { url: att.url } });
+      }
+      const nonImage = attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
+      if (nonImage.length > 0) {
+        parts.push({ type: 'text', text: nonImage.map((a) => `[Attached: ${a.filename} (${a.contentType})]`).join('\n') });
+      }
+      return parts;
+    }
+
     const historyMessages = (ctx.history ?? []).map((m) => ({
       role: m.role,
-      content: m.content,
+      content: buildContent(m.content, m.attachments),
     }));
     const result = await agent.invoke({
-      messages: [...historyMessages, { role: 'user', content: ctx.text }],
+      messages: [...historyMessages, { role: 'user', content: buildContent(ctx.text, ctx.attachments) }],
     });
 
     // Extract the last assistant message

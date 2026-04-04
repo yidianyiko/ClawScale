@@ -24,6 +24,7 @@ export default function Settings() {
   const [clawscaleModel, setClawscaleModel] = useState('openai:gpt-5.4-mini');
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
   const [apiKeySet, setApiKeySet] = useState(false);
+  const [clawscaleMultimodal, setClawscaleMultimodal] = useState(false);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -36,6 +37,7 @@ export default function Settings() {
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
         setApiKeySet(!!s.clawscale?.llm?.apiKey && s.clawscale.llm.apiKey !== '');
+        setClawscaleMultimodal(s.clawscale?.llm?.multimodal ?? false);
       }
       setLoading(false);
     });
@@ -52,6 +54,7 @@ export default function Settings() {
             llm: {
               model: clawscaleModel,
               ...(clawscaleApiKey ? { apiKey: clawscaleApiKey } : {}),
+              multimodal: clawscaleMultimodal,
             },
           },
         },
@@ -123,6 +126,13 @@ export default function Settings() {
               <input className="input font-mono text-xs" type="password" placeholder={apiKeySet ? '••••••••••••••••' : 'sk-...'} value={clawscaleApiKey} onChange={(e) => setClawscaleApiKey(e.target.value)} disabled={!isAdmin} />
               {apiKeySet && !clawscaleApiKey && <p className="text-xs text-emerald-600 mt-1">API key is saved. Enter a new value to replace it.</p>}
             </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={clawscaleMultimodal} onChange={(e) => setClawscaleMultimodal(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
+              <span>
+                <span className="text-sm font-medium text-gray-900">Enable multimodal input</span>
+                <span className="text-xs text-gray-500 block">Allow the assistant to process images, files, and audio sent by users. Requires a vision-capable model (e.g. GPT-4o, Claude Sonnet).</span>
+              </span>
+            </label>
           </div>
         </div>
 
