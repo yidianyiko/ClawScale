@@ -9,6 +9,7 @@
 import * as line from '@line/bot-sdk';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 interface LineBot {
   client: line.messagingApi.MessagingApiClient;
@@ -46,18 +47,44 @@ export async function handleLineEvents(channelId: string, events: line.WebhookEv
   const bot = bots.get(channelId);
   if (!bot) return;
 
+  const CONTENT_TYPE_MAP: Record<string, string> = {
+    image: 'image/jpeg',
+    video: 'video/mp4',
+    audio: 'audio/m4a',
+    file: 'application/octet-stream',
+  };
+
   for (const event of events) {
     if (event.type !== 'message') continue;
-    if (event.message.type !== 'text') continue;
+    const msgType = event.message.type;
 
-    const text = event.message.text.trim();
+    let text = '';
+    let attachments: Attachment[] | undefined;
+
+    if (msgType === 'text') {
+      text = (event.message as line.TextEventMessage).text.trim();
+    } else if (['image', 'video', 'audio', 'file'].includes(msgType)) {
+      const messageId = event.message.id;
+      const contentType = CONTENT_TYPE_MAP[msgType] ?? 'application/octet-stream';
+      const filename = (event.message as any).fileName ?? `${msgType}_${messageId}`;
+      // LINE content download URL via Messaging API
+      attachments = [{
+        url: `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+        filename,
+        contentType,
+      }];
+      text = '(attachment)';
+    } else {
+      continue;
+    }
+
     const externalId = event.source.userId ?? 'unknown';
     const replyToken = event.replyToken;
 
-    console.log(`[line:${channelId}] Incoming from ${externalId}: "${text}"`);
+    console.log(`[line:${channelId}] Incoming from ${externalId}: "${text}"${attachments?.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
     try {
-      const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'line' } });
+      const result = await routeInboundMessage({ channelId, externalId, text, attachments, meta: { platform: 'line' } });
       if (result?.reply) {
         await bot.client.replyMessage({
           replyToken,

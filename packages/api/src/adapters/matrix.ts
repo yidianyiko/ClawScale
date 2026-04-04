@@ -6,6 +6,7 @@
 import sdk from 'matrix-js-sdk';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const clients = new Map<string, ReturnType<typeof sdk.createClient>>();
 
@@ -20,17 +21,47 @@ export async function startMatrixBot(channelId: string, homeserverUrl: string, a
     if (event.isEncrypted()) return; // skip encrypted for now
 
     const content = event.getContent();
-    if (content.msgtype !== 'm.text') return;
+    const msgtype = content.msgtype as string;
 
-    const text = (content.body as string)?.trim();
-    if (!text) return;
+    const MEDIA_TYPES: Record<string, string> = {
+      'm.image': 'image/jpeg',
+      'm.file': 'application/octet-stream',
+      'm.audio': 'audio/ogg',
+      'm.video': 'video/mp4',
+    };
+
+    let text = '';
+    let attachments: Attachment[] | undefined;
+
+    if (msgtype === 'm.text') {
+      text = (content.body as string)?.trim() ?? '';
+    } else if (msgtype in MEDIA_TYPES) {
+      text = (content.body as string)?.trim() || `(${msgtype.replace('m.', '')})`;
+      const mxcUrl = content.url as string | undefined;
+      if (mxcUrl) {
+        // Convert mxc://server/mediaId to HTTP download URL
+        const httpUrl = client.mxcUrlToHttp(mxcUrl) ?? mxcUrl;
+        attachments = [{
+          url: httpUrl,
+          filename: (content.filename as string) ?? (content.body as string) ?? 'file',
+          contentType: (content.info as any)?.mimetype ?? MEDIA_TYPES[msgtype],
+          size: (content.info as any)?.size,
+        }];
+      }
+    } else {
+      return;
+    }
+
+    if (!text && !attachments?.length) return;
 
     const externalId = event.getSender() ?? 'unknown';
-    console.log(`[matrix:${channelId}] Incoming from ${externalId}: "${text}"`);
+    console.log(`[matrix:${channelId}] Incoming from ${externalId}: "${text}"${attachments?.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
     try {
       const result = await routeInboundMessage({
-        channelId, externalId, text,
+        channelId, externalId,
+        text: text || '(attachment)',
+        attachments,
         meta: { platform: 'matrix', roomId: room?.roomId },
       });
       if (result?.reply && room) await client.sendTextMessage(room.roomId, result.reply);

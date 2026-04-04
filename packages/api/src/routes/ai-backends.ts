@@ -6,7 +6,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 
-const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'claude-code', 'custom', 'local-bridge'] as const;
+const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'claude-code', 'custom', 'cli-bridge'] as const;
 
 const configSchema = z.object({
   apiKey:         z.string().optional(),
@@ -69,8 +69,8 @@ export const aiBackendsRouter = new Hono()
     }
 
     const id = generateId('aib');
-    // Auto-generate bridge token for local-bridge backends
-    const config = body.type === 'local-bridge'
+    // Auto-generate bridge token for cli-bridge backends
+    const config = body.type === 'cli-bridge'
       ? { ...body.config, bridgeToken: body.config.bridgeToken || generateId('brg') }
       : body.config;
     await db.aiBackend.create({

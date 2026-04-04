@@ -1,5 +1,5 @@
 /**
- * WebSocket bridge endpoint for local-bridge backends.
+ * WebSocket bridge endpoint for cli-bridge backends.
  *
  * Local bridge clients connect via WebSocket to /bridge, authenticate with
  * a bridge token, and then exchange messages with ClawScale.
@@ -56,7 +56,7 @@ function handleConnection(ws: WebSocket): void {
 
       // Look up backend by bridge token
       const backends = await db.aiBackend.findMany({
-        where: { type: 'local-bridge' },
+        where: { type: 'cli-bridge' },
         select: { id: true, config: true, tenantId: true, name: true },
       });
 

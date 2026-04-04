@@ -19,11 +19,19 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
+export interface Attachment {
+  url: string;
+  filename: string;
+  contentType: string;
+  size?: number;
+}
+
 export interface InboundMessage {
   channelId: string;
   externalId: string;
   displayName?: string;
   text: string;
+  attachments?: Attachment[];
   meta?: Record<string, unknown>;
 }
 
@@ -41,7 +49,7 @@ export interface RouteResult {
 }
 
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
-  const { channelId, externalId, displayName, text, meta } = input;
+  const { channelId, externalId, displayName, text, attachments, meta } = input;
 
   const platform = (meta?.platform as string) ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
@@ -105,7 +113,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 6. Persist inbound message
   await db.message.create({
-    data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: (meta ?? {}) as any },
+    data: {
+      id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text,
+      metadata: { ...(meta ?? {}), ...(attachments?.length ? { attachments } : {}) } as any,
+    },
   });
 
   // 6b. Resolve all conversation IDs for linked accounts (cross-channel history)
@@ -557,9 +568,13 @@ async function loadHistory(conversationIds: string | string[], backendId: string
     },
     orderBy: { createdAt: 'asc' },
     take: 50,
-    select: { role: true, content: true },
+    select: { role: true, content: true, metadata: true },
   });
-  return msgs.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+  return msgs.map((m) => {
+    const meta = m.metadata as Record<string, unknown> | null;
+    const attachments = (meta?.attachments as Attachment[] | undefined) ?? undefined;
+    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments?.length ? { attachments } : {}) };
+  });
 }
 
 /** Get all conversation IDs for a linked user group (primary + all linked accounts). */
@@ -594,7 +609,7 @@ async function runBackend(
 ): Promise<string> {
   const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
-  // Pass backend ID through for local-bridge WebSocket lookup
+  // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
   return generateReply({
     backend: {

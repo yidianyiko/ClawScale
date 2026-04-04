@@ -13,9 +13,13 @@
  *   POST /ilink/bot/sendmessage
  */
 
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import qrcode from 'qrcode';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 
@@ -42,6 +46,55 @@ function msgHeaders(token: string, body?: string): Record<string, string> {
   };
   if (body !== undefined) headers['Content-Length'] = String(Buffer.byteLength(body, 'utf-8'));
   return headers;
+}
+
+/**
+ * Download and decrypt WeChat CDN media.
+ * CDN content is AES-128-ECB encrypted; `encrypt_query_param` is the download URL,
+ * `aes_key` is the base64-encoded 16-byte key.
+ * Returns a data: URL with the decrypted content.
+ */
+/**
+ * Download and decrypt WeChat CDN media.
+ * Content is AES-128-ECB encrypted. The key is a 32-char hex string.
+ * Returns a data: URL with the decrypted content.
+ */
+const MEDIA_DIR = path.join(process.cwd(), 'data', 'weixin-media');
+fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
+/**
+ * Download and decrypt WeChat CDN media.
+ * Content is AES-128-ECB encrypted. The key is a 32-char hex string.
+ * Saves decrypted file to data/weixin-media/ and returns the local file path.
+ */
+async function downloadCdnMedia(
+  cdnUrl: string,
+  aesKeyHex: string,
+  filename: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) {
+      console.error(`[weixin] CDN download failed: ${res.status}`);
+      return null;
+    }
+
+    const encrypted = Buffer.from(await res.arrayBuffer());
+    const key = Buffer.from(aesKeyHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-128-ecb', key, null);
+    decipher.setAutoPadding(true);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+
+    const uniqueName = `${Date.now()}_${filename}`;
+    const filePath = path.join(MEDIA_DIR, uniqueName);
+    fs.writeFileSync(filePath, decrypted);
+    console.log(`[weixin] Saved media: ${filePath} (${decrypted.length} bytes)`);
+
+    return filePath;
+  } catch (err) {
+    console.error('[weixin] CDN media decrypt error:', err);
+    return null;
+  }
 }
 
 // ── QR Login ──────────────────────────────────────────────────────────────────
@@ -163,11 +216,29 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
         signal: AbortSignal.timeout(40_000),
       });
 
+      interface CDNMediaRef {
+        encrypt_query_param?: string;
+        aes_key?: string;
+        full_url?: string;
+      }
+
+      interface MediaItem {
+        aeskey?: string;
+        media?: CDNMediaRef;
+      }
+
       const data = (await res.json()) as {
         msgs?: Array<{
           from_user_id?: string;
           context_token?: string;
-          item_list?: Array<{ type?: number; text_item?: { text?: string } }>;
+          item_list?: Array<{
+            type?: number;
+            text_item?: { text?: string };
+            image_item?: MediaItem & { hd_size?: number };
+            voice_item?: MediaItem & { duration_ms?: number; text?: string };
+            file_item?: MediaItem & { file_name?: string; file_size?: number; len?: string };
+            video_item?: MediaItem & { duration_ms?: number };
+          }>;
         }>;
         get_updates_buf?: string;
       };
@@ -175,16 +246,76 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
       if (data.get_updates_buf) state.cursor = data.get_updates_buf;
 
       for (const msg of data.msgs ?? []) {
-        const text = msg.item_list?.find((i) => i.type === 1)?.text_item?.text?.trim();
-        if (!text || !msg.from_user_id) continue;
+        if (!msg.from_user_id) continue;
 
-        console.log(`[weixin:${channelId}] Incoming from ${msg.from_user_id}: "${text}"`);
+        // Debug: log raw item_list to see what the API actually sends
+        console.log(`[weixin:${channelId}] Raw item_list:`, JSON.stringify(msg.item_list));
+
+        let text = msg.item_list?.find((i) => i.type === 1)?.text_item?.text?.trim() ?? '';
+
+        // Use voice transcription as text if no text message was sent
+        if (!text) {
+          const voiceText = msg.item_list?.find((i) => i.type === 3)?.voice_item?.text?.trim();
+          if (voiceText) text = voiceText;
+        }
+
+        // Download and decrypt CDN media (type 2=IMAGE, 3=VOICE, 4=FILE, 5=VIDEO)
+        const attachments: Attachment[] = [];
+        const MEDIA_MAP: Record<number, { filename: string; contentType: string }> = {
+          2: { filename: 'image.jpg', contentType: 'image/jpeg' },
+          3: { filename: 'voice.silk', contentType: 'audio/silk' },
+          4: { filename: 'file', contentType: 'application/octet-stream' },
+          5: { filename: 'video.mp4', contentType: 'video/mp4' },
+        };
+
+        for (const item of msg.item_list ?? []) {
+          const mediaMeta = MEDIA_MAP[item.type ?? 0];
+          if (!mediaMeta) continue;
+
+          const itemKey = item.type === 2 ? 'image_item' :
+                          item.type === 3 ? 'voice_item' :
+                          item.type === 4 ? 'file_item' : 'video_item';
+          const cdnItem = item[itemKey as keyof typeof item] as MediaItem & { file_name?: string; file_size?: number } | undefined;
+          if (!cdnItem) continue;
+
+          const cdnUrl = cdnItem.media?.full_url;
+          // aeskey can be at top level (hex) or only in media.aes_key (base64 of hex)
+          let aesKey = cdnItem.aeskey;
+          if (!aesKey && cdnItem.media?.aes_key) {
+            aesKey = Buffer.from(cdnItem.media.aes_key, 'base64').toString('utf-8');
+          }
+          if (!cdnUrl || !aesKey) continue;
+
+          const filename = (cdnItem as any).file_name ?? mediaMeta.filename;
+          // Infer content type from filename extension for files
+          let contentType = mediaMeta.contentType;
+          if (item.type === 4 && filename) {
+            const ext = filename.split('.').pop()?.toLowerCase();
+            const extMap: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', zip: 'application/zip', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+            if (ext && extMap[ext]) contentType = extMap[ext];
+          }
+          const filePath = await downloadCdnMedia(cdnUrl, aesKey, filename);
+
+          if (filePath) {
+            attachments.push({
+              url: filePath,
+              filename,
+              contentType,
+              size: (cdnItem as any).file_size ?? (cdnItem as any).hd_size ?? ((cdnItem as any).len ? Number((cdnItem as any).len) : undefined),
+            });
+          }
+        }
+
+        if (!text && attachments.length === 0) continue;
+
+        console.log(`[weixin:${channelId}] Incoming from ${msg.from_user_id}: "${text}"${attachments.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
         try {
           const result = await routeInboundMessage({
             channelId,
             externalId: msg.from_user_id,
-            text,
+            text: text || '(attachment)',
+            attachments: attachments.length > 0 ? attachments : undefined,
             meta: { platform: 'wechat_personal', contextToken: msg.context_token },
           });
 

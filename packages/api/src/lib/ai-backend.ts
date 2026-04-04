@@ -33,9 +33,22 @@ export interface BackendSpec {
   palmosCtx?: PalmosContext;
 }
 
+export interface HistoryAttachment {
+  url: string;
+  filename: string;
+  contentType: string;
+  size?: number;
+}
+
+export type HistoryMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  attachments?: HistoryAttachment[];
+};
+
 export interface GenerateOptions {
   backend: BackendSpec;
-  history: { role: 'user' | 'assistant'; content: string }[];
+  history: HistoryMessage[];
   /** Display name of the end-user sending the message */
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
@@ -266,10 +279,30 @@ async function runPalmosRegister(
  * Handle OpenAI SDK-based backends (llm, openclaw).
  * These use the OpenAI client library rather than raw fetch.
  */
+/** Convert a history message to an OpenAI-compatible message with multimodal content. */
+function toOpenAiMessage(m: HistoryMessage): { role: 'user' | 'assistant'; content: any } {
+  const imageAttachments = m.attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
+  if (m.role === 'user' && imageAttachments.length > 0) {
+    const parts: any[] = [];
+    if (m.content) parts.push({ type: 'text', text: m.content });
+    for (const att of imageAttachments) {
+      parts.push({ type: 'image_url', image_url: { url: att.url } });
+    }
+    // Include non-image attachments as text references
+    const nonImage = m.attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
+    if (nonImage.length > 0) {
+      const refs = nonImage.map((a) => `[Attached file: ${a.filename} (${a.contentType})]`).join('\n');
+      parts.push({ type: 'text', text: refs });
+    }
+    return { role: m.role, content: parts };
+  }
+  return { role: m.role, content: m.content };
+}
+
 async function handleOpenAiSdk(
   type: AiBackendType,
   cfg: AiBackendProviderConfig,
-  history: { role: 'user' | 'assistant'; content: string }[],
+  history: HistoryMessage[],
 ): Promise<string> {
   if (type === 'openclaw') {
     const url = cfg.baseUrl;
@@ -279,7 +312,7 @@ async function handleOpenAiSdk(
     const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
     const response = await client.chat.completions.create({
       model,
-      messages: history.map((m) => ({ role: m.role, content: m.content })),
+      messages: history.map(toOpenAiMessage),
       max_completion_tokens: 1024,
     });
     return response.choices[0]?.message?.content?.trim() ?? '';
@@ -290,9 +323,9 @@ async function handleOpenAiSdk(
   if (!apiKey) throw new Error('LLM backend: apiKey is required');
   const client = getOpenAIClient(apiKey, cfg.baseUrl);
   const model = cfg.model || 'gpt-4o-mini';
-  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  const messages: any[] = [];
   if (cfg.systemPrompt) messages.push({ role: 'system', content: cfg.systemPrompt });
-  messages.push(...history.map((m) => ({ role: m.role, content: m.content })));
+  messages.push(...history.map(toOpenAiMessage));
   const response = await client.chat.completions.create({ model, messages, max_completion_tokens: 1024 });
   return response.choices[0]?.message?.content?.trim() ?? '';
 }
@@ -303,7 +336,7 @@ async function handleOpenAiSdk(
 async function handleFetch(
   descriptor: BackendTypeDescriptor,
   cfg: AiBackendProviderConfig,
-  history: { role: 'user' | 'assistant'; content: string }[],
+  history: HistoryMessage[],
   extraBody?: Record<string, unknown>,
 ): Promise<string> {
   const url = resolveEndpoint(descriptor, cfg);
@@ -330,7 +363,7 @@ async function handleFetch(
   return parseResponse(res, responseFormat);
 }
 
-// ── WebSocket bridge registry (for local-bridge) ────────────────────────────
+// ── WebSocket bridge registry (for cli-bridge) ────────────────────────────
 
 import type { WebSocket } from 'ws';
 
@@ -362,7 +395,7 @@ export function isBridgeConnected(backendId: string): boolean {
 
 async function handlePtyWebSocket(
   backendId: string,
-  history: { role: 'user' | 'assistant'; content: string }[],
+  history: HistoryMessage[],
   meta?: { sender?: string; platform?: string },
 ): Promise<string> {
   const ws = bridgeConnections.get(backendId);
