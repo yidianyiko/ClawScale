@@ -47,6 +47,7 @@ ClawScale 不绑定任何单一 AI 供应商。你可以自由组合以下后端
 | **Anthropic** | 通过 Anthropic API 使用 Claude 模型 |
 | **OpenRouter** | 通过一个 API Key 访问数百种模型 |
 | **Pulse** | Pulse Editor AI 智能体 |
+| **CLI Bridge** | 运行在本地机器上的任意 CLI 智能体（如 Claude Code）— 通过 WebSocket 隧道连接，无需公网 IP |
 | **自定义** | 任何 OpenAI 兼容的端点（vLLM、Ollama、自托管模型等） |
 
 用户可以同时激活多个后端。回复会标注来源（如 `[GPT-4o]`、`[Claude]`），方便用户了解是哪个智能体在回复。
@@ -116,6 +117,62 @@ docker compose up --build
 2. 频道适配器将消息标准化后转发给 ClawScale
 3. ClawScale 将消息路由到对应的 AI 后端，保持每个用户的会话历史隔离
 4. AI 的回复通过同一频道返回给用户
+
+## 附件支持
+
+ClawScale 将用户发送的附件（图片、音频、视频、文件）直接传递给 AI 后端。支持以下所有携带媒体的频道：
+
+| 频道 | 支持的附件类型 |
+|---|---|
+| WhatsApp（个人版与 Business） | 图片、音频、视频、文档 |
+| Discord | 图片、文件 |
+| Telegram | 图片、文档、音频、视频 |
+| Slack | 文件 |
+| LINE | 图片、音频、视频、文件 |
+| Signal | 附件 |
+| Matrix | 文件 |
+| Microsoft Teams | 文件 |
+| 微信个人版 & 企业微信 | 图片 |
+
+支持视觉功能的 AI 后端（如 GPT-4o、Claude 3）将以对话的一部分接收图片附件；其他后端会收到说明附件存在的占位文本。
+
+## CLI Bridge
+
+在本地机器上运行任意 CLI 智能体（如 Claude Code），并将其作为后端连接到 ClawScale — 无需公网 IP 或服务器部署。
+
+```
+本地机器                               ClawScale 服务器
++-----------------+                   +------------------+
+| 本地智能体       |                   |                  |
+| (Claude Code)   |<-- 子进程         |   ClawScale API  |
+|                 |                   |                  |
+| clawscale-bridge|---WebSocket------>|   /bridge (WS)   |
+|                 |   （出站连接）     |                  |
++-----------------+                   +------------------+
+                                             |
+                                      聊天平台
+                                      (Telegram, Discord 等)
+```
+
+**快速开始：**
+
+1. 在面板的 **AI Backends** 页面点击 **Add backend**，选择 **CLI Bridge**，复制生成的 Bridge Token。
+2. 在本地机器上运行 Bridge：
+
+```bash
+npx @clawscale/cli-bridge \
+  --server wss://your-clawscale-server/bridge \
+  --token brg_xxxxxxxxxxxx \
+  --agent claude-code
+```
+
+Bridge 建立出站 WebSocket 连接（无需开放入站端口），断线后自动进行指数退避重连。
+
+| 选项 | 说明 |
+|---|---|
+| `--server` | ClawScale WebSocket URL，例如 `wss://your-server/bridge` |
+| `--token` | 从面板获取的 Bridge Token |
+| `--agent` | 智能体类型，目前支持 `claude-code` |
 
 ## 聊天命令
 
