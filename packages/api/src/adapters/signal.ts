@@ -12,6 +12,7 @@
 
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 interface SignalState {
   running: boolean;
@@ -59,20 +60,41 @@ async function pollLoop(channelId: string, state: SignalState): Promise<void> {
       const messages = (await res.json()) as Array<{
         envelope?: {
           source?: string;
-          dataMessage?: { message?: string };
+          dataMessage?: {
+            message?: string;
+            attachments?: Array<{ id?: string; contentType?: string; filename?: string; size?: number }>;
+          };
         };
       }>;
 
       for (const item of messages) {
         const env = item.envelope;
-        const text = env?.dataMessage?.message?.trim();
+        const text = env?.dataMessage?.message?.trim() ?? '';
         const externalId = env?.source;
-        if (!text || !externalId) continue;
+        if (!externalId) continue;
 
-        console.log(`[signal:${channelId}] Incoming from ${externalId}: "${text}"`);
+        const attachments: Attachment[] | undefined = env?.dataMessage?.attachments?.length
+          ? env.dataMessage.attachments
+              .filter((a) => a.id)
+              .map((a) => ({
+                url: `${state.signalCliUrl}/v1/attachments/${a.id}`,
+                filename: a.filename ?? 'file',
+                contentType: a.contentType ?? 'application/octet-stream',
+                size: a.size,
+              }))
+          : undefined;
+
+        if (!text && !attachments?.length) continue;
+
+        console.log(`[signal:${channelId}] Incoming from ${externalId}: "${text}"${attachments?.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
         try {
-          const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'signal' } });
+          const result = await routeInboundMessage({
+            channelId, externalId,
+            text: text || '(attachment)',
+            attachments,
+            meta: { platform: 'signal' },
+          });
           if (result?.reply) {
             await fetch(`${state.signalCliUrl}/v2/send`, {
               method: 'POST',

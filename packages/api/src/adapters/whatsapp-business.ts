@@ -17,6 +17,7 @@
 
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -117,6 +118,11 @@ export async function handleWABusinessWebhook(
             id: string;
             type: string;
             text?: { body: string };
+            image?: { id: string; mime_type?: string; caption?: string };
+            video?: { id: string; mime_type?: string; caption?: string };
+            audio?: { id: string; mime_type?: string };
+            document?: { id: string; mime_type?: string; filename?: string; caption?: string };
+            sticker?: { id: string; mime_type?: string };
           }>;
           contacts?: Array<{
             profile?: { name?: string };
@@ -143,21 +149,63 @@ export async function handleWABusinessWebhook(
       }
 
       for (const msg of value.messages) {
-        if (msg.type !== 'text' || !msg.text?.body) continue;
+        let text = '';
+        const attachments: Attachment[] = [];
 
-        const text = msg.text.body.trim();
-        if (!text) continue;
+        if (msg.type === 'text' && msg.text?.body) {
+          text = msg.text.body.trim();
+        } else if (msg.type === 'image' && msg.image) {
+          text = msg.image.caption?.trim() || '(image)';
+          attachments.push({
+            url: `https://graph.facebook.com/${GRAPH_API_VERSION}/${msg.image.id}`,
+            filename: 'image.jpg',
+            contentType: msg.image.mime_type ?? 'image/jpeg',
+          });
+        } else if (msg.type === 'video' && msg.video) {
+          text = msg.video.caption?.trim() || '(video)';
+          attachments.push({
+            url: `https://graph.facebook.com/${GRAPH_API_VERSION}/${msg.video.id}`,
+            filename: 'video.mp4',
+            contentType: msg.video.mime_type ?? 'video/mp4',
+          });
+        } else if (msg.type === 'audio' && msg.audio) {
+          text = '(audio)';
+          attachments.push({
+            url: `https://graph.facebook.com/${GRAPH_API_VERSION}/${msg.audio.id}`,
+            filename: 'audio.ogg',
+            contentType: msg.audio.mime_type ?? 'audio/ogg',
+          });
+        } else if (msg.type === 'document' && msg.document) {
+          text = msg.document.caption?.trim() || '(document)';
+          attachments.push({
+            url: `https://graph.facebook.com/${GRAPH_API_VERSION}/${msg.document.id}`,
+            filename: msg.document.filename ?? 'file',
+            contentType: msg.document.mime_type ?? 'application/octet-stream',
+          });
+        } else if (msg.type === 'sticker' && msg.sticker) {
+          text = '(sticker)';
+          attachments.push({
+            url: `https://graph.facebook.com/${GRAPH_API_VERSION}/${msg.sticker.id}`,
+            filename: 'sticker.webp',
+            contentType: msg.sticker.mime_type ?? 'image/webp',
+          });
+        } else {
+          continue;
+        }
+
+        if (!text && attachments.length === 0) continue;
 
         const externalId = msg.from;
         const displayName = contactNames.get(msg.from);
 
         try {
-          console.log(`[wa-business:${channelId}] Incoming from ${externalId}: "${text}"`);
+          console.log(`[wa-business:${channelId}] Incoming from ${externalId}: "${text}"${attachments.length ? ` (+${attachments.length} attachment(s))` : ''}`);
           const result = await routeInboundMessage({
             channelId,
             externalId,
             displayName,
-            text,
+            text: text || '(attachment)',
+            attachments: attachments.length > 0 ? attachments : undefined,
             meta: { platform: 'whatsapp_business', messageId: msg.id },
           });
 

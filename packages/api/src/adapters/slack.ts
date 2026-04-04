@@ -6,6 +6,7 @@
 import { App } from '@slack/bolt';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const apps = new Map<string, App>();
 
@@ -21,15 +22,32 @@ export async function startSlackBot(channelId: string, botToken: string, appToke
 
   app.message(async ({ message, say }) => {
     if (message.subtype) return; // skip edits, deletes, etc.
-    const msg = message as { text?: string; user?: string };
-    const text = msg.text?.trim();
-    if (!text) return;
+    const msg = message as { text?: string; user?: string; files?: Array<{ url_private_download?: string; name?: string; mimetype?: string; size?: number }> };
+    const text = msg.text?.trim() ?? '';
+
+    const attachments: Attachment[] | undefined = msg.files?.length
+      ? msg.files
+          .filter((f) => f.url_private_download)
+          .map((f) => ({
+            url: f.url_private_download!,
+            filename: f.name ?? 'file',
+            contentType: f.mimetype ?? 'application/octet-stream',
+            size: f.size,
+          }))
+      : undefined;
+
+    if (!text && !attachments?.length) return;
 
     const externalId = msg.user ?? 'unknown';
-    console.log(`[slack:${channelId}] Incoming from ${externalId}: "${text}"`);
+    console.log(`[slack:${channelId}] Incoming from ${externalId}: "${text}"${attachments?.length ? ` (+${attachments.length} file(s))` : ''}`);
 
     try {
-      const result = await routeInboundMessage({ channelId, externalId, text, meta: { platform: 'slack' } });
+      const result = await routeInboundMessage({
+        channelId, externalId,
+        text: text || '(attachment)',
+        attachments,
+        meta: { platform: 'slack' },
+      });
       if (result?.reply) await say(result.reply);
     } catch (err) {
       console.error(`[slack:${channelId}] Error routing message:`, err);

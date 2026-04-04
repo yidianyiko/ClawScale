@@ -6,8 +6,8 @@
  *   - Access policy enforcement
  *   - Conversation management
  *   - Message persistence
- *   - Commands: /backends, /add, /remove, /clear, /help
- *   - Direct messages: agent> message
+ *   - Commands: forwarded to active backend; use "> /cmd" for ClawScale
+ *   - Direct messages: agent> message, > message (ClawScale)
  *   - AI backend routing (multi-backend)
  */
 
@@ -19,11 +19,19 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
+export interface Attachment {
+  url: string;
+  filename: string;
+  contentType: string;
+  size?: number;
+}
+
 export interface InboundMessage {
   channelId: string;
   externalId: string;
   displayName?: string;
   text: string;
+  attachments?: Attachment[];
   meta?: Record<string, unknown>;
 }
 
@@ -41,7 +49,10 @@ export interface RouteResult {
 }
 
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
-  const { channelId, externalId, displayName, text, meta } = input;
+  const { channelId, externalId, displayName, text, attachments, meta } = input;
+
+  const platform = (meta?.platform as string) ?? 'unknown';
+  console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
 
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
@@ -102,7 +113,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 6. Persist inbound message
   await db.message.create({
-    data: { id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text, metadata: (meta ?? {}) as any },
+    data: {
+      id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text,
+      metadata: { ...(meta ?? {}), ...(attachments?.length ? { attachments } : {}) } as any,
+    },
   });
 
   // 6b. Resolve all conversation IDs for linked accounts (cross-channel history)
@@ -131,6 +145,15 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
    * Slash commands are executed via a callback that re-enters routeInboundMessage.
    */
   async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
+    // If attachments are present but multimodal is not enabled, nudge the admin
+    if (attachments?.length && !clawscaleLlm?.multimodal) {
+      return reply(
+        `I received your ${attachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
+        'Ask your admin to enable **multimodal input** in the ClawScale dashboard:\n' +
+        '**Settings → ClawScale Assistant → Enable multimodal input**',
+      );
+    }
+
     const agentHistory = await loadHistory(historyConvIds, null);
     const agentReply = await runClawscaleAgent({
       text: userText,
@@ -139,6 +162,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       personaName: clawscaleName,
       mode,
       history: agentHistory,
+      attachments,
       ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
       ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
       executeCommand: async (command) => {
@@ -212,7 +236,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, historyConvIds, palmosCtx);
+        const replyText = await runBackend(backend, historyConvIds, palmosCtx, {
+          sender: endUser!.name ?? displayName,
+          platform,
+        });
         return { backend, replyText };
       }),
     );
@@ -240,9 +267,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 8. Parse commands
   const cmd = parseCommand(text);
+  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
 
   if (cmd) {
     // ── System commands ────────────────────────────────────────────────
+    // Bare slash commands (e.g. "/clear") are forwarded to the active
+    // backend as regular text.  System commands only execute when
+    // explicitly directed to ClawScale via "> /cmd" or "clawscale> /cmd".
+    // Fallback: if no backends are active, execute as system command.
+    if (cmd.kind === 'system' && activeBackends.length > 0 && !meta?.__forceSystem) {
+      // Forward to active backends as plain text
+      return routeToBackends(activeBackends);
+    }
+
     if (cmd.kind === 'system') {
       switch (cmd.command) {
         case 'help': {
@@ -478,6 +515,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         if (!clawscaleActive) {
           return reply('ClawScale assistant is currently disabled.');
         }
+        // Check if the message is a system command (e.g. "> /clear")
+        const innerCmd = parseCommand(cmd.message);
+        if (innerCmd?.kind === 'system') {
+          // Execute as system command by re-routing with __forceSystem flag
+          return routeInboundMessage({ ...input, text: cmd.message, meta: { ...meta, __forceSystem: true } });
+        }
         // Direct mode — run agent loop (may execute commands)
         return runAgent(cmd.message, 'direct');
       }
@@ -492,8 +535,6 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   }
 
   // 9. No command — route to active backends or show menu
-  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
-
   if (activeBackends.length > 0) {
     return routeToBackends(activeBackends);
   }
@@ -537,9 +578,13 @@ async function loadHistory(conversationIds: string | string[], backendId: string
     },
     orderBy: { createdAt: 'asc' },
     take: 50,
-    select: { role: true, content: true },
+    select: { role: true, content: true, metadata: true },
   });
-  return msgs.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+  return msgs.map((m) => {
+    const meta = m.metadata as Record<string, unknown> | null;
+    const attachments = (meta?.attachments as Attachment[] | undefined) ?? undefined;
+    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments?.length ? { attachments } : {}) };
+  });
 }
 
 /** Get all conversation IDs for a linked user group (primary + all linked accounts). */
@@ -570,9 +615,12 @@ async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
+  meta?: { sender?: string; platform?: string },
 ): Promise<string> {
   const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
+  // Pass backend ID through for cli-bridge WebSocket lookup
+  (cfg as any).__backendId = backend.id;
   return generateReply({
     backend: {
       type: backend.type as AiBackendType,
@@ -580,5 +628,7 @@ async function runBackend(
       ...(backend.type === 'palmos' && palmosCtx ? { palmosCtx } : {}),
     },
     history,
+    sender: meta?.sender,
+    platform: meta?.platform,
   });
 }

@@ -25,6 +25,8 @@ export interface ClawScaleAgentSettings {
     model: string;
     /** API key for the LLM provider */
     apiKey?: string;
+    /** Enable multimodal input (images, files, audio). Requires a vision-capable model. */
+    multimodal?: boolean;
   };
 }
 

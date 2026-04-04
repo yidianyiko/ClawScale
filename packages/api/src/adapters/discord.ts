@@ -13,6 +13,7 @@
 import { Client, Events, GatewayIntentBits, Message } from 'discord.js';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 // Map of clawscale channelId → discord.js Client
 const clients = new Map<string, Client>();
@@ -36,12 +37,22 @@ export async function startDiscordBot(channelId: string, botToken: string): Prom
     if (message.author.bot) return;
 
     try {
+      const attachments: Attachment[] | undefined = message.attachments.size > 0
+        ? [...message.attachments.values()].map((a) => ({
+            url: a.url,
+            filename: a.name ?? 'unknown',
+            contentType: a.contentType ?? 'application/octet-stream',
+            size: a.size,
+          }))
+        : undefined;
+
       const result = await routeInboundMessage({
         channelId,
         externalId: message.author.id,
         displayName: message.author.username,
         text: message.content,
-        meta: { guildId: message.guildId ?? null, channelId: message.channelId, messageId: message.id },
+        attachments,
+        meta: { platform: 'discord', guildId: message.guildId ?? null, channelId: message.channelId, messageId: message.id },
       });
       if (result?.reply) await message.reply(result.reply);
     } catch (err) {

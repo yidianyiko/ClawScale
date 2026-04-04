@@ -4,6 +4,7 @@
 
 <h1 align="center">ClawScale</h1>
 <p align="center"><strong>Connect your AI agents to any messaging platform</strong></p>
+<p align="center">English | <a href="README.zh-CN.md">中文</a></p>
 
 ClawScale is an open-source gateway that connects AI agents — OpenClaw, Claude Code, LLMs, or any custom agent — to WhatsApp, Discord, Slack, Telegram, and 10+ other messaging platforms. It handles multi-tenant isolation, conversation routing, and backend orchestration so hundreds of users can talk to your agents without interfering with each other.
 
@@ -46,6 +47,7 @@ ClawScale doesn't lock you into one AI provider. Connect any combination of thes
 | **Anthropic** | Claude models via Anthropic API |
 | **OpenRouter** | Access hundreds of models through one API key |
 | **Pulse** | Pulse Editor AI agent |
+| **CLI Bridge** | Any local CLI agent (e.g. Claude Code) running on your machine — connected via WebSocket tunnel, no public IP needed |
 | **Custom** | Any OpenAI-compatible endpoint (vLLM, Ollama, self-hosted models, etc.) |
 
 Users can have multiple backends active at once. Replies are labeled by source (e.g. `[GPT-4o]`, `[Claude]`) so users know which agent is responding.
@@ -115,6 +117,62 @@ Channel Adapter ──> Reply to end-user
 2. The channel adapter normalizes the message and forwards it to ClawScale
 3. ClawScale routes the message to the right AI backend(s), keeping each user's conversation history isolated
 4. The AI response is sent back through the same channel
+
+## Attachment support
+
+ClawScale passes attachments (images, audio, video, documents) from users straight through to your AI backends. Supported on every channel that carries media:
+
+| Channel | Supported attachment types |
+|---|---|
+| WhatsApp (Personal & Business) | Images, audio, video, documents |
+| Discord | Images, files |
+| Telegram | Photos, documents, audio, video |
+| Slack | Files |
+| LINE | Images, audio, video, files |
+| Signal | Attachments |
+| Matrix | Files |
+| Microsoft Teams | Files |
+| WeChat Personal & WeCom | Images |
+
+AI backends that support vision (e.g. GPT-4o, Claude 3) will receive image attachments as part of the conversation. Other backends receive a placeholder noting the attachment.
+
+## CLI Bridge
+
+Run any local CLI agent (such as Claude Code) on your machine and connect it to ClawScale as a backend — no public IP or server deployment required.
+
+```
+Your Machine                          ClawScale Server
++-----------------+                   +------------------+
+| Local Agent     |                   |                  |
+| (Claude Code)   |<-- spawn         |   ClawScale API  |
+|                 |                   |                  |
+| clawscale-bridge|---WebSocket------>|   /bridge (WS)   |
+|                 |   (outbound)      |                  |
++-----------------+                   +------------------+
+                                             |
+                                      Chat Platforms
+                                      (Telegram, Discord, etc.)
+```
+
+**Quick start:**
+
+1. Go to **AI Backends** in the dashboard, click **Add backend**, choose **CLI Bridge**, and copy the generated bridge token.
+2. Run the bridge on your machine:
+
+```bash
+npx @clawscale/cli-bridge \
+  --server wss://your-clawscale-server/bridge \
+  --token brg_xxxxxxxxxxxx \
+  --agent claude-code
+```
+
+The bridge opens an outbound WebSocket connection (no inbound ports needed) and reconnects automatically with exponential backoff if it drops.
+
+| Option | Description |
+|---|---|
+| `--server` | ClawScale WebSocket URL, e.g. `wss://your-server/bridge` |
+| `--token` | Bridge token from the dashboard |
+| `--agent` | Agent type — currently `claude-code` |
 
 ## Chat commands
 

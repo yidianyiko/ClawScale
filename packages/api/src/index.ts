@@ -11,11 +11,12 @@ import { workflowsRouter } from './routes/workflows.js';
 import { conversationsRouter } from './routes/conversations.js';
 import { aiBackendsRouter } from './routes/ai-backends.js';
 import { endUsersRouter } from './routes/end-users.js';
+import { onboardRouter } from './routes/onboard.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
-import { initWeChatAdapters } from './adapters/wechat.js';
+import { initWeChatAdapters } from './adapters/wecom.js';
 import { initWhatsAppAdapters } from './adapters/whatsapp.js';
-import { initWeixinAdapters } from './adapters/weixin.js';
+import { initWeixinAdapters } from './adapters/wechat.js';
 import { initTelegramAdapters } from './adapters/telegram.js';
 import { initSlackAdapters } from './adapters/slack.js';
 import { initMatrixAdapters } from './adapters/matrix.js';
@@ -23,6 +24,7 @@ import { initLineAdapters } from './adapters/line.js';
 import { initSignalAdapters } from './adapters/signal.js';
 import { initTeamsAdapters } from './adapters/teams.js';
 import { initWABusinessAdapters } from './adapters/whatsapp-business.js';
+import { initBridgeWebSocket } from './gateway/bridge-ws.js';
 
 const app = new Hono();
 
@@ -54,6 +56,10 @@ app.route('/api/conversations', conversationsRouter);
 app.route('/api/ai-backends', aiBackendsRouter);
 app.route('/api/end-users', endUsersRouter);
 
+// ─── Public onboarding routes ────────────────────────────────────────────────
+
+app.route('/api/onboard', onboardRouter);
+
 // ─── Gateway (inbound messages from social channels) ─────────────────────────
 
 app.route('/gateway', gatewayRouter);
@@ -71,8 +77,9 @@ app.onError((err, c) => {
 const port = parseInt(process.env['PORT'] ?? '4041', 10);
 const host = process.env['HOST'] ?? '0.0.0.0';
 
-serve({ fetch: app.fetch, port, hostname: host }, (info) => {
+const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   console.log(`ClawScale API running on http://${info.address}:${info.port}`);
+  initBridgeWebSocket(server);
   initDiscordAdapters().catch((err) => console.error('[discord] Init failed:', err));
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));
   initWhatsAppAdapters().catch((err) => console.error('[whatsapp] Init failed:', err));

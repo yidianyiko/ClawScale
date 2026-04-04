@@ -10,6 +10,7 @@
 
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const BOT_FRAMEWORK_TOKEN_URL = 'https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token';
 
@@ -76,20 +77,37 @@ export async function handleTeamsActivity(channelId: string, activity: {
   id?: string;
   replyToId?: string;
   recipient?: { id?: string };
+  attachments?: Array<{ contentType?: string; contentUrl?: string; name?: string }>;
 }): Promise<void> {
   const bot = bots.get(channelId);
   if (!bot) return;
 
   if (activity.type !== 'message') return;
-  const text = activity.text?.trim();
-  if (!text) return;
+  const text = activity.text?.trim() ?? '';
+
+  const attachments: Attachment[] | undefined = activity.attachments?.length
+    ? activity.attachments
+        .filter((a) => a.contentUrl)
+        .map((a) => ({
+          url: a.contentUrl!,
+          filename: a.name ?? 'file',
+          contentType: a.contentType ?? 'application/octet-stream',
+        }))
+    : undefined;
+
+  if (!text && !attachments?.length) return;
 
   const externalId = activity.from?.id ?? 'unknown';
   const displayName = activity.from?.name;
-  console.log(`[teams:${channelId}] Incoming from ${externalId}: "${text}"`);
+  console.log(`[teams:${channelId}] Incoming from ${externalId}: "${text}"${attachments?.length ? ` (+${attachments.length} attachment(s))` : ''}`);
 
   try {
-    const result = await routeInboundMessage({ channelId, externalId, displayName, text, meta: { platform: 'teams' } });
+    const result = await routeInboundMessage({
+      channelId, externalId, displayName,
+      text: text || '(attachment)',
+      attachments,
+      meta: { platform: 'teams' },
+    });
 
     if (result?.reply && activity.serviceUrl && activity.conversation?.id) {
       const token = await getAccessToken(bot);

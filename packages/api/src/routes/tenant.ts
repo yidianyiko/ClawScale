@@ -19,6 +19,7 @@ const updateSettingsSchema = z.object({
         llm: z.object({
           model: z.string().min(1).max(100),
           apiKey: z.string().max(500).optional(),
+          multimodal: z.boolean().optional(),
         }).nullable().optional(),
       }).optional(),
     })

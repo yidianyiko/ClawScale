@@ -4,7 +4,7 @@ import { Loader2, Plus, Pencil, Trash2, X, Save, BotMessageSquare, Star, StarOff
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 import type { AiBackendType, AiBackendProviderConfig, ApiResponse, Tenant, ClawScaleAgentSettings } from '@clawscale/shared';
-import { AI_PROVIDER_LABELS, AI_PROVIDER_TYPES } from '@clawscale/shared';
+import { AI_PROVIDER_LABELS, AI_PROVIDER_TYPES, BACKEND_TYPE_DESCRIPTORS } from '@clawscale/shared';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -402,7 +402,13 @@ export default function AiBackendsPage() {
                 <div>
                   <label className="label">Upstream type</label>
                   <select className="input" value={form.type}
-                    onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AiBackendType, config: {} }))}>
+                    onChange={(e) => {
+                      const newType = e.target.value as AiBackendType;
+                      const config: AiBackendProviderConfig = newType === 'cli-bridge'
+                        ? { bridgeToken: `brg_${crypto.randomUUID().replace(/-/g, '')}` }
+                        : {};
+                      setForm((f) => ({ ...f, type: newType, config }));
+                    }}>
                     {AI_PROVIDER_TYPES.map((t) => (
                       <option key={t} value={t}>{AI_PROVIDER_LABELS[t]}</option>
                     ))}
@@ -527,67 +533,98 @@ function ProviderFields({ type, config, onChange }: {
   config: AiBackendProviderConfig;
   onChange: (patch: Partial<AiBackendProviderConfig>) => void;
 }) {
-  const inp = (field: keyof AiBackendProviderConfig, placeholder: string, label: string,
-    opts?: { type?: string; hint?: string; required?: boolean }) => (
-    <div>
-      <label className="label">{label}</label>
-      <input className="input font-mono text-xs" type={opts?.type ?? 'text'} placeholder={placeholder}
-        value={(config[field] as string) ?? ''} onChange={(e) => onChange({ [field]: e.target.value })}
-        required={opts?.required} />
-      {opts?.hint && <p className="text-xs text-gray-400 mt-1">{opts.hint}</p>}
+  const descriptor = BACKEND_TYPE_DESCRIPTORS[type];
+  if (!descriptor) return null;
+
+  // CLI bridge: show token + setup instructions instead of config fields
+  if (type === 'cli-bridge') {
+    return (
+      <div className="space-y-3">
+        {config.bridgeToken ? (
+          <div>
+            <label className="label">Bridge Token</label>
+            <div className="flex items-center gap-2">
+              <code className="input font-mono text-xs flex-1 bg-gray-50">{config.bridgeToken}</code>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Use this token when connecting the local bridge.</p>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">A bridge token will be generated when you create this backend.</p>
+        )}
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs text-gray-600 space-y-1">
+          <p className="font-medium text-gray-700">Setup instructions:</p>
+          <p><code>npx @clawscale/cli-bridge --server wss://your-server/bridge --token {'<token>'} --agent claude-code</code></p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {descriptor.fields.map((field) => {
+        if (field.fixed) return null;
+
+        if (field.inputType === 'checkbox') {
+          return (
+            <label key={field.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={!!config[field.key]}
+                onChange={(e) => onChange({ [field.key]: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300 text-teal-500" />
+              {field.label}
+            </label>
+          );
+        }
+
+        if (field.inputType === 'textarea') {
+          return (
+            <div key={field.key}>
+              <label className="label">
+                {field.label}
+                {!field.required && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+              </label>
+              <textarea
+                className="input min-h-[80px] resize-y text-sm"
+                placeholder="You are a helpful assistant."
+                value={(config[field.key] as string) ?? ''}
+                maxLength={2000}
+                onChange={(e) => onChange({ [field.key]: e.target.value })}
+              />
+              {field.hint && <p className="text-xs text-gray-400 mt-1">{field.hint}</p>}
+            </div>
+          );
+        }
+
+        if (field.inputType === 'select' && field.selectOptions) {
+          return (
+            <div key={field.key}>
+              <label className="label">{field.label}</label>
+              <select className="input" value={(config[field.key] as string) ?? field.defaultValue ?? ''}
+                onChange={(e) => onChange({ [field.key]: e.target.value })}>
+                {field.selectOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              {field.hint && <p className="text-xs text-gray-400 mt-1">{field.hint}</p>}
+            </div>
+          );
+        }
+
+        return (
+          <div key={field.key}>
+            <label className="label">
+              {field.label}
+              {!field.required && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+            </label>
+            <input className="input font-mono text-xs"
+              type={field.inputType === 'password' ? 'password' : 'text'}
+              placeholder=""
+              value={(config[field.key] as string) ?? ''}
+              onChange={(e) => onChange({ [field.key]: e.target.value })}
+              required={field.required} />
+            {field.hint && <p className="text-xs text-gray-400 mt-1">{field.hint}</p>}
+          </div>
+        );
+      })}
     </div>
   );
-
-  const systemPromptField = (
-    <div>
-      <label className="label">
-        System prompt
-        <span className="text-gray-400 font-normal ml-1">(optional)</span>
-      </label>
-      <textarea
-        className="input min-h-[80px] resize-y text-sm"
-        placeholder="You are a helpful assistant."
-        value={(config.systemPrompt as string) ?? ''}
-        maxLength={2000}
-        onChange={(e) => onChange({ systemPrompt: e.target.value })}
-      />
-      <p className="text-xs text-gray-400 mt-1">
-        This backend's own persona. ClawScale does not inject its own prompt.
-      </p>
-    </div>
-  );
-
-  if (type === 'llm') return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      {inp('apiKey', 'sk-...', 'API Key', { type: 'password', required: true })}
-      {inp('model', 'gpt-4o-mini', 'Model')}
-    </div>
-    {inp('baseUrl', 'https://api.openai.com/v1', 'Base URL (optional)', { hint: 'Leave blank for OpenAI. Set for other OpenAI-compatible providers.' })}
-    {systemPromptField}
-  </div>;
-
-  if (type === 'openclaw') return <div className="space-y-4">
-    {inp('baseUrl', 'http://localhost:8080', 'OpenClaw URL', { required: true, hint: 'Base URL of your OpenClaw instance. /v1 is appended automatically.' })}
-    <div className="grid grid-cols-2 gap-4">
-      {inp('apiKey', 'optional', 'API Key (optional)', { type: 'password' })}
-      {inp('model', 'default', 'Model (optional)')}
-    </div>
-  </div>;
-
-  if (type === 'palmos') return <div className="space-y-4">
-    {inp('apiKey', 'plm-...', 'API Key', { type: 'password', required: true, hint: 'API key from your Palmos account, sent as a Bearer token.' })}
-  </div>;
-
-  if (type === 'upstream') return <div className="space-y-4">
-    {inp('baseUrl', 'https://your-server/chat', 'API URL', { required: true, hint: 'ClawScale POSTs { messages } and expects text back.' })}
-    {inp('authHeader', 'Bearer your-token', 'Authorization header (optional)', { type: 'password', hint: 'Sent as the Authorization header.' })}
-    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-      <input type="checkbox" checked={!!config.upstreamStream}
-        onChange={(e) => onChange({ upstreamStream: e.target.checked })}
-        className="h-4 w-4 rounded border-gray-300 text-teal-500" />
-      Streaming response (SSE)
-    </label>
-  </div>;
-
-  return null;
 }

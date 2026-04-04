@@ -6,16 +6,18 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
 
-const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'upstream', 'claude-code'] as const;
+const BACKEND_TYPES = ['llm', 'openclaw', 'palmos', 'claude-code', 'custom', 'cli-bridge'] as const;
 
 const configSchema = z.object({
-  apiKey:        z.string().optional(),
-  model:         z.string().optional(),
-  systemPrompt:  z.string().max(2000).optional(),
-  baseUrl:       z.string().url().optional(),
-  commandAlias:  z.string().max(30).regex(/^\S*$/, 'Alias must not contain spaces').optional(),
-  authHeader:    z.string().max(500).optional(),
-  upstreamStream: z.boolean().optional(),
+  apiKey:         z.string().optional(),
+  model:          z.string().optional(),
+  systemPrompt:   z.string().max(2000).optional(),
+  baseUrl:        z.string().url().optional(),
+  commandAlias:   z.string().max(30).regex(/^\S*$/, 'Alias must not contain spaces').optional(),
+  authHeader:     z.string().max(500).optional(),
+  transport:      z.enum(['http', 'sse', 'websocket', 'pty-websocket'] as const).optional(),
+  responseFormat: z.enum(['json-auto', 'langgraph', 'raw-text'] as const).optional(),
+  bridgeToken:    z.string().optional(),
 }).default({});
 
 const createSchema = z.object({
@@ -67,8 +69,12 @@ export const aiBackendsRouter = new Hono()
     }
 
     const id = generateId('aib');
+    // Auto-generate bridge token for cli-bridge backends
+    const config = body.type === 'cli-bridge'
+      ? { ...body.config, bridgeToken: body.config.bridgeToken || generateId('brg') }
+      : body.config;
     await db.aiBackend.create({
-      data: { id, tenantId, name: body.name, type: body.type, config: body.config, isActive: body.isActive, isDefault: body.isDefault },
+      data: { id, tenantId, name: body.name, type: body.type, config, isActive: body.isActive, isDefault: body.isDefault },
     });
 
     await audit({ tenantId, memberId: userId, action: 'create_ai_backend', resource: 'ai_backend', resourceId: id });

@@ -23,6 +23,7 @@ import qrcode from 'qrcode';
 import pino from 'pino';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import type { Attachment } from '../lib/route-message.js';
 
 const logger = pino({ level: 'silent' });
 
@@ -121,13 +122,65 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
       if (msg.key.fromMe) continue;
       if (!msg.message) continue;
 
-      const text =
+      let text =
         msg.message.conversation ??
         msg.message.extendedTextMessage?.text ??
         '';
 
-      console.log(`[whatsapp:${channelId}] Incoming from ${msg.key.remoteJid} (fromMe=${msg.key.fromMe}): "${text}"`);
-      if (!text.trim()) continue;
+      // Extract attachments from media messages
+      const attachments: Attachment[] = [];
+      const m = msg.message;
+
+      if (m.imageMessage) {
+        text = text || m.imageMessage.caption || '(image)';
+        attachments.push({
+          url: m.imageMessage.url ?? '',
+          filename: 'image.jpg',
+          contentType: m.imageMessage.mimetype ?? 'image/jpeg',
+          size: m.imageMessage.fileLength ? Number(m.imageMessage.fileLength) : undefined,
+        });
+      }
+      if (m.videoMessage) {
+        text = text || m.videoMessage.caption || '(video)';
+        attachments.push({
+          url: m.videoMessage.url ?? '',
+          filename: 'video.mp4',
+          contentType: m.videoMessage.mimetype ?? 'video/mp4',
+          size: m.videoMessage.fileLength ? Number(m.videoMessage.fileLength) : undefined,
+        });
+      }
+      if (m.audioMessage) {
+        text = text || '(audio)';
+        attachments.push({
+          url: m.audioMessage.url ?? '',
+          filename: 'audio.ogg',
+          contentType: m.audioMessage.mimetype ?? 'audio/ogg',
+          size: m.audioMessage.fileLength ? Number(m.audioMessage.fileLength) : undefined,
+        });
+      }
+      if (m.documentMessage) {
+        text = text || m.documentMessage.caption || '(document)';
+        attachments.push({
+          url: m.documentMessage.url ?? '',
+          filename: m.documentMessage.fileName ?? 'file',
+          contentType: m.documentMessage.mimetype ?? 'application/octet-stream',
+          size: m.documentMessage.fileLength ? Number(m.documentMessage.fileLength) : undefined,
+        });
+      }
+      if (m.stickerMessage) {
+        text = text || '(sticker)';
+        attachments.push({
+          url: m.stickerMessage.url ?? '',
+          filename: 'sticker.webp',
+          contentType: m.stickerMessage.mimetype ?? 'image/webp',
+          size: m.stickerMessage.fileLength ? Number(m.stickerMessage.fileLength) : undefined,
+        });
+      }
+
+      const validAttachments = attachments.filter((a) => a.url);
+
+      console.log(`[whatsapp:${channelId}] Incoming from ${msg.key.remoteJid}: "${text}"${validAttachments.length ? ` (+${validAttachments.length} attachment(s))` : ''}`);
+      if (!text.trim() && validAttachments.length === 0) continue;
 
       const externalId = msg.key.remoteJid ?? 'unknown';
       const displayName = msg.pushName ?? undefined;
@@ -135,7 +188,8 @@ export async function startWhatsAppBot(channelId: string, isReconnect = false): 
       try {
         const result = await routeInboundMessage({
           channelId, externalId, displayName,
-          text: text.trim(),
+          text: text.trim() || '(attachment)',
+          attachments: validAttachments.length > 0 ? validAttachments : undefined,
           meta: { platform: 'whatsapp', messageId: msg.key.id },
         });
         if (result?.reply && sock) await sock.sendMessage(externalId, { text: result.reply });
