@@ -4,7 +4,7 @@
   "private": true,
   "description": "OpenClaw, unlocked for your whole team — multi-tenant workspace layer",
   "scripts": {
-    "dev": "pnpm --parallel -r --filter \"!@clawscale/local-bridge\" dev",
+    "dev": "pnpm --parallel -r --filter \"!@clawscale/cli-bridge\" dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",

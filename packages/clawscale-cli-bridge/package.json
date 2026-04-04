@@ -1,7 +1,7 @@
 {
-  "name": "@clawscale/local-bridge",
+  "name": "@clawscale/cli-bridge",
   "version": "0.1.0",
-  "description": "Connect your local AI agent to ClawScale as a backend",
+  "description": "Connect local CLI agents (like Claude Code) to ClawScale as a backend",
   "type": "module",
   "bin": {
     "clawscale-bridge": "./dist/index.js"

@@ -1,4 +1,4 @@
-export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'local-bridge';
+export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';
 
 /** Transport method — how ClawScale connects to the backend. */
 export type Transport = 'http' | 'sse' | 'websocket' | 'pty-websocket';
@@ -23,7 +23,7 @@ export interface AiBackendProviderConfig {
   transport?: Transport;
   /** Response format override (used by 'custom' type) */
   responseFormat?: ResponseFormat;
-  /** Auto-generated token for local-bridge authentication */
+  /** Auto-generated token for CLI bridge authentication */
   bridgeToken?: string;
 }
 
@@ -142,13 +142,13 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
       { key: 'systemPrompt', label: 'System Prompt', inputType: 'textarea' },
     ],
   },
-  'local-bridge': {
-    type: 'local-bridge',
-    label: 'Local Bridge',
+  'cli-bridge': {
+    type: 'cli-bridge',
+    label: 'CLI Bridge',
     transport: 'pty-websocket',
     responseFormat: 'raw-text',
     fields: [
-      { key: 'bridgeToken', label: 'Bridge Token', fixed: true, hint: 'Auto-generated. Use this token when connecting the local bridge.' },
+      { key: 'bridgeToken', label: 'Bridge Token', fixed: true, hint: 'Auto-generated. Use this token when connecting the CLI bridge.' },
     ],
   },
 };

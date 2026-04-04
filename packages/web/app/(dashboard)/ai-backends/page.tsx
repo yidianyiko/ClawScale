@@ -404,7 +404,7 @@ export default function AiBackendsPage() {
                   <select className="input" value={form.type}
                     onChange={(e) => {
                       const newType = e.target.value as AiBackendType;
-                      const config: AiBackendProviderConfig = newType === 'local-bridge'
+                      const config: AiBackendProviderConfig = newType === 'cli-bridge'
                         ? { bridgeToken: `brg_${crypto.randomUUID().replace(/-/g, '')}` }
                         : {};
                       setForm((f) => ({ ...f, type: newType, config }));
@@ -536,8 +536,8 @@ function ProviderFields({ type, config, onChange }: {
   const descriptor = BACKEND_TYPE_DESCRIPTORS[type];
   if (!descriptor) return null;
 
-  // Local-bridge: show token + setup instructions instead of config fields
-  if (type === 'local-bridge') {
+  // CLI bridge: show token + setup instructions instead of config fields
+  if (type === 'cli-bridge') {
     return (
       <div className="space-y-3">
         {config.bridgeToken ? (
@@ -553,7 +553,7 @@ function ProviderFields({ type, config, onChange }: {
         )}
         <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs text-gray-600 space-y-1">
           <p className="font-medium text-gray-700">Setup instructions:</p>
-          <p><code>npx @clawscale/local-bridge --server wss://your-server/bridge --token {'<token>'} --agent claude-code</code></p>
+          <p><code>npx @clawscale/cli-bridge --server wss://your-server/bridge --token {'<token>'} --agent claude-code</code></p>
         </div>
       </div>
     );

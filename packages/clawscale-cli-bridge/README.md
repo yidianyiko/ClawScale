@@ -1,30 +1,30 @@
-# @clawscale/local-bridge
+# @clawscale/cli-bridge
 
 Connect your local AI agent (Claude Code, Cursor, etc.) to ClawScale as a backend. Runs on your machine and tunnels messages to ClawScale via WebSocket — no public IP needed.
 
 ## Quick Start
 
-### 1. Create a Local Bridge backend in ClawScale
+### 1. Create a CLI Bridge backend in ClawScale
 
-Go to **AI Backends** in the ClawScale dashboard, click **Add backend**, and select **Local Bridge**. A bridge token will be auto-generated — copy it.
+Go to **AI Backends** in the ClawScale dashboard, click **Add backend**, and select **CLI Bridge**. A bridge token will be auto-generated — copy it.
 
 ### 2. Install and run
 
 ```bash
 # Run directly with npx (no install needed)
-npx @clawscale/local-bridge \
+npx @clawscale/cli-bridge \
   --server wss://your-clawscale-server/bridge \
   --token brg_xxxxxxxxxxxx \
   --agent claude-code
 
 # Or install globally
-npm install -g @clawscale/local-bridge
+npm install -g @clawscale/cli-bridge
 clawscale-bridge --server wss://your-server/bridge --token brg_xxx --agent claude-code
 ```
 
 ### 3. That's it
 
-Messages sent to the Local Bridge backend in ClawScale will be forwarded to your local agent, and responses will be sent back.
+Messages sent to the CLI Bridge backend in ClawScale will be forwarded to your local agent, and responses will be sent back.
 
 ## Options
 
@@ -59,7 +59,7 @@ Your Machine                          ClawScale Server
 
 1. The bridge opens an outbound WebSocket connection to ClawScale (no inbound ports needed)
 2. Authenticates using the bridge token
-3. When a user messages the Local Bridge backend, ClawScale sends the message over WebSocket
+3. When a user messages the CLI Bridge backend, ClawScale sends the message over WebSocket
 4. The bridge forwards it to the local agent (e.g. spawns `claude --print`)
 5. The agent's response is sent back over WebSocket to ClawScale
 6. ClawScale delivers the response to the user
@@ -71,7 +71,7 @@ The bridge automatically reconnects with exponential backoff if the connection d
 Create a class implementing the `LocalAgent` interface:
 
 ```typescript
-import type { LocalAgent } from '@clawscale/local-bridge/agents/base';
+import type { LocalAgent } from '@clawscale/cli-bridge/agents/base';
 
 class MyAgent implements LocalAgent {
   async start(): Promise<void> { /* init */ }
@@ -87,7 +87,7 @@ class MyAgent implements LocalAgent {
 
 ```bash
 # From the repo root
-cd packages/local-bridge
+cd packages/clawscale-cli-bridge
 pnpm install
 
 # Run in dev mode
