@@ -14,8 +14,6 @@
  */
 
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import qrcode from 'qrcode';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
@@ -50,27 +48,13 @@ function msgHeaders(token: string, body?: string): Record<string, string> {
 
 /**
  * Download and decrypt WeChat CDN media.
- * CDN content is AES-128-ECB encrypted; `encrypt_query_param` is the download URL,
- * `aes_key` is the base64-encoded 16-byte key.
- * Returns a data: URL with the decrypted content.
- */
-/**
- * Download and decrypt WeChat CDN media.
  * Content is AES-128-ECB encrypted. The key is a 32-char hex string.
  * Returns a data: URL with the decrypted content.
- */
-const MEDIA_DIR = path.join(process.cwd(), 'data', 'weixin-media');
-fs.mkdirSync(MEDIA_DIR, { recursive: true });
-
-/**
- * Download and decrypt WeChat CDN media.
- * Content is AES-128-ECB encrypted. The key is a 32-char hex string.
- * Saves decrypted file to data/weixin-media/ and returns the local file path.
  */
 async function downloadCdnMedia(
   cdnUrl: string,
   aesKeyHex: string,
-  filename: string,
+  contentType: string,
 ): Promise<string | null> {
   try {
     const res = await fetch(cdnUrl, { signal: AbortSignal.timeout(30_000) });
@@ -85,12 +69,7 @@ async function downloadCdnMedia(
     decipher.setAutoPadding(true);
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
 
-    const uniqueName = `${Date.now()}_${filename}`;
-    const filePath = path.join(MEDIA_DIR, uniqueName);
-    fs.writeFileSync(filePath, decrypted);
-    console.log(`[weixin] Saved media: ${filePath} (${decrypted.length} bytes)`);
-
-    return filePath;
+    return `data:${contentType};base64,${decrypted.toString('base64')}`;
   } catch (err) {
     console.error('[weixin] CDN media decrypt error:', err);
     return null;
@@ -248,9 +227,6 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
       for (const msg of data.msgs ?? []) {
         if (!msg.from_user_id) continue;
 
-        // Debug: log raw item_list to see what the API actually sends
-        console.log(`[weixin:${channelId}] Raw item_list:`, JSON.stringify(msg.item_list));
-
         let text = msg.item_list?.find((i) => i.type === 1)?.text_item?.text?.trim() ?? '';
 
         // Use voice transcription as text if no text message was sent
@@ -294,11 +270,11 @@ async function pollLoop(channelId: string, baseUrl: string, token: string): Prom
             const extMap: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', zip: 'application/zip', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
             if (ext && extMap[ext]) contentType = extMap[ext];
           }
-          const filePath = await downloadCdnMedia(cdnUrl, aesKey, filename);
+          const dataUrl = await downloadCdnMedia(cdnUrl, aesKey, contentType);
 
-          if (filePath) {
+          if (dataUrl) {
             attachments.push({
-              url: filePath,
+              url: dataUrl,
               filename,
               contentType,
               size: (cdnItem as any).file_size ?? (cdnItem as any).hd_size ?? ((cdnItem as any).len ? Number((cdnItem as any).len) : undefined),
