@@ -52,13 +52,18 @@ export function parseCommand(text: string): ParsedCommand | null {
   // 1. Direct message: "agent name> message"
   //    Match everything before ">" as agent name (allows spaces),
   //    but only when ">" appears after a word at the start.
-  const directMatch = trimmed.match(/^(.+?)>\s*([\s\S]*)$/);
+  //    Empty target ("> message" or "  > message") means "clawscale".
+  const directMatch = trimmed.match(/^(.*?)>\s*([\s\S]*)$/);
   if (directMatch) {
     const target = directMatch[1]!.trim().toLowerCase();
     const message = (directMatch[2] ?? '').trim();
-    // Avoid false positives: target must be non-empty and not look like
+    // Empty target = clawscale (user typed "> /clear" or "> help me")
+    if (target === '') {
+      return { kind: 'direct', target: 'clawscale', message };
+    }
+    // Avoid false positives: target must not look like
     // a comparison (e.g. "this is > than that" — target would be very long)
-    if (target && target.length <= 50) {
+    if (target.length <= 50) {
       return { kind: 'direct', target, message };
     }
   }
@@ -103,9 +108,14 @@ export function formatCommandHelp(): string {
   const cmds = COMMAND_REFERENCE.map((c) => `${c.command} — ${c.description}`).join('\n');
   return (
     `*Commands:*\n\n${cmds}\n\n` +
+    `*Routing:*\n` +
+    `When you have an active backend, \`/command\` is sent to the backend.\n` +
+    `To run a ClawScale command, prefix with \`>\`:\n` +
+    `\`> /clear\` — run ClawScale's /clear\n` +
+    `\`clawscale> /clear\` — same, explicit\n\n` +
     `*Direct message:*\n` +
     `\`agent name> message\` — send a message to a specific agent\n` +
-    `\`clawscale> help\` — talk to ClawScale directly`
+    `\`> message\` — talk to ClawScale directly`
   );
 }
 

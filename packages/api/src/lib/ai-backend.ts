@@ -4,16 +4,20 @@
  * ClawScale is a pure forwarder: it sends the user's messages to the backend
  * and returns whatever text (or streamed text) the backend responds with.
  *
- * Supported types:
- *   llm      — OpenAI-compatible Chat Completions API
- *   openclaw — OpenClaw instance (OpenAI-compatible, self-contained)
- *   palmos   — Palmos instance (POST messages, SSE stream back)
- *   upstream    — Generic HTTP endpoint (POST messages, get text back)
- *   claude-code — Claude Code session via MCP channel server bridge
+ * Dispatch is driven by BackendTypeDescriptors from @clawscale/shared.
+ * Each backend type maps to a transport (http, sse, websocket, pty-websocket)
+ * and a response format (json-auto, langgraph, raw-text).
  */
 
 import OpenAI from 'openai';
-import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
+import type {
+  AiBackendType,
+  AiBackendProviderConfig,
+  BackendTypeDescriptor,
+  Transport,
+  ResponseFormat,
+} from '@clawscale/shared';
+import { BACKEND_TYPE_DESCRIPTORS } from '@clawscale/shared';
 
 export interface PalmosContext {
   endUserId: string;
@@ -32,6 +36,10 @@ export interface BackendSpec {
 export interface GenerateOptions {
   backend: BackendSpec;
   history: { role: 'user' | 'assistant'; content: string }[];
+  /** Display name of the end-user sending the message */
+  sender?: string;
+  /** Chat platform the message came from (e.g. "telegram", "discord") */
+  platform?: string;
 }
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
@@ -51,10 +59,34 @@ function getOpenAIClient(apiKey: string, baseURL?: string): OpenAI {
 function authHeaders(cfg: AiBackendProviderConfig): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.authHeader) h['Authorization'] = cfg.authHeader;
+  else if (cfg.apiKey) h['Authorization'] = `Bearer ${cfg.apiKey}`;
   return h;
 }
 
-/** Read a simple SSE stream and accumulate text chunks (used by upstream/webhook) */
+/** Resolve endpoint URL from descriptor pattern + config */
+function resolveEndpoint(descriptor: BackendTypeDescriptor, cfg: AiBackendProviderConfig): string {
+  const base = (cfg.baseUrl ?? '').replace(/\/$/, '');
+  if (descriptor.endpointPattern) {
+    return descriptor.endpointPattern.replace('{baseUrl}', base);
+  }
+  return base;
+}
+
+/** Resolve transport — 'custom' reads from config */
+function resolveTransport(descriptor: BackendTypeDescriptor, cfg: AiBackendProviderConfig): Transport {
+  if (descriptor.type === 'custom' && cfg.transport) return cfg.transport;
+  return descriptor.transport;
+}
+
+/** Resolve response format — 'custom' reads from config */
+function resolveResponseFormat(descriptor: BackendTypeDescriptor, cfg: AiBackendProviderConfig): ResponseFormat {
+  if (descriptor.type === 'custom' && cfg.responseFormat) return cfg.responseFormat;
+  return descriptor.responseFormat;
+}
+
+// ── SSE stream readers ──────────────────────────────────────────────────────
+
+/** Read a simple SSE stream and accumulate text chunks */
 async function readSseStream(body: ReadableStream<Uint8Array>): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -119,7 +151,6 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
       try { parsed = JSON.parse(dataStr); } catch { continue; }
 
       if (eventType === 'messages') {
-        // LangGraph format: [chunk, metadata] or [namespace, "messages", [chunk, metadata]]
         if (!Array.isArray(parsed) || parsed.length < 2) continue;
         let chunk: any;
         if (parsed.length >= 3 && typeof parsed[0] === 'string' && Array.isArray(parsed[2])) {
@@ -133,9 +164,8 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
         if (typeof content === 'string' && content) accumulated += content;
       } else if (eventType === 'values' || eventType === 'result') {
         if (typeof parsed !== 'object' || parsed === null) continue;
-        // Check for final text result
         if (typeof parsed.text === 'string' && parsed.text) {
-          accumulated = parsed.text; // Final result replaces streamed tokens
+          accumulated = parsed.text;
         } else if (typeof parsed.agentMessage === 'string' && parsed.agentMessage) {
           accumulated = parsed.agentMessage;
         }
@@ -144,6 +174,221 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
   }
 
   return accumulated.trim();
+}
+
+// ── Response parsers ────────────────────────────────────────────────────────
+
+/** Parse response body according to response format */
+async function parseResponse(
+  res: Response,
+  format: ResponseFormat,
+): Promise<string> {
+  switch (format) {
+    case 'langgraph': {
+      if (res.body) return readLangGraphStream(res.body);
+      return (await res.text()).trim();
+    }
+    case 'raw-text': {
+      return (await res.text()).trim();
+    }
+    case 'json-auto':
+    default: {
+      const contentType = res.headers.get('content-type') ?? '';
+
+      // If it's SSE, read the stream
+      if (contentType.includes('text/event-stream') && res.body) {
+        return readSseStream(res.body);
+      }
+
+      if (!contentType.includes('application/json')) {
+        const body = await res.text();
+        throw new Error(`Backend returned non-JSON response (${contentType || 'no content-type'}): ${body.slice(0, 200)}`);
+      }
+
+      const data = (await res.json()) as Record<string, unknown>;
+
+      // Handle { ok, reply, error } pattern (claude-code)
+      if (typeof data.ok === 'boolean') {
+        if (!data.ok) throw new Error(`Backend error: ${data.error ?? 'unknown'}`);
+        return ((data.reply ?? '') as string).trim();
+      }
+
+      // Try common fields
+      const text = data.reply ?? data.content ?? data.message ?? data.text;
+      if (typeof text === 'string') return text.trim();
+
+      // OpenAI Chat Completions shape
+      if (Array.isArray(data.choices) && data.choices[0]?.message?.content) {
+        return (data.choices[0].message.content as string).trim();
+      }
+
+      return '';
+    }
+  }
+}
+
+// ── Hooks ────────────────────────────────────────────────────────────────────
+
+async function runPalmosRegister(
+  cfg: AiBackendProviderConfig,
+  ctx: PalmosContext | undefined,
+): Promise<string | undefined> {
+  if (!ctx) return undefined;
+  const baseUrl = (process.env.PALMOS_BASE_URL ?? cfg.baseUrl ?? 'https://pulse-editor.com').replace(/\/$/, '');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${cfg.apiKey}`,
+  };
+  const regRes = await fetch(`${baseUrl}/api/external-auth/register`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      externalId: ctx.endUserId,
+      tenantId: ctx.tenantId,
+      userName: ctx.displayName,
+    }),
+  });
+  if (regRes.ok) {
+    const ct = regRes.headers.get('content-type') ?? '';
+    if (ct.includes('application/json')) {
+      const data = (await regRes.json()) as { palmosUserId: string };
+      return data.palmosUserId;
+    } else {
+      console.warn(`[palmos] Registration returned non-JSON (${ct}):`, (await regRes.text()).slice(0, 200));
+    }
+  }
+  return undefined;
+}
+
+// ── Transport handlers ──────────────────────────────────────────────────────
+
+/**
+ * Handle OpenAI SDK-based backends (llm, openclaw).
+ * These use the OpenAI client library rather than raw fetch.
+ */
+async function handleOpenAiSdk(
+  type: AiBackendType,
+  cfg: AiBackendProviderConfig,
+  history: { role: 'user' | 'assistant'; content: string }[],
+): Promise<string> {
+  if (type === 'openclaw') {
+    const url = cfg.baseUrl;
+    if (!url) throw new Error('OpenClaw backend: baseUrl is required');
+    const apiKey = cfg.apiKey ?? 'openclaw';
+    const model = cfg.model || 'default';
+    const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
+    const response = await client.chat.completions.create({
+      model,
+      messages: history.map((m) => ({ role: m.role, content: m.content })),
+      max_completion_tokens: 1024,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  }
+
+  // llm
+  const apiKey = cfg.apiKey ?? '';
+  if (!apiKey) throw new Error('LLM backend: apiKey is required');
+  const client = getOpenAIClient(apiKey, cfg.baseUrl);
+  const model = cfg.model || 'gpt-4o-mini';
+  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  if (cfg.systemPrompt) messages.push({ role: 'system', content: cfg.systemPrompt });
+  messages.push(...history.map((m) => ({ role: m.role, content: m.content })));
+  const response = await client.chat.completions.create({ model, messages, max_completion_tokens: 1024 });
+  return response.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Handle HTTP/SSE-based backends via raw fetch.
+ */
+async function handleFetch(
+  descriptor: BackendTypeDescriptor,
+  cfg: AiBackendProviderConfig,
+  history: { role: 'user' | 'assistant'; content: string }[],
+  extraBody?: Record<string, unknown>,
+): Promise<string> {
+  const url = resolveEndpoint(descriptor, cfg);
+  if (!url) throw new Error(`${descriptor.label} backend: baseUrl is required`);
+
+  const responseFormat = resolveResponseFormat(descriptor, cfg);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders(cfg),
+    body: JSON.stringify({
+      messages: history,
+      ...(cfg.systemPrompt && descriptor.type === 'claude-code' ? { system_prompt: cfg.systemPrompt } : {}),
+      ...extraBody,
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`${descriptor.label} error: ${res.status} ${errBody.slice(0, 200)}`);
+  }
+
+  return parseResponse(res, responseFormat);
+}
+
+// ── WebSocket bridge registry (for local-bridge) ────────────────────────────
+
+import type { WebSocket } from 'ws';
+
+const bridgeConnections = new Map<string, WebSocket>();
+const pendingReplies = new Map<string, { resolve: (text: string) => void; reject: (err: Error) => void }>();
+
+export function registerBridgeConnection(backendId: string, ws: WebSocket): void {
+  bridgeConnections.set(backendId, ws);
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString()) as { type: string; requestId: string; text?: string; error?: string };
+      if (msg.type === 'reply' && msg.requestId) {
+        const pending = pendingReplies.get(msg.requestId);
+        if (pending) {
+          pendingReplies.delete(msg.requestId);
+          if (msg.error) pending.reject(new Error(msg.error));
+          else pending.resolve(msg.text ?? '');
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  });
+  ws.on('close', () => { bridgeConnections.delete(backendId); });
+}
+
+export function isBridgeConnected(backendId: string): boolean {
+  const ws = bridgeConnections.get(backendId);
+  return ws !== undefined && ws.readyState === ws.OPEN;
+}
+
+async function handlePtyWebSocket(
+  backendId: string,
+  history: { role: 'user' | 'assistant'; content: string }[],
+  meta?: { sender?: string; platform?: string },
+): Promise<string> {
+  const ws = bridgeConnections.get(backendId);
+  if (!ws || ws.readyState !== ws.OPEN) {
+    return '⚠️ Local bridge is not connected. Please start the bridge on your machine.';
+  }
+
+  const requestId = `br_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  return new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingReplies.delete(requestId);
+      reject(new Error('Local bridge timed out (120s)'));
+    }, 120_000);
+
+    pendingReplies.set(requestId, {
+      resolve: (text) => { clearTimeout(timeout); resolve(text); },
+      reject: (err) => { clearTimeout(timeout); reject(err); },
+    });
+
+    ws.send(JSON.stringify({
+      type: 'message', requestId, history,
+      ...(meta?.sender ? { sender: meta.sender } : {}),
+      ...(meta?.platform ? { platform: meta.platform } : {}),
+    }));
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -160,148 +405,49 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
   const { backend, history } = options;
   const { type, config: cfg } = backend;
 
+  const descriptor = BACKEND_TYPE_DESCRIPTORS[type];
+  if (!descriptor) throw new Error(`Unknown AI backend type: ${type}`);
+
   try {
-  switch (type) {
-    // ── LLM: OpenAI-compatible Chat Completions ────────────────────────
-    case 'llm': {
-      const apiKey = cfg.apiKey ?? '';
-      if (!apiKey) throw new Error('LLM backend: apiKey is required');
-      const baseURL = cfg.baseUrl;
-      const model = cfg.model || 'gpt-4o-mini';
-      const systemPrompt = cfg.systemPrompt || '';
-      const client = getOpenAIClient(apiKey, baseURL);
-      const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
-      if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-      messages.push(...history.map((m) => ({ role: m.role, content: m.content })));
-      const response = await client.chat.completions.create({ model, messages, max_completion_tokens: 1024 });
-      return response.choices[0]?.message?.content?.trim() ?? '';
-    }
-
-    // ── OpenClaw: self-contained, OpenAI-compatible ────────────────────
-    case 'openclaw': {
-      const url = cfg.baseUrl;
-      if (!url) throw new Error('OpenClaw backend: baseUrl is required');
-      const apiKey = cfg.apiKey ?? 'openclaw';
-      const model = cfg.model || 'default';
-      const client = getOpenAIClient(apiKey, `${url.replace(/\/$/, '')}/v1`);
-      const response = await client.chat.completions.create({
-        model,
-        messages: history.map((m) => ({ role: m.role, content: m.content })),
-        max_completion_tokens: 1024,
-      });
-      return response.choices[0]?.message?.content?.trim() ?? '';
-    }
-
-    // ── Palmos: POST messages, SSE stream response ─────────────────────
-    case 'palmos': {
-      if (!cfg.apiKey) throw new Error('Palmos backend: apiKey is required');
+    // Run pre-request hooks
+    let extraBody: Record<string, unknown> = {};
+    if (descriptor.hooks?.includes('palmos-register')) {
       const baseUrl = (process.env.PALMOS_BASE_URL ?? cfg.baseUrl ?? 'https://pulse-editor.com').replace(/\/$/, '');
-      const palmosHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cfg.apiKey}`,
-      };
+      const palmosUserId = await runPalmosRegister(cfg, backend.palmosCtx);
+      if (palmosUserId) extraBody.userId = palmosUserId;
+      if (backend.palmosCtx?.conversationId) extraBody.threadId = backend.palmosCtx.conversationId;
+      // Override baseUrl for endpoint resolution
+      cfg.baseUrl = baseUrl;
+    }
 
-      // Auto-register external user in Palmos and resolve their Palmos userId
-      let palmosUserId: string | undefined;
-      const ctx = backend.palmosCtx;
-      if (ctx) {
-        const regRes = await fetch(`${baseUrl}/api/external-auth/register`, {
-          method: 'POST',
-          headers: palmosHeaders,
-          body: JSON.stringify({
-            externalId: ctx.endUserId,
-            tenantId: ctx.tenantId,
-            userName: ctx.displayName,
-          }),
-        });
-        if (regRes.ok) {
-          const regCt = regRes.headers.get('content-type') ?? '';
-          if (regCt.includes('application/json')) {
-            const regData = (await regRes.json()) as { palmosUserId: string };
-            palmosUserId = regData.palmosUserId;
-          } else {
-            console.warn(`[palmos] Registration returned non-JSON (${regCt}):`, (await regRes.text()).slice(0, 200));
-          }
+    // Dispatch by transport
+    const transport = resolveTransport(descriptor, cfg);
+
+    switch (transport) {
+      case 'http':
+      case 'sse': {
+        // llm and openclaw use the OpenAI SDK client
+        if (type === 'llm' || type === 'openclaw') {
+          return await handleOpenAiSdk(type, cfg, history);
         }
+        return await handleFetch(descriptor, cfg, history, extraBody);
       }
-
-      const res = await fetch(`${baseUrl}/api/agent/manager/stream`, {
-        method: 'POST',
-        headers: palmosHeaders,
-        body: JSON.stringify({
-          messages: history,
-          ...(palmosUserId ? { userId: palmosUserId } : {}),
-          ...(ctx?.conversationId ? { threadId: ctx.conversationId } : {}),
-        }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      if (!res.ok) throw new Error(`Palmos error: ${res.status}`);
-      if (res.body) return readLangGraphStream(res.body);
-      const text = await res.text();
-      return text.trim();
+      case 'pty-websocket': {
+        // Need a backend ID — passed via a convention on the config
+        const backendId = (cfg as any).__backendId as string | undefined;
+        if (!backendId) throw new Error('Local bridge backend: missing backend ID');
+        return await handlePtyWebSocket(backendId, history, {
+          sender: options.sender,
+          platform: options.platform,
+        });
+      }
+      case 'websocket': {
+        // Future: persistent WebSocket connections for custom backends
+        throw new Error('WebSocket transport is not yet implemented for remote backends');
+      }
+      default:
+        throw new Error(`Unknown transport: ${transport}`);
     }
-
-    // ── Webhook: POST messages, get text response (JSON or SSE) ────────
-    case 'upstream': {
-      if (!cfg.baseUrl) throw new Error('Webhook backend: baseUrl is required');
-      const res = await fetch(cfg.baseUrl, {
-        method: 'POST',
-        headers: authHeaders(cfg),
-        body: JSON.stringify({ messages: history }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      if (!res.ok) throw new Error(`Webhook error: ${res.status}`);
-
-      if (cfg.upstreamStream && res.body) {
-        return readSseStream(res.body);
-      }
-
-      // Guard against non-JSON responses (e.g. HTML error pages)
-      const contentType = res.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/json')) {
-        const body = await res.text();
-        throw new Error(`Upstream returned non-JSON response (${contentType || 'no content-type'}): ${body.slice(0, 200)}`);
-      }
-
-      // JSON response — look for common fields
-      const data = (await res.json()) as { reply?: string; content?: string; message?: string; text?: string };
-      return (data.reply ?? data.content ?? data.message ?? data.text ?? '').trim();
-    }
-
-    // ── Claude Code: MCP channel server bridge ──────────────────────────
-    case 'claude-code': {
-      if (!cfg.baseUrl) throw new Error('Claude Code backend: baseUrl is required (channel server URL)');
-      const url = `${cfg.baseUrl.replace(/\/$/, '')}/message`;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (cfg.authHeader) headers['Authorization'] = cfg.authHeader;
-      else if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          messages: history,
-          system_prompt: cfg.systemPrompt,
-        }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
-        throw new Error(`Claude Code channel error: ${res.status} ${errBody.slice(0, 200)}`);
-      }
-      const ccContentType = res.headers.get('content-type') ?? '';
-      if (!ccContentType.includes('application/json')) {
-        const body = await res.text();
-        throw new Error(`Claude Code returned non-JSON response (${ccContentType || 'no content-type'}): ${body.slice(0, 200)}`);
-      }
-      const data = (await res.json()) as { ok: boolean; reply?: string; error?: string };
-      if (!data.ok) throw new Error(`Claude Code channel error: ${data.error ?? 'unknown'}`);
-      return (data.reply ?? '').trim();
-    }
-
-    default:
-      throw new Error(`Unknown AI backend type: ${type}`);
-  }
   } catch (err: unknown) {
     const code = isConnectionError(err);
     if (code) {

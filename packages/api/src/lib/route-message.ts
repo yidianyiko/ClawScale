@@ -6,8 +6,8 @@
  *   - Access policy enforcement
  *   - Conversation management
  *   - Message persistence
- *   - Commands: /backends, /add, /remove, /clear, /help
- *   - Direct messages: agent> message
+ *   - Commands: forwarded to active backend; use "> /cmd" for ClawScale
+ *   - Direct messages: agent> message, > message (ClawScale)
  *   - AI backend routing (multi-backend)
  */
 
@@ -215,7 +215,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, historyConvIds, palmosCtx);
+        const replyText = await runBackend(backend, historyConvIds, palmosCtx, {
+          sender: endUser!.name ?? displayName,
+          platform,
+        });
         return { backend, replyText };
       }),
     );
@@ -243,9 +246,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   // 8. Parse commands
   const cmd = parseCommand(text);
+  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
 
   if (cmd) {
     // ── System commands ────────────────────────────────────────────────
+    // Bare slash commands (e.g. "/clear") are forwarded to the active
+    // backend as regular text.  System commands only execute when
+    // explicitly directed to ClawScale via "> /cmd" or "clawscale> /cmd".
+    // Fallback: if no backends are active, execute as system command.
+    if (cmd.kind === 'system' && activeBackends.length > 0 && !meta?.__forceSystem) {
+      // Forward to active backends as plain text
+      return routeToBackends(activeBackends);
+    }
+
     if (cmd.kind === 'system') {
       switch (cmd.command) {
         case 'help': {
@@ -481,6 +494,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         if (!clawscaleActive) {
           return reply('ClawScale assistant is currently disabled.');
         }
+        // Check if the message is a system command (e.g. "> /clear")
+        const innerCmd = parseCommand(cmd.message);
+        if (innerCmd?.kind === 'system') {
+          // Execute as system command by re-routing with __forceSystem flag
+          return routeInboundMessage({ ...input, text: cmd.message, meta: { ...meta, __forceSystem: true } });
+        }
         // Direct mode — run agent loop (may execute commands)
         return runAgent(cmd.message, 'direct');
       }
@@ -495,8 +514,6 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   }
 
   // 9. No command — route to active backends or show menu
-  const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
-
   if (activeBackends.length > 0) {
     return routeToBackends(activeBackends);
   }
@@ -573,9 +590,12 @@ async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
+  meta?: { sender?: string; platform?: string },
 ): Promise<string> {
   const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
+  // Pass backend ID through for local-bridge WebSocket lookup
+  (cfg as any).__backendId = backend.id;
   return generateReply({
     backend: {
       type: backend.type as AiBackendType,
@@ -583,5 +603,7 @@ async function runBackend(
       ...(backend.type === 'palmos' && palmosCtx ? { palmosCtx } : {}),
     },
     history,
+    sender: meta?.sender,
+    platform: meta?.platform,
   });
 }

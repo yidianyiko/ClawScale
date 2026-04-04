@@ -24,6 +24,7 @@ import { initLineAdapters } from './adapters/line.js';
 import { initSignalAdapters } from './adapters/signal.js';
 import { initTeamsAdapters } from './adapters/teams.js';
 import { initWABusinessAdapters } from './adapters/whatsapp-business.js';
+import { initBridgeWebSocket } from './gateway/bridge-ws.js';
 
 const app = new Hono();
 
@@ -76,8 +77,9 @@ app.onError((err, c) => {
 const port = parseInt(process.env['PORT'] ?? '4041', 10);
 const host = process.env['HOST'] ?? '0.0.0.0';
 
-serve({ fetch: app.fetch, port, hostname: host }, (info) => {
+const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   console.log(`ClawScale API running on http://${info.address}:${info.port}`);
+  initBridgeWebSocket(server);
   initDiscordAdapters().catch((err) => console.error('[discord] Init failed:', err));
   initWeChatAdapters().catch((err) => console.error('[wechat] Init failed:', err));
   initWhatsAppAdapters().catch((err) => console.error('[whatsapp] Init failed:', err));
