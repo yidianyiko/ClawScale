@@ -53,6 +53,13 @@ export interface GenerateOptions {
   sender?: string;
   /** Chat platform the message came from (e.g. "telegram", "discord") */
   platform?: string;
+  metadata?: {
+    tenantId: string;
+    channelId: string;
+    endUserId: string;
+    conversationId: string;
+    externalId: string;
+  };
 }
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
@@ -435,7 +442,7 @@ function isConnectionError(err: unknown): string | null {
 }
 
 export async function generateReply(options: GenerateOptions): Promise<string> {
-  const { backend, history } = options;
+  const { backend, history, sender, platform, metadata } = options;
   const { type, config: cfg } = backend;
 
   const descriptor = BACKEND_TYPE_DESCRIPTORS[type];
@@ -451,6 +458,13 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
       if (backend.palmosCtx?.conversationId) extraBody.threadId = backend.palmosCtx.conversationId;
       // Override baseUrl for endpoint resolution
       cfg.baseUrl = baseUrl;
+    }
+    if (type === 'custom' && metadata) {
+      extraBody.metadata = {
+        ...metadata,
+        sender,
+        platform,
+      };
     }
 
     // Dispatch by transport
@@ -470,8 +484,8 @@ export async function generateReply(options: GenerateOptions): Promise<string> {
         const backendId = (cfg as any).__backendId as string | undefined;
         if (!backendId) throw new Error('Local bridge backend: missing backend ID');
         return await handlePtyWebSocket(backendId, history, {
-          sender: options.sender,
-          platform: options.platform,
+          sender,
+          platform,
         });
       }
       case 'websocket': {

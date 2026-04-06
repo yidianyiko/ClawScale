@@ -29,6 +29,8 @@ interface WeixinState {
   qr: string | null;         // base64 PNG for dashboard
   qrUrl: string | null;      // raw string encoded in the QR
   status: 'qr_pending' | 'connected' | 'disconnected';
+  baseUrl?: string;
+  token?: string;
 }
 
 const channels = new Map<string, WeixinState>();
@@ -79,7 +81,13 @@ async function downloadCdnMedia(
 // ── QR Login ──────────────────────────────────────────────────────────────────
 
 export async function startWeixinQR(channelId: string): Promise<void> {
-  const state: WeixinState = { running: true, cursor: '', qr: null, qrUrl: null, status: 'qr_pending' };
+  const state: WeixinState = {
+    running: true,
+    cursor: '',
+    qr: null,
+    qrUrl: null,
+    status: 'qr_pending',
+  };
   channels.set(channelId, state);
 
   // Run login flow in background
@@ -149,6 +157,8 @@ async function loginFlow(channelId: string): Promise<void> {
           },
         });
 
+        state.baseUrl = botBaseUrl;
+        state.token = token;
         state.qr = null;
         state.status = 'connected';
         console.log(`[weixin:${channelId}] Logged in, starting poll loop`);
@@ -180,11 +190,21 @@ async function loginFlow(channelId: string): Promise<void> {
 async function pollLoop(channelId: string, baseUrl: string, token: string): Promise<void> {
   let existing = channels.get(channelId);
   if (!existing) {
-    existing = { running: true, cursor: '', qr: null, qrUrl: null, status: 'connected' };
+    existing = {
+      running: true,
+      cursor: '',
+      qr: null,
+      qrUrl: null,
+      status: 'connected',
+      baseUrl,
+      token,
+    };
     channels.set(channelId, existing);
   }
   const state = existing;
   state.status = 'connected';
+  state.baseUrl = baseUrl;
+  state.token = token;
 
   while (state.running) {
     try {
@@ -351,6 +371,37 @@ export async function stopWeixinBot(channelId: string): Promise<void> {
   state.running = false;
   channels.delete(channelId);
   console.log(`[weixin:${channelId}] Stopped`);
+}
+
+export async function sendWeixinText(
+  channelId: string,
+  externalId: string,
+  text: string,
+): Promise<void> {
+  const state = channels.get(channelId);
+  if (!state?.baseUrl || !state?.token) {
+    throw new Error(`wechat channel ${channelId} is not connected`);
+  }
+
+  const sendBody = JSON.stringify({
+    msg: {
+      from_user_id: '',
+      to_user_id: externalId,
+      client_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      message_type: 2,
+      message_state: 2,
+      context_token: '',
+      item_list: [{ type: 1, text_item: { text } }],
+    },
+    base_info: { channel_version: '1.0.0' },
+  });
+
+  await fetch(`${state.baseUrl}/ilink/bot/sendmessage`, {
+    method: 'POST',
+    headers: msgHeaders(state.token, sendBody),
+    body: sendBody,
+    signal: AbortSignal.timeout(15_000),
+  });
 }
 
 export async function startWeixinBot(channelId: string, baseUrl: string, token: string): Promise<void> {

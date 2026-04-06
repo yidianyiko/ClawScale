@@ -630,5 +630,12 @@ async function runBackend(
     history,
     sender: meta?.sender,
     platform: meta?.platform,
+    metadata: {
+      tenantId,
+      channelId,
+      endUserId: endUser!.id,
+      conversationId: conversation!.id,
+      externalId: endUser!.externalId,
+    },
   });
 }
