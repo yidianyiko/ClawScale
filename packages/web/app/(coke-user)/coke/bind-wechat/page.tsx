@@ -285,8 +285,8 @@ export default function BindWechatPage() {
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Step 2 of 2</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Bind your WeChat</h1>
         <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-700">
-          Sign in to Coke on the web first. Then use WeChat on your phone to scan this code and send any message to Coke.
-          After that, your ongoing conversations happen in WeChat.
+          Sign in to Coke on the web first. Then use WeChat on your phone to scan this code and follow the instructions
+          shown on your phone to finish the bind. After that, your ongoing conversations happen in WeChat.
         </p>
 
         <div className="mt-8 flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white p-6">
@@ -311,6 +311,7 @@ export default function BindWechatPage() {
         <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
           <li>Use your desktop browser for this page.</li>
           <li>Scan with the WeChat account you want permanently linked.</li>
+          <li>After scanning, complete the confirmation step shown on the phone page.</li>
           <li>Once connected, return to WeChat for future conversations.</li>
         </ul>
 
