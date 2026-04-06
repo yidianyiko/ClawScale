@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
@@ -33,6 +33,7 @@ export default function BindWechatPage() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const [userName, setUserName] = useState('');
+  const pollFailureCountRef = useRef(0);
 
   useEffect(() => {
     const token = getCokeUserToken();
@@ -52,6 +53,8 @@ export default function BindWechatPage() {
     if (!shouldStartCokeBindSession({ isDesktop, hasToken })) {
       return;
     }
+
+    pollFailureCountRef.current = 0;
 
     void cokeUserApi
       .post<ApiResponse<BindState>>('/user/wechat-bind/session')
@@ -82,17 +85,30 @@ export default function BindWechatPage() {
         .get<ApiResponse<BindState>>('/user/wechat-bind/status')
         .then((res) => {
           if (!res.ok) {
-            if (shouldFailCokeBindStatusPoll(res)) {
+            const nextFailureCount = pollFailureCountRef.current + 1;
+            pollFailureCountRef.current = nextFailureCount;
+
+            if (shouldFailCokeBindStatusPoll({
+              ...res,
+              consecutiveGenericFailures: nextFailureCount,
+            })) {
               setFailureKind(getCokeBindFailureKind(res));
               setBindState({ status: 'failed' });
             }
             return;
           }
 
+          pollFailureCountRef.current = 0;
           setBindState(res.data);
         })
         .catch(() => {
-          // Keep the active QR session visible through transient poll failures.
+          const nextFailureCount = pollFailureCountRef.current + 1;
+          pollFailureCountRef.current = nextFailureCount;
+
+          if (shouldFailCokeBindStatusPoll({ consecutiveGenericFailures: nextFailureCount })) {
+            setFailureKind('generic');
+            setBindState({ status: 'failed' });
+          }
         });
     }, 3000);
 
@@ -105,6 +121,7 @@ export default function BindWechatPage() {
   }
 
   function handleRetry() {
+    pollFailureCountRef.current = 0;
     setFailureKind('generic');
     setBindState({ status: 'unbound' });
     setSessionAttempt((value) => value + 1);

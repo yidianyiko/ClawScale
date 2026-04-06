@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_COKE_BIND_STATUS_FAILURES,
   getCokeBindFailureKind,
   shouldFailCokeBindStatusPoll,
   shouldStartCokeBindSession,
@@ -22,6 +23,17 @@ describe('shouldStartCokeBindSession', () => {
 
   it('only aborts bind polling for auth failures', () => {
     expect(shouldFailCokeBindStatusPoll({ error: 'Unauthorized' })).toBe(true);
-    expect(shouldFailCokeBindStatusPoll({ error: 'Temporary bridge failure' })).toBe(false);
+    expect(
+      shouldFailCokeBindStatusPoll({
+        error: 'Temporary bridge failure',
+        consecutiveGenericFailures: MAX_COKE_BIND_STATUS_FAILURES - 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldFailCokeBindStatusPoll({
+        error: 'Temporary bridge failure',
+        consecutiveGenericFailures: MAX_COKE_BIND_STATUS_FAILURES,
+      }),
+    ).toBe(true);
   });
 });

@@ -1,3 +1,5 @@
+export const MAX_COKE_BIND_STATUS_FAILURES = 3;
+
 export function shouldStartCokeBindSession(input: {
   isDesktop: boolean | null;
   hasToken: boolean | null;
@@ -29,6 +31,11 @@ export function getCokeBindFailureKind(input: {
 export function shouldFailCokeBindStatusPoll(input: {
   code?: string;
   error?: string;
+  consecutiveGenericFailures?: number;
 }): boolean {
-  return getCokeBindFailureKind(input) === 'auth';
+  if (getCokeBindFailureKind(input) === 'auth') {
+    return true;
+  }
+
+  return (input.consecutiveGenericFailures ?? 0) >= MAX_COKE_BIND_STATUS_FAILURES;
 }
