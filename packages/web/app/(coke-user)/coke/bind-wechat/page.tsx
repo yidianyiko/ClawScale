@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '@/lib/coke-user-api';
-import { getCokeBindFailureKind, shouldStartCokeBindSession } from '@/lib/coke-user-bind';
+import {
+  getCokeBindFailureKind,
+  shouldFailCokeBindStatusPoll,
+  shouldStartCokeBindSession,
+} from '@/lib/coke-user-bind';
 import {
   clearCokeUserAuth,
   getCokeUser,
@@ -78,16 +82,17 @@ export default function BindWechatPage() {
         .get<ApiResponse<BindState>>('/user/wechat-bind/status')
         .then((res) => {
           if (!res.ok) {
-            setFailureKind(getCokeBindFailureKind(res));
-            setBindState({ status: 'failed' });
+            if (shouldFailCokeBindStatusPoll(res)) {
+              setFailureKind(getCokeBindFailureKind(res));
+              setBindState({ status: 'failed' });
+            }
             return;
           }
 
           setBindState(res.data);
         })
         .catch(() => {
-          setFailureKind('generic');
-          setBindState({ status: 'failed' });
+          // Keep the active QR session visible through transient poll failures.
         });
     }, 3000);
 

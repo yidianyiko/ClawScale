@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getCokeUserApiBase } from './coke-user-api';
+import { CokeUserApiConfigurationError, getCokeUserApiBase } from './coke-user-api';
 
 const originalCokeApiUrl = process.env['NEXT_PUBLIC_COKE_API_URL'];
 const originalApiUrl = process.env['NEXT_PUBLIC_API_URL'];
@@ -28,10 +28,10 @@ describe('getCokeUserApiBase', () => {
     expect(getCokeUserApiBase()).toBe('https://gateway.example.com');
   });
 
-  it('returns an empty base instead of localhost defaults when no public api url is configured', () => {
+  it('throws a configuration error when no public api url is configured', () => {
     delete process.env['NEXT_PUBLIC_COKE_API_URL'];
     delete process.env['NEXT_PUBLIC_API_URL'];
 
-    expect(getCokeUserApiBase()).toBe('');
+    expect(() => getCokeUserApiBase()).toThrow(CokeUserApiConfigurationError);
   });
 });

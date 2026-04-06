@@ -1,7 +1,18 @@
 import { getCokeUserToken } from './coke-user-auth';
 
+export class CokeUserApiConfigurationError extends Error {
+  constructor() {
+    super('Coke API base URL is not configured');
+    this.name = 'CokeUserApiConfigurationError';
+  }
+}
+
 export function getCokeUserApiBase(): string {
-  return process.env['NEXT_PUBLIC_COKE_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'] ?? '';
+  const base = process.env['NEXT_PUBLIC_COKE_API_URL'] ?? process.env['NEXT_PUBLIC_API_URL'];
+  if (!base) {
+    throw new CokeUserApiConfigurationError();
+  }
+  return base;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

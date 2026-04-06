@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getCokeBindFailureKind, shouldStartCokeBindSession } from './coke-user-bind';
+import {
+  getCokeBindFailureKind,
+  shouldFailCokeBindStatusPoll,
+  shouldStartCokeBindSession,
+} from './coke-user-bind';
 
 describe('shouldStartCokeBindSession', () => {
   it('does not start a bind session until desktop and auth are both confirmed', () => {
@@ -14,5 +18,10 @@ describe('shouldStartCokeBindSession', () => {
     expect(getCokeBindFailureKind({ error: 'Unauthorized' })).toBe('auth');
     expect(getCokeBindFailureKind({ error: 'Invalid or expired token' })).toBe('auth');
     expect(getCokeBindFailureKind({ error: 'Temporary bridge failure' })).toBe('generic');
+  });
+
+  it('only aborts bind polling for auth failures', () => {
+    expect(shouldFailCokeBindStatusPoll({ error: 'Unauthorized' })).toBe(true);
+    expect(shouldFailCokeBindStatusPoll({ error: 'Temporary bridge failure' })).toBe(false);
   });
 });

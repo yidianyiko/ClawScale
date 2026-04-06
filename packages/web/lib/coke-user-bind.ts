@@ -25,3 +25,10 @@ export function getCokeBindFailureKind(input: {
 
   return 'generic';
 }
+
+export function shouldFailCokeBindStatusPoll(input: {
+  code?: string;
+  error?: string;
+}): boolean {
+  return getCokeBindFailureKind(input) === 'auth';
+}
