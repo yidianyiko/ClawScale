@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '@/lib/coke-user-api';
-import { shouldStartCokeBindSession } from '@/lib/coke-user-bind';
+import { getCokeBindFailureKind, shouldStartCokeBindSession } from '@/lib/coke-user-bind';
 import {
   clearCokeUserAuth,
   getCokeUser,
@@ -23,9 +23,11 @@ type BindState =
 export default function BindWechatPage() {
   const router = useRouter();
   const [bindState, setBindState] = useState<BindState>({ status: 'unbound' });
+  const [failureKind, setFailureKind] = useState<'auth' | 'generic'>('generic');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
@@ -51,15 +53,17 @@ export default function BindWechatPage() {
       .post<ApiResponse<BindState>>('/user/wechat-bind/session')
       .then((res) => {
         if (!res.ok) {
+          setFailureKind(getCokeBindFailureKind(res));
           setBindState({ status: 'failed' });
           return;
         }
         setBindState(res.data);
       })
       .catch(() => {
+        setFailureKind('generic');
         setBindState({ status: 'failed' });
       });
-  }, [hasToken, isDesktop]);
+  }, [hasToken, isDesktop, sessionAttempt]);
 
   useEffect(() => {
     if (bindState.status !== 'pending') {
@@ -73,11 +77,16 @@ export default function BindWechatPage() {
       void cokeUserApi
         .get<ApiResponse<BindState>>('/user/wechat-bind/status')
         .then((res) => {
-          if (res.ok) {
-            setBindState(res.data);
+          if (!res.ok) {
+            setFailureKind(getCokeBindFailureKind(res));
+            setBindState({ status: 'failed' });
+            return;
           }
+
+          setBindState(res.data);
         })
         .catch(() => {
+          setFailureKind('generic');
           setBindState({ status: 'failed' });
         });
     }, 3000);
@@ -88,6 +97,12 @@ export default function BindWechatPage() {
   function handleSignOut() {
     clearCokeUserAuth();
     router.replace('/coke/login');
+  }
+
+  function handleRetry() {
+    setFailureKind('generic');
+    setBindState({ status: 'unbound' });
+    setSessionAttempt((value) => value + 1);
   }
 
   if (bindState.status === 'bound') {
@@ -143,8 +158,36 @@ export default function BindWechatPage() {
       <section className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-8">
         <h1 className="text-3xl font-semibold text-slate-950">Unable to start WeChat binding</h1>
         <p className="mt-4 text-sm leading-6 text-slate-700">
-          Refresh the page to request a new session, or sign in again if your account session expired.
+          {failureKind === 'auth'
+            ? 'Your Coke website sign-in is no longer valid. Sign in again to create a fresh WeChat bind session.'
+            : 'Coke could not create or refresh the current WeChat bind session. You can retry with a new session now.'}
         </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          {failureKind === 'auth' ? (
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Sign in again
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Generate a new QR code
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
+          >
+            Sign in again
+          </button>
+        </div>
       </section>
     );
   }
