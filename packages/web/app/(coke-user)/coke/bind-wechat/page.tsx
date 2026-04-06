@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '@/lib/coke-user-api';
+import { shouldStartCokeBindSession } from '@/lib/coke-user-bind';
 import {
   clearCokeUserAuth,
   getCokeUser,
@@ -23,15 +24,26 @@ export default function BindWechatPage() {
   const router = useRouter();
   const [bindState, setBindState] = useState<BindState>({ status: 'unbound' });
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(true);
+  const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    setIsDesktop(window.innerWidth >= 1024);
-    setUserName(getCokeUser()?.display_name ?? '');
+    const token = getCokeUserToken();
 
-    if (!getCokeUserToken()) {
+    setIsDesktop(window.innerWidth >= 1024);
+    setHasToken(token != null);
+    setUserName(getCokeUser()?.display_name ?? '');
+  }, []);
+
+  useEffect(() => {
+    if (hasToken === false) {
       router.replace('/coke/login');
+    }
+  }, [hasToken, router]);
+
+  useEffect(() => {
+    if (!shouldStartCokeBindSession({ isDesktop, hasToken })) {
       return;
     }
 
@@ -47,7 +59,7 @@ export default function BindWechatPage() {
       .catch(() => {
         setBindState({ status: 'failed' });
       });
-  }, [router]);
+  }, [hasToken, isDesktop]);
 
   useEffect(() => {
     if (bindState.status !== 'pending') {
@@ -132,6 +144,21 @@ export default function BindWechatPage() {
         <h1 className="text-3xl font-semibold text-slate-950">Unable to start WeChat binding</h1>
         <p className="mt-4 text-sm leading-6 text-slate-700">
           Refresh the page to request a new session, or sign in again if your account session expired.
+        </p>
+      </section>
+    );
+  }
+
+  if (hasToken === false) {
+    return null;
+  }
+
+  if (hasToken === null || isDesktop === null) {
+    return (
+      <section className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-slate-50 p-8">
+        <h1 className="text-3xl font-semibold text-slate-950">Preparing WeChat binding</h1>
+        <p className="mt-4 text-sm leading-6 text-slate-700">
+          Coke only starts a WeChat bind session after desktop access and sign-in are confirmed.
         </p>
       </section>
     );
