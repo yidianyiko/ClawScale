@@ -34,6 +34,7 @@ export default function BindWechatPage() {
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const [userName, setUserName] = useState('');
   const pollFailureCountRef = useRef(0);
+  const bindSessionNonceRef = useRef(0);
 
   useEffect(() => {
     const token = getCokeUserToken();
@@ -54,11 +55,17 @@ export default function BindWechatPage() {
       return;
     }
 
+    bindSessionNonceRef.current += 1;
     pollFailureCountRef.current = 0;
+    const bindSessionNonce = bindSessionNonceRef.current;
 
     void cokeUserApi
       .post<ApiResponse<BindState>>('/user/wechat-bind/session')
       .then((res) => {
+        if (bindSessionNonce !== bindSessionNonceRef.current) {
+          return;
+        }
+
         if (!res.ok) {
           setFailureKind(getCokeBindFailureKind(res));
           setBindState({ status: 'failed' });
@@ -67,6 +74,10 @@ export default function BindWechatPage() {
         setBindState(res.data);
       })
       .catch(() => {
+        if (bindSessionNonce !== bindSessionNonceRef.current) {
+          return;
+        }
+
         setFailureKind('generic');
         setBindState({ status: 'failed' });
       });
@@ -80,10 +91,23 @@ export default function BindWechatPage() {
 
     void QRCode.toDataURL(bindState.connect_url).then(setQrDataUrl);
 
+    const bindSessionNonce = bindSessionNonceRef.current;
+    let pollInFlight = false;
+
     const timer = window.setInterval(() => {
+      if (pollInFlight) {
+        return;
+      }
+
+      pollInFlight = true;
+
       void cokeUserApi
         .get<ApiResponse<BindState>>('/user/wechat-bind/status')
         .then((res) => {
+          if (bindSessionNonce !== bindSessionNonceRef.current) {
+            return;
+          }
+
           if (!res.ok) {
             const nextFailureCount = pollFailureCountRef.current + 1;
             pollFailureCountRef.current = nextFailureCount;
@@ -102,6 +126,10 @@ export default function BindWechatPage() {
           setBindState(res.data);
         })
         .catch(() => {
+          if (bindSessionNonce !== bindSessionNonceRef.current) {
+            return;
+          }
+
           const nextFailureCount = pollFailureCountRef.current + 1;
           pollFailureCountRef.current = nextFailureCount;
 
@@ -109,6 +137,9 @@ export default function BindWechatPage() {
             setFailureKind('generic');
             setBindState({ status: 'failed' });
           }
+        })
+        .finally(() => {
+          pollInFlight = false;
         });
     }, 3000);
 
