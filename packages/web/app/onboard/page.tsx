@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Image from 'next/image';
 
 interface ChannelInfo {
@@ -42,7 +42,7 @@ const CHANNEL_INSTRUCTIONS: Record<string, string> = {
   web: 'Click the link below to start chatting in your browser.',
 };
 
-export default function OnboardPage() {
+function OnboardPageContent() {
   const params = useSearchParams();
   const palmosUserId = params.get('palmosUserId');
   const selectedChannel = params.get('channel');
@@ -154,5 +154,21 @@ export default function OnboardPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function OnboardPageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <p className="text-lg text-gray-500">Loading...</p>
+    </div>
+  );
+}
+
+export default function OnboardPage() {
+  return (
+    <Suspense fallback={<OnboardPageFallback />}>
+      <OnboardPageContent />
+    </Suspense>
   );
 }
