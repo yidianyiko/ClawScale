@@ -32,7 +32,10 @@ describe('custom backend metadata envelope', () => {
       },
     } as any);
 
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(requestInit?.body).toBeDefined();
+
+    const body = JSON.parse(String(requestInit?.body));
     expect(body.metadata.tenantId).toBe('ten_1');
     expect(body.metadata.channelId).toBe('ch_1');
     expect(body.metadata.endUserId).toBe('eu_1');

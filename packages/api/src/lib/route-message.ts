@@ -236,7 +236,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, historyConvIds, palmosCtx, {
+        const replyText = await runBackend(backend, historyConvIds, {
+          tenantId,
+          channelId,
+          endUserId: endUser!.id,
+          conversationId: conversation!.id,
+          externalId: endUser!.externalId,
+        }, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
         });
@@ -614,6 +620,13 @@ async function getLinkedConversationIds(endUserId: string, linkedTo: string | nu
 async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
+  metadata: {
+    tenantId: string;
+    channelId: string;
+    endUserId: string;
+    conversationId: string;
+    externalId: string;
+  },
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: { sender?: string; platform?: string },
 ): Promise<string> {
@@ -630,12 +643,6 @@ async function runBackend(
     history,
     sender: meta?.sender,
     platform: meta?.platform,
-    metadata: {
-      tenantId,
-      channelId,
-      endUserId: endUser!.id,
-      conversationId: conversation!.id,
-      externalId: endUser!.externalId,
-    },
+    metadata,
   });
 }
