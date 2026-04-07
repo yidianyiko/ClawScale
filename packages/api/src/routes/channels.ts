@@ -336,13 +336,20 @@ export const channelsRouter = new Hono()
     const { tenantId } = c.get('auth');
     const id = c.req.param('id')!;
 
-    const channel = await db.channel.findFirst({ where: { id, tenantId }, select: { id: true, type: true } });
+    const channel = await db.channel.findFirst({
+      where: { id, tenantId },
+      select: { id: true, type: true, status: true },
+    });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
     if (channel.type !== 'whatsapp' && channel.type !== 'wechat_personal') {
       return c.json({ ok: false, error: 'Channel does not support QR login' }, 400);
     }
 
     if (channel.type === 'wechat_personal') {
+      if (channel.status === 'pending' && getWeixinStatus(id) == null) {
+        await startWeixinQR(id);
+      }
+
       let qr = getWeixinQR(id);
       if (!qr && getWeixinStatus(id) === 'qr_pending') {
         await new Promise<void>((resolve) => {

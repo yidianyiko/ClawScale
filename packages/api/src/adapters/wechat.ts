@@ -131,18 +131,24 @@ async function loginFlow(channelId: string): Promise<void> {
     while (state.running && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1000));
 
-      const statusRes = await fetch(
-        `${DEFAULT_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
-        { headers: { 'iLink-App-ClientVersion': '1' }, signal: AbortSignal.timeout(30_000) },
-      );
-
-      const statusData = (await statusRes.json()) as {
+      let statusData: {
         status?: 'wait' | 'scaned' | 'confirmed' | 'expired';
         bot_token?: string;
         ilink_bot_id?: string;
         baseurl?: string;
         ilink_user_id?: string;
       };
+      try {
+        const statusRes = await fetch(
+          `${DEFAULT_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
+          { headers: { 'iLink-App-ClientVersion': '1' }, signal: AbortSignal.timeout(30_000) },
+        );
+        statusData = (await statusRes.json()) as typeof statusData;
+      } catch (err) {
+        if (!state.running) break;
+        console.error(`[weixin:${channelId}] QR status poll error, retrying:`, err);
+        continue;
+      }
 
       if (statusData.status === 'confirmed' && statusData.bot_token) {
         const botBaseUrl = statusData.baseurl ?? DEFAULT_BASE_URL;

@@ -1,0 +1,131 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Hono } from 'hono';
+
+const mocks = vi.hoisted(() => ({
+  findFirst: vi.fn(),
+  startWeixinQR: vi.fn(),
+  getWeixinQR: vi.fn(),
+  getWeixinStatus: vi.fn(),
+}));
+
+vi.mock('../db/index.js', () => ({
+  db: {
+    channel: {
+      findFirst: mocks.findFirst,
+    },
+  },
+}));
+
+vi.mock('../middleware/auth.js', () => ({
+  requireAuth: async (c: any, next: any) => {
+    c.set('auth', { userId: 'usr_1', tenantId: 'tnt_1', role: 'admin' });
+    await next();
+  },
+  requireAdmin: async (_c: any, next: any) => {
+    await next();
+  },
+}));
+
+vi.mock('../adapters/wechat.js', () => ({
+  startWeixinBot: vi.fn(),
+  startWeixinQR: mocks.startWeixinQR,
+  stopWeixinBot: vi.fn(),
+  getWeixinQR: mocks.getWeixinQR,
+  getWeixinStatus: mocks.getWeixinStatus,
+}));
+
+vi.mock('../adapters/whatsapp.js', () => ({
+  startWhatsAppBot: vi.fn(),
+  stopWhatsAppBot: vi.fn(),
+  getWhatsAppQR: vi.fn(),
+  getWhatsAppStatus: vi.fn(),
+}));
+
+vi.mock('../adapters/discord.js', () => ({
+  startDiscordBot: vi.fn(),
+  stopDiscordBot: vi.fn(),
+}));
+
+vi.mock('../adapters/wecom.js', () => ({
+  startWeChatBot: vi.fn(),
+  stopWeChatBot: vi.fn(),
+}));
+
+vi.mock('../adapters/whatsapp-business.js', () => ({
+  startWABusinessBot: vi.fn(),
+  stopWABusinessBot: vi.fn(),
+  reloadWABusinessBot: vi.fn(),
+}));
+
+vi.mock('../adapters/telegram.js', () => ({
+  startTelegramBot: vi.fn(),
+  stopTelegramBot: vi.fn(),
+}));
+
+vi.mock('../adapters/slack.js', () => ({
+  startSlackBot: vi.fn(),
+  stopSlackBot: vi.fn(),
+}));
+
+vi.mock('../adapters/matrix.js', () => ({
+  startMatrixBot: vi.fn(),
+  stopMatrixBot: vi.fn(),
+}));
+
+vi.mock('../adapters/line.js', () => ({
+  startLineBot: vi.fn(),
+  stopLineBot: vi.fn(),
+}));
+
+vi.mock('../adapters/signal.js', () => ({
+  startSignalBot: vi.fn(),
+  stopSignalBot: vi.fn(),
+}));
+
+vi.mock('../adapters/teams.js', () => ({
+  startTeamsBot: vi.fn(),
+  stopTeamsBot: vi.fn(),
+}));
+
+vi.mock('../lib/audit.js', () => ({
+  audit: vi.fn(),
+}));
+
+import { channelsRouter } from './channels.js';
+
+describe('channels router', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('restarts pending wechat personal qr flow when in-memory state is missing', async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_1',
+      type: 'wechat_personal',
+      status: 'pending',
+    });
+    mocks.getWeixinQR.mockReturnValue(null);
+    mocks.getWeixinStatus.mockReturnValue(null);
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_1/qr', {
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mocks.startWeixinQR).toHaveBeenCalledWith('ch_1');
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        qr: null,
+        qrUrl: null,
+      },
+    });
+  });
+});
