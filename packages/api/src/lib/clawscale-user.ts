@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 
@@ -36,41 +37,25 @@ export interface UnifiedConversationIdsInput {
 export async function bindEndUserToCokeAccount(
   input: BindEndUserToCokeAccountInput,
 ): Promise<BindEndUserToCokeAccountResult> {
-  const endUser = await db.endUser.findUnique({
-    where: {
-      tenantId_channelId_externalId: {
-        tenantId: input.tenantId,
-        channelId: input.channelId,
-        externalId: input.externalId,
+  return db.$transaction(async (tx) => {
+    const endUser = await tx.endUser.findUnique({
+      where: {
+        tenantId_channelId_externalId: {
+          tenantId: input.tenantId,
+          channelId: input.channelId,
+          externalId: input.externalId,
+        },
       },
-    },
-    select: {
-      id: true,
-      clawscaleUserId: true,
-    },
-  });
-
-  if (!endUser) {
-    throw new ClawscaleUserBindingError('end_user_not_found', 'End user not found');
-  }
-
-  const requestedClawscaleUser = await db.clawscaleUser.findUnique({
-    where: {
-      tenantId_cokeAccountId: {
-        tenantId: input.tenantId,
-        cokeAccountId: input.cokeAccountId,
+      select: {
+        id: true,
+        clawscaleUserId: true,
       },
-    },
-    select: {
-      id: true,
-    },
-  });
+    });
 
-  if (endUser.clawscaleUserId && requestedClawscaleUser?.id !== endUser.clawscaleUserId) {
-    throw new ClawscaleUserBindingError('end_user_already_bound', 'End user is already bound to another ClawscaleUser');
-  }
+    if (!endUser) {
+      throw new ClawscaleUserBindingError('end_user_not_found', 'End user not found');
+    }
 
-  const clawscaleUser = await db.$transaction(async (tx) => {
     const user = await tx.clawscaleUser.upsert({
       where: {
         tenantId_cokeAccountId: {
@@ -89,19 +74,30 @@ export async function bindEndUserToCokeAccount(
       },
     });
 
-    await tx.endUser.update({
-      where: { id: endUser.id },
+    const updated = await tx.endUser.updateMany({
+      where: {
+        id: endUser.id,
+        tenantId: input.tenantId,
+        OR: [
+          { clawscaleUserId: null },
+          { clawscaleUserId: user.id },
+        ],
+      },
       data: { clawscaleUserId: user.id },
     });
 
-    return user;
-  });
+    if (updated.count !== 1) {
+      throw new ClawscaleUserBindingError('end_user_already_bound', 'End user is already bound to another ClawscaleUser');
+    }
 
-  return {
-    clawscaleUserId: clawscaleUser.id,
-    endUserId: endUser.id,
-    cokeAccountId: input.cokeAccountId,
-  };
+    return {
+      clawscaleUserId: user.id,
+      endUserId: endUser.id,
+      cokeAccountId: input.cokeAccountId,
+    };
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  });
 }
 
 export async function getUnifiedConversationIds(

@@ -5,10 +5,10 @@ const db = vi.hoisted(() => {
     endUser: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findMany: vi.fn(),
     },
     clawscaleUser: {
-      findUnique: vi.fn(),
       upsert: vi.fn(),
     },
     conversation: {
@@ -36,9 +36,8 @@ describe('clawscale-user helpers', () => {
       externalId: 'ext_1',
       clawscaleUserId: null,
     });
-    db.clawscaleUser.findUnique.mockResolvedValue(null);
     db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_1' });
-    db.endUser.update.mockResolvedValue({ id: 'eu_1', clawscaleUserId: 'csu_1' });
+    db.endUser.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
       bindEndUserToCokeAccount({
@@ -63,33 +62,32 @@ describe('clawscale-user helpers', () => {
         },
       }),
     );
-    expect(db.endUser.update).toHaveBeenCalledWith(
+    expect(db.endUser.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'eu_1' },
+        where: {
+          id: 'eu_1',
+          tenantId: 'ten_1',
+          OR: [
+            { clawscaleUserId: null },
+            { clawscaleUserId: 'csu_1' },
+          ],
+        },
         data: { clawscaleUserId: 'csu_1' },
       }),
     );
-    expect(db.clawscaleUser.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          tenantId_cokeAccountId: {
-            tenantId: 'ten_1',
-            cokeAccountId: 'acct_1',
-          },
-        },
-      }),
-    );
+    expect(db.$transaction).toHaveBeenCalledOnce();
   });
 
-  it('bindEndUserToCokeAccount rejects when an EndUser is already bound to another ClawscaleUser', async () => {
+  it('bindEndUserToCokeAccount rejects when the guarded update detects a concurrent bind', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
       tenantId: 'ten_1',
       channelId: 'ch_1',
       externalId: 'ext_1',
-      clawscaleUserId: 'csu_old',
+      clawscaleUserId: null,
     });
-    db.clawscaleUser.findUnique.mockResolvedValue({ id: 'csu_new' });
+    db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_new' });
+    db.endUser.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
       bindEndUserToCokeAccount({
@@ -99,7 +97,18 @@ describe('clawscale-user helpers', () => {
         cokeAccountId: 'acct_1',
       }),
     ).rejects.toMatchObject({ code: 'end_user_already_bound' });
-    expect(db.clawscaleUser.upsert).not.toHaveBeenCalled();
+    expect(db.endUser.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'eu_1',
+          tenantId: 'ten_1',
+          OR: [
+            { clawscaleUserId: null },
+            { clawscaleUserId: 'csu_new' },
+          ],
+        },
+      }),
+    );
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {
