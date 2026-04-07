@@ -1,6 +1,11 @@
 export type EndUserStatus = 'allowed' | 'blocked';
 export type MessageRole = 'user' | 'assistant';
 
+export interface ClawscaleUserRef {
+  id: string;
+  cokeAccountId: string;
+}
+
 /** External user who interacts with the bot via a social channel */
 export interface EndUser {
   id: string;
@@ -11,6 +16,8 @@ export interface EndUser {
   name: string | null;
   email: string | null;
   status: EndUserStatus;
+  clawscaleUserId: string | null;
+  clawscaleUser: ClawscaleUserRef | null;
   createdAt: string;
   updatedAt: string;
 }

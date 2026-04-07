@@ -16,6 +16,7 @@ import { generateId } from './id.js';
 import { generateReply } from './ai-backend.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
+import { getUnifiedConversationIds } from './clawscale-user.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
@@ -75,19 +76,28 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   // 3. Find or create EndUser
   let endUser = await db.endUser.findUnique({
     where: { tenantId_channelId_externalId: { tenantId, channelId, externalId } },
-    include: { activeBackends: { select: { backendId: true } } },
+    include: {
+      activeBackends: { select: { backendId: true } },
+      clawscaleUser: { select: { id: true, cokeAccountId: true } },
+    },
   });
   const isNewUser = !endUser;
   if (!endUser) {
     endUser = await db.endUser.create({
       data: { id: generateId('eu'), tenantId, channelId, externalId, name: displayName ?? null, status: 'allowed' },
-      include: { activeBackends: { select: { backendId: true } } },
+      include: {
+        activeBackends: { select: { backendId: true } },
+        clawscaleUser: { select: { id: true, cokeAccountId: true } },
+      },
     });
   } else if (displayName && !endUser.name) {
     endUser = await db.endUser.update({
       where: { id: endUser.id },
       data: { name: displayName },
-      include: { activeBackends: { select: { backendId: true } } },
+      include: {
+        activeBackends: { select: { backendId: true } },
+        clawscaleUser: { select: { id: true, cokeAccountId: true } },
+      },
     });
   }
   const activeBackendIds = endUser.activeBackends.map((ab) => ab.backendId);
@@ -119,10 +129,16 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     },
   });
 
-  // 6b. Resolve all conversation IDs for linked accounts (cross-channel history)
-  const historyConvIds = endUser.linkedTo
-    ? await getLinkedConversationIds(endUser.id, endUser.linkedTo, tenantId)
-    : [conversation.id];
+  // 6b. Resolve all conversation IDs for the unified identity history.
+  const historyConvIds =
+    endUser.clawscaleUserId || endUser.linkedTo
+      ? await getUnifiedConversationIds({
+          tenantId,
+          endUserId: endUser.id,
+          clawscaleUserId: endUser.clawscaleUserId ?? null,
+          linkedTo: endUser.linkedTo ?? null,
+        })
+      : [conversation.id];
 
   // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
@@ -242,6 +258,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           endUserId: endUser!.id,
           conversationId: conversation!.id,
           externalId: endUser!.externalId,
+          ...(endUser!.clawscaleUserId ? { clawscaleUserId: endUser!.clawscaleUserId } : {}),
+          ...(endUser!.clawscaleUser?.cokeAccountId
+            ? { cokeAccountId: endUser!.clawscaleUser.cokeAccountId }
+            : {}),
         }, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
@@ -593,30 +613,6 @@ async function loadHistory(conversationIds: string | string[], backendId: string
   });
 }
 
-/** Get all conversation IDs for a linked user group (primary + all linked accounts). */
-async function getLinkedConversationIds(endUserId: string, linkedTo: string | null, tenantId: string): Promise<string[]> {
-  const primaryId = linkedTo ?? endUserId;
-
-  // Find all EndUser IDs in this linked group
-  const linkedUsers = await db.endUser.findMany({
-    where: {
-      tenantId,
-      OR: [
-        { id: primaryId },
-        { linkedTo: primaryId },
-      ],
-    },
-    select: { id: true },
-  });
-  const userIds = linkedUsers.map((u) => u.id);
-
-  const conversations = await db.conversation.findMany({
-    where: { endUserId: { in: userIds } },
-    select: { id: true },
-  });
-  return conversations.map((c) => c.id);
-}
-
 async function runBackend(
   backend: { id: string; type: string; config: unknown },
   conversationIds: string | string[],
@@ -626,6 +622,8 @@ async function runBackend(
     endUserId: string;
     conversationId: string;
     externalId: string;
+    clawscaleUserId?: string;
+    cokeAccountId?: string;
   },
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: { sender?: string; platform?: string },

@@ -13,6 +13,7 @@ import { aiBackendsRouter } from './routes/ai-backends.js';
 import { endUsersRouter } from './routes/end-users.js';
 import { onboardRouter } from './routes/onboard.js';
 import { outboundRouter } from './routes/outbound.js';
+import { cokeBindingsRouter } from './routes/coke-bindings.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
 import { initWeChatAdapters } from './adapters/wecom.js';
@@ -56,6 +57,7 @@ app.route('/api/workflows', workflowsRouter);
 app.route('/api/conversations', conversationsRouter);
 app.route('/api/ai-backends', aiBackendsRouter);
 app.route('/api/end-users', endUsersRouter);
+app.route('/api/internal/coke-bindings', cokeBindingsRouter);
 
 // ─── Public onboarding routes ────────────────────────────────────────────────
 

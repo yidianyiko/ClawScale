@@ -14,6 +14,8 @@ interface EndUser {
   email: string | null;
   status: 'allowed' | 'blocked';
   linkedTo: string | null;
+  clawscaleUserId: string | null;
+  clawscaleUser: { id: string; cokeAccountId: string } | null;
   createdAt: string;
   updatedAt: string;
   channel: { name: string; type: string };
@@ -117,12 +119,19 @@ export default function EndUsers() {
                     </td>
                     <td className="px-5 py-3.5 text-gray-500">{u._count.conversations}</td>
                     <td className="px-5 py-3.5">
-                      {u.linkedTo ? (
-                        <span className="flex items-center gap-1 text-teal-600 text-xs">
-                          <Link2 className="h-3.5 w-3.5" /> Linked
+                      {u.clawscaleUserId && u.clawscaleUser ? (
+                        <div className="space-y-1 text-xs">
+                          <p className="font-mono text-teal-700">{u.clawscaleUserId}</p>
+                          <p className="text-gray-400">
+                            Coke account {u.clawscaleUser.cokeAccountId}
+                          </p>
+                        </div>
+                      ) : u.linkedTo ? (
+                        <span className="flex items-center gap-1 text-amber-600 text-xs">
+                          <Link2 className="h-3.5 w-3.5" /> Legacy link only
                         </span>
                       ) : (
-                        <span className="text-gray-400 text-xs">No</span>
+                        <span className="text-gray-400 text-xs">Unbound</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-gray-500">{formatDate(u.createdAt)}</td>
