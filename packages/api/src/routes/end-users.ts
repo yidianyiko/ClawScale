@@ -11,6 +11,8 @@ const endUserSelect = {
   email: true,
   status: true,
   linkedTo: true,
+  clawscaleUserId: true,
+  clawscaleUser: { select: { id: true, cokeAccountId: true } },
   createdAt: true,
   updatedAt: true,
   channel: { select: { name: true, type: true } },
