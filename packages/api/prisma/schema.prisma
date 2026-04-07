@@ -188,6 +188,7 @@ model ClawscaleUser {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channels Channel[]
   endUsers EndUser[]
 
   @@unique([tenantId, cokeAccountId])
