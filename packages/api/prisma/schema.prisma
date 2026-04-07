@@ -71,6 +71,7 @@ model Tenant {
   sessions      Session[]
   channels      Channel[]
   endUsers      EndUser[]
+  clawscaleUsers ClawscaleUser[]
   workflows     Workflow[]
   auditLogs     AuditLog[]
   aiBackends    AiBackend[]
@@ -151,18 +152,36 @@ model EndUser {
 
   /// When set, this EndUser defers to the primary EndUser for cross-channel identity.
   linkedTo      String?   @map("linked_to")
+  clawscaleUserId String? @map("clawscale_user_id")
 
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
   linkedPrimary   EndUser?       @relation("EndUserLink", fields: [linkedTo], references: [id], onDelete: SetNull)
   linkedFrom      EndUser[]      @relation("EndUserLink")
+  clawscaleUser   ClawscaleUser? @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
   conversations   Conversation[]
   activeBackends  EndUserBackend[]
   linkCodes       LinkCode[]
 
   @@unique([tenantId, channelId, externalId])
+  @@index([clawscaleUserId])
   @@index([tenantId])
   @@map("end_users")
+}
+
+model ClawscaleUser {
+  id            String   @id
+  tenantId      String   @map("tenant_id")
+  cokeAccountId String   @map("coke_account_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endUsers EndUser[]
+
+  @@unique([tenantId, cokeAccountId])
+  @@index([tenantId])
+  @@map("clawscale_users")
 }
 
 /// Many-to-many join: which AI backends an end-user has active in their session.
