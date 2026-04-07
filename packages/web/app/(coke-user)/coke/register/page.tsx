@@ -46,7 +46,7 @@ export default function CokeRegisterPage() {
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
       <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Create your Coke account</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">
-        Register here, then bind WeChat from your desktop browser to finish setup.
+        Register here, then create and connect your personal WeChat channel from the setup page.
       </p>
 
       {error ? (

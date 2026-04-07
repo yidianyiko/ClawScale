@@ -20,6 +20,12 @@ enum ChannelStatus {
   disconnected
   pending
   error
+  archived
+}
+
+enum ChannelScope {
+  tenant_shared
+  personal
 }
 
 enum ChannelType {
@@ -118,20 +124,25 @@ model Session {
 }
 
 model Channel {
-  id        String        @id
-  tenantId  String        @map("tenant_id")
-  type      ChannelType
-  name      String
-  status    ChannelStatus @default(disconnected)
-  config    Json          @default("{}")
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  id                   String        @id
+  tenantId             String        @map("tenant_id")
+  type                 ChannelType
+  scope                ChannelScope   @default(tenant_shared)
+  ownerClawscaleUserId String?       @map("owner_clawscale_user_id")
+  activeLifecycleKey   String?       @unique @map("active_lifecycle_key")
+  name                 String
+  status               ChannelStatus @default(disconnected)
+  config               Json          @default("{}")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-  endUsers      EndUser[]
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
+  conversations     Conversation[]
+  endUsers          EndUser[]
 
   @@index([tenantId])
+  @@index([ownerClawscaleUserId])
   @@map("channels")
 }
 

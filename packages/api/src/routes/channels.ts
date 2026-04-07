@@ -64,6 +64,10 @@ export const channelsRouter = new Hono()
     const { tenantId, userId } = c.get('auth');
     const body = c.req.valid('json');
 
+    if (body.type === 'wechat_personal') {
+      return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
+    }
+
     const id = generateId('ch');
     await db.channel.create({
       data: {

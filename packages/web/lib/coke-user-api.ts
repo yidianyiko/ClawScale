@@ -26,10 +26,20 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body != null ? JSON.stringify(body) : undefined,
   });
 
-  return (await res.json()) as T;
+  const text = await res.text();
+  if (!res.ok && text.trim() === '') {
+    throw new Error(`HTTP ${res.status}`);
+  }
+
+  if (res.ok && text.trim() === '') {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 export const cokeUserApi = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  delete: <T>(path: string) => request<T>('DELETE', path),
 };

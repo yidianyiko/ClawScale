@@ -1,0 +1,354 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushSync } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
+import type { ReactNode } from 'react';
+
+const replaceMock = vi.hoisted(() => vi.fn());
+const getCokeUserTokenMock = vi.hoisted(() => vi.fn());
+const getCokeUserMock = vi.hoisted(() => vi.fn());
+const clearCokeUserAuthMock = vi.hoisted(() => vi.fn());
+const getCokeUserWechatChannelStatusMock = vi.hoisted(() => vi.fn());
+const connectCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
+const deleteCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: replaceMock,
+  }),
+}));
+
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
+vi.mock('qrcode', () => ({
+  default: {
+    toDataURL: vi.fn(
+      async (value: string) => `data:image/png;base64,${Buffer.from(value).toString('base64')}`,
+    ),
+  },
+}));
+
+vi.mock('../../../../lib/coke-user-auth', () => ({
+  getCokeUserToken: () => getCokeUserTokenMock(),
+  getCokeUser: () => getCokeUserMock(),
+  clearCokeUserAuth: () => clearCokeUserAuthMock(),
+}));
+
+vi.mock('../../../../lib/coke-user-api', () => ({
+  cokeUserApi: {
+    delete: (...args: unknown[]) => deleteCokeUserWechatChannelMock(...args),
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../lib/coke-user-wechat-channel', async () => {
+  const actual = await vi.importActual<typeof import('../../../../lib/coke-user-wechat-channel')>(
+    '../../../../lib/coke-user-wechat-channel',
+  );
+
+  return {
+    ...actual,
+    connectCokeUserWechatChannel: () => connectCokeUserWechatChannelMock(),
+    getCokeUserWechatChannelStatus: () => getCokeUserWechatChannelStatusMock(),
+  };
+});
+
+import BindWechatPage from './page';
+
+async function flushTicks(count: number) {
+  for (let i = 0; i < count; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+async function waitForText(container: HTMLElement, text: string) {
+  for (let i = 0; i < 20; i += 1) {
+    if (container.textContent?.includes(text)) {
+      return;
+    }
+
+    await flushTicks(1);
+  }
+
+  throw new Error(`Timed out waiting for "${text}"`);
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+}
+
+describe('BindWechatPage initial load failure', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('shows a plain retry state when the initial status load fails', async () => {
+    getCokeUserWechatChannelStatusMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'Temporary bridge failure',
+    });
+
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+    await flushTicks(5);
+
+    expect(container.textContent).toContain('Unable to load your WeChat channel');
+    expect(container.textContent).toContain('Retry');
+    expect(container.textContent).not.toContain('Reconnect');
+    expect(container.textContent).not.toContain('Archive channel');
+  });
+});
+
+describe('BindWechatPage archive action', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+    connectCokeUserWechatChannelMock.mockReset();
+    deleteCokeUserWechatChannelMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    deleteCokeUserWechatChannelMock.mockResolvedValue(undefined);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('lands in the archived state when archive succeeds with an empty response body', async () => {
+    getCokeUserWechatChannelStatusMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        status: 'error',
+        error: 'Temporary bridge failure',
+      },
+    });
+
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+    await flushTicks(5);
+
+    const archiveButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Archive channel'),
+    );
+
+    expect(archiveButton).toBeTruthy();
+    archiveButton?.click();
+    await waitForText(container, 'This WeChat channel is archived');
+
+    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/user/wechat-channel');
+    expect(container.textContent).toContain('This WeChat channel is archived');
+    expect(container.textContent).toContain('Create my WeChat channel again');
+    expect(container.textContent).not.toContain('Reconnect or archive your channel');
+  });
+});
+
+describe('BindWechatPage concurrent mutation guard', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+    connectCokeUserWechatChannelMock.mockReset();
+    deleteCokeUserWechatChannelMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    connectCokeUserWechatChannelMock.mockReturnValue(new Promise(() => {}));
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('prevents archive from firing while reconnect is in flight', async () => {
+    getCokeUserWechatChannelStatusMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        status: 'error',
+        error: 'Temporary bridge failure',
+      },
+    });
+
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+    await flushTicks(5);
+
+    const reconnectButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Reconnect'),
+    );
+    const archiveButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Archive channel'),
+    );
+
+    expect(reconnectButton).toBeTruthy();
+    expect(archiveButton).toBeTruthy();
+
+    reconnectButton?.click();
+    archiveButton?.click();
+
+    expect(connectCokeUserWechatChannelMock).toHaveBeenCalledTimes(1);
+    expect(deleteCokeUserWechatChannelMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('BindWechatPage refresh ordering', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let intervalCallbacks: Array<() => void>;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+    connectCokeUserWechatChannelMock.mockReset();
+    deleteCokeUserWechatChannelMock.mockReset();
+    intervalCallbacks = [];
+
+    vi.spyOn(window, 'setInterval').mockImplementation(((handler: TimerHandler) => {
+      intervalCallbacks.push(() => {
+        if (typeof handler === 'function') {
+          handler();
+        }
+      });
+      return 1 as unknown as number;
+    }) as typeof window.setInterval);
+    vi.spyOn(window, 'clearInterval').mockImplementation(() => undefined);
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('keeps fresher mutation QR data when an older poll resolves later', async () => {
+    const staleRefresh = createDeferred<{
+      ok: true;
+      data: {
+        status: 'pending';
+        connect_url: string;
+        expires_at: number;
+      };
+    }>();
+
+    getCokeUserWechatChannelStatusMock
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          status: 'pending',
+          connect_url: 'https://wx.example.com/connect/initial',
+          expires_at: 1710000000,
+        },
+      })
+      .mockReturnValueOnce(staleRefresh.promise);
+
+    connectCokeUserWechatChannelMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        status: 'pending',
+        connect_url: 'https://wx.example.com/connect/fresh',
+        expires_at: 1710003600,
+      },
+    });
+
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+
+    const freshExpiryText = new Date(1710003600 * 1000).toLocaleString();
+    const staleExpiryText = new Date(1709990000 * 1000).toLocaleString();
+
+    await flushTicks(5);
+    expect(intervalCallbacks).toHaveLength(1);
+    intervalCallbacks[0]();
+
+    const refreshButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Refresh QR'),
+    );
+    expect(refreshButton).toBeTruthy();
+    refreshButton?.click();
+
+    await waitForText(container, freshExpiryText);
+    staleRefresh.resolve({
+      ok: true,
+      data: {
+        status: 'pending',
+        connect_url: 'https://wx.example.com/connect/stale',
+        expires_at: 1709990000,
+      },
+    });
+
+    await flushTicks(5);
+
+    expect(container.textContent).toContain(freshExpiryText);
+    expect(container.textContent).not.toContain(staleExpiryText);
+  });
+});

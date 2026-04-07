@@ -20,6 +20,8 @@ import { routeInboundMessage } from '../lib/route-message.js';
 import type { Attachment } from '../lib/route-message.js';
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
+export type WeixinRestoreState = 'initializing' | 'ready' | 'failed';
+let weixinRestoreState: WeixinRestoreState = 'initializing';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -28,12 +30,21 @@ interface WeixinState {
   cursor: string;
   qr: string | null;         // base64 PNG for dashboard
   qrUrl: string | null;      // raw string encoded in the QR
-  status: 'qr_pending' | 'connected' | 'disconnected';
+  status: 'qr_pending' | 'connected' | 'disconnected' | 'error';
   baseUrl?: string;
   token?: string;
 }
 
 const channels = new Map<string, WeixinState>();
+
+function getActiveWeixinState(channelId: string): WeixinState | null {
+  const state = channels.get(channelId);
+  if (!state?.running) {
+    return null;
+  }
+
+  return state;
+}
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -81,6 +92,11 @@ async function downloadCdnMedia(
 // ── QR Login ──────────────────────────────────────────────────────────────────
 
 export async function startWeixinQR(channelId: string): Promise<void> {
+  const existing = channels.get(channelId);
+  if (existing?.running && existing.status === 'qr_pending') {
+    return;
+  }
+
   const state: WeixinState = {
     running: true,
     cursor: '',
@@ -97,97 +113,159 @@ export async function startWeixinQR(channelId: string): Promise<void> {
 }
 
 async function loginFlow(channelId: string): Promise<void> {
-  const state = channels.get(channelId);
+  const state = getActiveWeixinState(channelId);
   if (!state) return;
+  const isCurrentState = () => getActiveWeixinState(channelId) === state;
 
-  let attempts = 0;
+  try {
+    while (state.running) {
+      // 1. Fetch QR code
+      const qrRes = await fetch(`${DEFAULT_BASE_URL}/ilink/bot/get_bot_qrcode?bot_type=3`, {
+        headers: { 'iLink-App-ClientVersion': '1' },
+        signal: AbortSignal.timeout(30_000),
+      });
 
-  while (state.running && attempts < 3) {
-    // 1. Fetch QR code
-    const qrRes = await fetch(`${DEFAULT_BASE_URL}/ilink/bot/get_bot_qrcode?bot_type=3`, {
-      headers: { 'iLink-App-ClientVersion': '1' },
-      signal: AbortSignal.timeout(30_000),
-    });
+      const qrRaw = await qrRes.text();
+      console.log(`[weixin:${channelId}] QR response (${qrRes.status}):`, qrRaw.slice(0, 500));
+      const qrData = JSON.parse(qrRaw) as { qrcode?: string; qrcode_img_content?: string };
+      const qrcodeId = qrData.qrcode;
+      const imgContent = qrData.qrcode_img_content;
 
-    const qrRaw = await qrRes.text();
-    console.log(`[weixin:${channelId}] QR response (${qrRes.status}):`, qrRaw.slice(0, 500));
-    const qrData = JSON.parse(qrRaw) as { qrcode?: string; qrcode_img_content?: string };
-    const qrcodeId = qrData.qrcode;
-    const imgContent = qrData.qrcode_img_content;
+      if (!qrcodeId || !imgContent) {
+        console.error(`[weixin:${channelId}] Failed to get QR code`);
+        if (!isCurrentState()) {
+          return;
+        }
 
-    if (!qrcodeId || !imgContent) {
-      console.error(`[weixin:${channelId}] Failed to get QR code`);
-      return;
-    }
+        await db.channel.update({ where: { id: channelId }, data: { status: 'error', config: {} } });
+        if (!isCurrentState()) {
+          return;
+        }
 
-    // Convert QR content to PNG data URL for dashboard display
-    state.qr = await qrcode.toDataURL(imgContent);
-    state.qrUrl = imgContent;
-    console.log(`[weixin:${channelId}] QR code ready`);
-
-    // 2. Poll for scan status (max 8 hours)
-    const deadline = Date.now() + 8 * 60 * 60 * 1000;
-
-    while (state.running && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 1000));
-
-      let statusData: {
-        status?: 'wait' | 'scaned' | 'confirmed' | 'expired';
-        bot_token?: string;
-        ilink_bot_id?: string;
-        baseurl?: string;
-        ilink_user_id?: string;
-      };
-      try {
-        const statusRes = await fetch(
-          `${DEFAULT_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
-          { headers: { 'iLink-App-ClientVersion': '1' }, signal: AbortSignal.timeout(30_000) },
-        );
-        statusData = (await statusRes.json()) as typeof statusData;
-      } catch (err) {
-        if (!state.running) break;
-        console.error(`[weixin:${channelId}] QR status poll error, retrying:`, err);
-        continue;
-      }
-
-      if (statusData.status === 'confirmed' && statusData.bot_token) {
-        const botBaseUrl = statusData.baseurl ?? DEFAULT_BASE_URL;
-        const token = statusData.bot_token;
-
-        // Save credentials to channel config
-        await db.channel.update({
-          where: { id: channelId },
-          data: {
-            status: 'connected',
-            config: { baseUrl: botBaseUrl, token, botId: statusData.ilink_bot_id ?? '' },
-          },
-        });
-
-        state.baseUrl = botBaseUrl;
-        state.token = token;
+        state.status = 'error';
         state.qr = null;
-        state.status = 'connected';
-        console.log(`[weixin:${channelId}] Logged in, starting poll loop`);
-        pollLoop(channelId, botBaseUrl, token);
         return;
       }
 
-      if (statusData.status === 'expired') {
-        console.log(`[weixin:${channelId}] QR expired, refreshing (attempt ${attempts + 1})`);
-        attempts++;
-        break;
-      }
+      // Convert QR content to PNG data URL for dashboard display
+      state.qr = await qrcode.toDataURL(imgContent);
+      state.qrUrl = imgContent;
+      console.log(`[weixin:${channelId}] QR code ready`);
 
-      if (statusData.status === 'scaned') {
-        console.log(`[weixin:${channelId}] QR scanned, waiting for confirmation…`);
+      // 2. Poll for scan status (max 8 hours)
+      const deadline = Date.now() + 8 * 60 * 60 * 1000;
+
+      while (state.running && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 1000));
+
+        let statusData: {
+          status?: 'wait' | 'scaned' | 'confirmed' | 'expired';
+          bot_token?: string;
+          ilink_bot_id?: string;
+          baseurl?: string;
+          ilink_user_id?: string;
+        };
+        try {
+          const statusRes = await fetch(
+            `${DEFAULT_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
+            { headers: { 'iLink-App-ClientVersion': '1' }, signal: AbortSignal.timeout(30_000) },
+          );
+          statusData = (await statusRes.json()) as typeof statusData;
+        } catch (err) {
+          if (!state.running) break;
+          console.error(`[weixin:${channelId}] QR status poll error, retrying:`, err);
+          continue;
+        }
+
+        if (statusData.status === 'confirmed' && statusData.bot_token) {
+          if (!isCurrentState()) {
+            return;
+          }
+
+          const botBaseUrl = statusData.baseurl ?? DEFAULT_BASE_URL;
+          const token = statusData.bot_token;
+
+          // Save credentials to channel config
+          await db.channel.update({
+            where: { id: channelId },
+            data: {
+              status: 'connected',
+              config: { baseUrl: botBaseUrl, token, botId: statusData.ilink_bot_id ?? '' },
+            },
+          });
+
+          if (!isCurrentState()) {
+            return;
+          }
+
+          state.baseUrl = botBaseUrl;
+          state.token = token;
+          state.qr = null;
+          state.status = 'connected';
+          console.log(`[weixin:${channelId}] Logged in, starting poll loop`);
+          pollLoop(channelId, botBaseUrl, token);
+          return;
+        }
+
+        if (statusData.status === 'expired') {
+          if (!isCurrentState()) {
+            return;
+          }
+
+          await db.channel.update({ where: { id: channelId }, data: { status: 'error', config: {} } });
+          if (!isCurrentState()) {
+            return;
+          }
+
+          state.status = 'error';
+          state.qr = null;
+          console.error(`[weixin:${channelId}] QR expired`);
+          return;
+        }
+
+        if (statusData.status === 'scaned') {
+          console.log(`[weixin:${channelId}] QR scanned, waiting for confirmation…`);
+        }
       }
     }
-  }
 
-  if (state.running) {
-    state.status = 'disconnected';
-    await db.channel.update({ where: { id: channelId }, data: { status: 'disconnected' } });
-    console.error(`[weixin:${channelId}] Login timed out`);
+    if (state.running && state.status !== 'connected') {
+      if (!isCurrentState()) {
+        return;
+      }
+
+      await db.channel.update({ where: { id: channelId }, data: { status: 'error', config: {} } });
+      if (!isCurrentState()) {
+        return;
+      }
+
+      state.status = 'error';
+      state.qr = null;
+      console.error(`[weixin:${channelId}] Login timed out`);
+    }
+  } catch (err) {
+    if (!state.running || state.status === 'connected') {
+      return;
+    }
+
+    if (!isCurrentState()) {
+      return;
+    }
+
+    try {
+      await db.channel.update({ where: { id: channelId }, data: { status: 'error', config: {} } });
+    } catch (updateErr) {
+      console.error(`[weixin:${channelId}] Failed to persist login bootstrap error:`, updateErr);
+    }
+
+    if (!isCurrentState()) {
+      return;
+    }
+
+    state.status = 'error';
+    state.qr = null;
+
+    console.error(`[weixin:${channelId}] Login bootstrap error:`, err);
   }
 }
 
@@ -418,22 +496,34 @@ export async function startWeixinBot(channelId: string, baseUrl: string, token: 
 }
 
 export async function initWeixinAdapters(): Promise<void> {
-  const rows = await db.channel.findMany({
-    where: { type: 'wechat_personal', status: 'connected' },
-    select: { id: true, config: true },
-  });
+  weixinRestoreState = 'initializing';
 
-  for (const row of rows) {
-    const config = row.config as Record<string, string> | null;
-    const baseUrl = config?.['baseUrl'];
-    const token = config?.['token'];
-    if (!baseUrl || !token) continue;
-    try {
-      await startWeixinBot(row.id, baseUrl, token);
-    } catch (err) {
-      console.error(`[weixin:${row.id}] Failed to start:`, err);
+  try {
+    const rows = await db.channel.findMany({
+      where: { type: 'wechat_personal', status: 'connected' },
+      select: { id: true, config: true },
+    });
+
+    for (const row of rows) {
+      const config = row.config as Record<string, string> | null;
+      const baseUrl = config?.['baseUrl'];
+      const token = config?.['token'];
+      if (!baseUrl || !token) continue;
+      try {
+        await startWeixinBot(row.id, baseUrl, token);
+      } catch (err) {
+        console.error(`[weixin:${row.id}] Failed to start:`, err);
+      }
     }
-  }
 
-  console.log(`[weixin] Initialized ${rows.length} WeChat Personal bot(s)`);
+    console.log(`[weixin] Initialized ${rows.length} WeChat Personal bot(s)`);
+    weixinRestoreState = 'ready';
+  } catch (err) {
+    weixinRestoreState = 'failed';
+    throw err;
+  }
+}
+
+export function getWeixinRestoreState(): WeixinRestoreState {
+  return weixinRestoreState;
 }

@@ -58,10 +58,32 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
     where: { id: channelId },
-    select: { id: true, tenantId: true, status: true },
+    select: {
+      id: true,
+      tenantId: true,
+      status: true,
+      scope: true,
+      ownerClawscaleUserId: true,
+      ownerClawscaleUser: {
+        select: {
+          id: true,
+          cokeAccountId: true,
+        },
+      },
+    },
   });
   if (!channel || channel.status !== 'connected') return null;
   const { tenantId } = channel;
+  const personalChannelOwnership =
+    channel.scope === 'personal' &&
+    channel.ownerClawscaleUserId &&
+    channel.ownerClawscaleUser
+      ? {
+          channelScope: 'personal' as const,
+          clawscaleUserId: channel.ownerClawscaleUserId,
+          cokeAccountId: channel.ownerClawscaleUser.cokeAccountId,
+        }
+      : null;
 
   // 2. Load tenant settings
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
@@ -101,6 +123,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     });
   }
   const activeBackendIds = endUser.activeBackends.map((ab) => ab.backendId);
+  const resolvedClawscaleUserId =
+    personalChannelOwnership?.clawscaleUserId ?? endUser.clawscaleUserId ?? null;
+  const resolvedCokeAccountId =
+    personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
 
   // 4. Enforce access policy
   const access = settings.endUserAccess ?? 'anonymous';
@@ -125,20 +151,31 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   await db.message.create({
     data: {
       id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text,
-      metadata: { ...(meta ?? {}), ...(attachments?.length ? { attachments } : {}) } as any,
+      metadata: {
+        ...(meta ?? {}),
+        ...(personalChannelOwnership ?? {}),
+        ...(attachments?.length ? { attachments } : {}),
+      } as any,
     },
   });
 
   // 6b. Resolve all conversation IDs for the unified identity history.
-  const historyConvIds =
-    endUser.clawscaleUserId || endUser.linkedTo
+  let historyConvIds =
+    resolvedClawscaleUserId || endUser.linkedTo
       ? await getUnifiedConversationIds({
           tenantId,
           endUserId: endUser.id,
-          clawscaleUserId: endUser.clawscaleUserId ?? null,
+          clawscaleUserId: resolvedClawscaleUserId,
           linkedTo: endUser.linkedTo ?? null,
         })
       : [conversation.id];
+  if (
+    personalChannelOwnership &&
+    Array.isArray(historyConvIds) &&
+    historyConvIds.length === 0
+  ) {
+    historyConvIds = [conversation.id];
+  }
 
   // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
@@ -258,10 +295,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           endUserId: endUser!.id,
           conversationId: conversation!.id,
           externalId: endUser!.externalId,
-          ...(endUser!.clawscaleUserId ? { clawscaleUserId: endUser!.clawscaleUserId } : {}),
-          ...(endUser!.clawscaleUser?.cokeAccountId
-            ? { cokeAccountId: endUser!.clawscaleUser.cokeAccountId }
-            : {}),
+          ...(resolvedClawscaleUserId ? { clawscaleUserId: resolvedClawscaleUserId } : {}),
+          ...(resolvedCokeAccountId ? { cokeAccountId: resolvedCokeAccountId } : {}),
+          ...(personalChannelOwnership ?? {}),
         }, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
@@ -624,6 +660,7 @@ async function runBackend(
     externalId: string;
     clawscaleUserId?: string;
     cokeAccountId?: string;
+    channelScope?: 'personal' | 'tenant_shared';
   },
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: { sender?: string; platform?: string },

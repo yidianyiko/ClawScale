@@ -9,7 +9,7 @@ export default function CokeUserLayout({ children }: { children: ReactNode }) {
           <Link href="/coke/bind-wechat" className="text-lg font-semibold">
             Coke
           </Link>
-          <nav className="text-sm text-slate-500">Bind your personal WeChat</nav>
+          <nav className="text-sm text-slate-500">Manage your personal WeChat channel</nav>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-12">{children}</main>

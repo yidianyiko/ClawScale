@@ -6,6 +6,8 @@ import { getUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { CHANNEL_CONFIG_SCHEMA, type ChannelType, type Channel } from '@clawscale/shared';
 import type { ApiResponse } from '@clawscale/shared';
+import { isAdminAddChannelTypeAllowed } from './channel-options';
+import { ADD_CHANNEL_OPTIONS } from './channel-options';
 
 const CHANNEL_ICONS: Record<string, string> = {
   whatsapp: '📱', whatsapp_business: '🟢', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
@@ -16,6 +18,7 @@ const CHANNEL_ICONS: Record<string, string> = {
 const STATUS_BADGE: Record<string, string> = {
   connected: 'badge-green', disconnected: 'badge-gray', pending: 'badge-yellow', error: 'badge-red',
 };
+
 
 type ChannelRow = Omit<Channel, 'config'>;
 
@@ -210,16 +213,18 @@ export default function Channels() {
               <div>
                 <label className="label">Platform</label>
                 <select className="input" value={addType} onChange={(e) => { setAddType(e.target.value as ChannelType); setAddConfig({}); }}>
-                  {Object.entries(CHANNEL_CONFIG_SCHEMA).map(([type, s]) => (
+                  {Object.entries(CHANNEL_CONFIG_SCHEMA)
+                    .filter(([type]) => isAdminAddChannelTypeAllowed(type))
+                    .map(([type, s]) => (
                     <option key={type} value={type}>{CHANNEL_ICONS[type] ?? '🔌'} {s.label}</option>
-                  ))}
+                    ))}
                 </select>
               </div>
               <div>
                 <label className="label">Display name</label>
                 <input className="input" placeholder={`My ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
               </div>
-              {(addType === 'whatsapp' || addType === 'wechat_personal') && (
+              {addType === 'whatsapp' && (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
                   After adding, click <strong>Connect</strong> to get a QR code to scan with your phone.
                 </p>

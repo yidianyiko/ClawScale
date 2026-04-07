@@ -44,7 +44,7 @@ export default function CokeLoginPage() {
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
       <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Sign in to Coke</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">
-        Sign in on the website first, then bind your WeChat to continue chatting there.
+        Sign in on the website first, then manage the personal WeChat channel attached to this account.
       </p>
 
       {error ? (
