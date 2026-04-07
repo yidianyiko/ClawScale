@@ -1,18 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const db = vi.hoisted(() => ({
-  endUser: {
-    findUnique: vi.fn(),
-    update: vi.fn(),
-    findMany: vi.fn(),
-  },
-  clawscaleUser: {
-    upsert: vi.fn(),
-  },
-  conversation: {
-    findMany: vi.fn(),
-  },
-}));
+const db = vi.hoisted(() => {
+  const client = {
+    endUser: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      findMany: vi.fn(),
+    },
+    clawscaleUser: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+    },
+    conversation: {
+      findMany: vi.fn(),
+    },
+    $transaction: vi.fn(async (fn: (tx: any) => Promise<unknown>) => fn(client)),
+  } as any;
+  return client;
+});
 
 vi.mock('../db/index.js', () => ({ db }));
 
@@ -31,6 +36,7 @@ describe('clawscale-user helpers', () => {
       externalId: 'ext_1',
       clawscaleUserId: null,
     });
+    db.clawscaleUser.findUnique.mockResolvedValue(null);
     db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_1' });
     db.endUser.update.mockResolvedValue({ id: 'eu_1', clawscaleUserId: 'csu_1' });
 
@@ -63,6 +69,16 @@ describe('clawscale-user helpers', () => {
         data: { clawscaleUserId: 'csu_1' },
       }),
     );
+    expect(db.clawscaleUser.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId_cokeAccountId: {
+            tenantId: 'ten_1',
+            cokeAccountId: 'acct_1',
+          },
+        },
+      }),
+    );
   });
 
   it('bindEndUserToCokeAccount rejects when an EndUser is already bound to another ClawscaleUser', async () => {
@@ -73,7 +89,7 @@ describe('clawscale-user helpers', () => {
       externalId: 'ext_1',
       clawscaleUserId: 'csu_old',
     });
-    db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_new' });
+    db.clawscaleUser.findUnique.mockResolvedValue({ id: 'csu_new' });
 
     await expect(
       bindEndUserToCokeAccount({
@@ -83,6 +99,7 @@ describe('clawscale-user helpers', () => {
         cokeAccountId: 'acct_1',
       }),
     ).rejects.toMatchObject({ code: 'end_user_already_bound' });
+    expect(db.clawscaleUser.upsert).not.toHaveBeenCalled();
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {

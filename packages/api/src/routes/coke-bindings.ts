@@ -24,14 +24,24 @@ cokeBindingsRouter.post('/', async (c) => {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  const body = bodySchema.parse(await c.req.json());
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
+
+  const parsed = bodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
 
   try {
     const result = await bindEndUserToCokeAccount({
-      tenantId: body.tenant_id,
-      channelId: body.channel_id,
-      externalId: body.external_id,
-      cokeAccountId: body.coke_account_id,
+      tenantId: parsed.data.tenant_id,
+      channelId: parsed.data.channel_id,
+      externalId: parsed.data.external_id,
+      cokeAccountId: parsed.data.coke_account_id,
     });
 
     return c.json({

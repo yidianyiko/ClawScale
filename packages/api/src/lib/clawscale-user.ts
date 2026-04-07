@@ -54,34 +54,48 @@ export async function bindEndUserToCokeAccount(
     throw new ClawscaleUserBindingError('end_user_not_found', 'End user not found');
   }
 
-  const clawscaleUser = await db.clawscaleUser.upsert({
+  const requestedClawscaleUser = await db.clawscaleUser.findUnique({
     where: {
       tenantId_cokeAccountId: {
         tenantId: input.tenantId,
         cokeAccountId: input.cokeAccountId,
       },
     },
-    create: {
-      id: generateId('csu'),
-      tenantId: input.tenantId,
-      cokeAccountId: input.cokeAccountId,
-    },
-    update: {},
     select: {
       id: true,
     },
   });
 
-  if (endUser.clawscaleUserId && endUser.clawscaleUserId !== clawscaleUser.id) {
+  if (endUser.clawscaleUserId && requestedClawscaleUser?.id !== endUser.clawscaleUserId) {
     throw new ClawscaleUserBindingError('end_user_already_bound', 'End user is already bound to another ClawscaleUser');
   }
 
-  if (endUser.clawscaleUserId !== clawscaleUser.id) {
-    await db.endUser.update({
-      where: { id: endUser.id },
-      data: { clawscaleUserId: clawscaleUser.id },
+  const clawscaleUser = await db.$transaction(async (tx) => {
+    const user = await tx.clawscaleUser.upsert({
+      where: {
+        tenantId_cokeAccountId: {
+          tenantId: input.tenantId,
+          cokeAccountId: input.cokeAccountId,
+        },
+      },
+      create: {
+        id: generateId('csu'),
+        tenantId: input.tenantId,
+        cokeAccountId: input.cokeAccountId,
+      },
+      update: {},
+      select: {
+        id: true,
+      },
     });
-  }
+
+    await tx.endUser.update({
+      where: { id: endUser.id },
+      data: { clawscaleUserId: user.id },
+    });
+
+    return user;
+  });
 
   return {
     clawscaleUserId: clawscaleUser.id,

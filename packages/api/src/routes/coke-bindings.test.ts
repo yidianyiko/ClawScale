@@ -71,6 +71,12 @@ describe('coke-bindings router', () => {
     });
 
     expect(res.status).toBe(200);
+    expect(bindEndUserToCokeAccount).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'ext_1',
+      cokeAccountId: 'acct_1',
+    });
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: {
@@ -125,5 +131,22 @@ describe('coke-bindings router', () => {
     });
 
     expect(res.status).toBe(409);
+  });
+
+  it('returns 400 for malformed request bodies and does not call the helper', async () => {
+    const app = new Hono();
+    app.route('/api/internal/coke-bindings', cokeBindingsRouter);
+
+    const res = await app.request('/api/internal/coke-bindings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret',
+      },
+      body: '{',
+    });
+
+    expect(res.status).toBe(400);
+    expect(bindEndUserToCokeAccount).not.toHaveBeenCalled();
   });
 });
