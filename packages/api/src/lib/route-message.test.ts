@@ -138,4 +138,101 @@ describe('routeInboundMessage', () => {
       }),
     );
   });
+
+  it('uses the current conversation directly for ordinary inbound messages', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: '在吗',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(db.endUser.findMany).not.toHaveBeenCalled();
+    expect(db.conversation.findMany).not.toHaveBeenCalled();
+    expect(db.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: { in: ['conv_1'] },
+        }),
+      }),
+    );
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.not.objectContaining({
+          clawscaleUserId: expect.anything(),
+          cokeAccountId: expect.anything(),
+        }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        conversationId: 'conv_1',
+        reply: expect.stringContaining('bridge ok'),
+      }),
+    );
+  });
+
+  it('falls back to linkedTo when clawscaleUserId is absent', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_2',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_456',
+      name: 'Bob',
+      status: 'allowed',
+      linkedTo: 'eu_legacy',
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.endUser.findMany.mockResolvedValue([{ id: 'eu_legacy' }, { id: 'eu_2' }]);
+    db.conversation.findMany.mockResolvedValue([{ id: 'conv_legacy' }]);
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_456',
+      displayName: 'Bob',
+      text: 'hello',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(db.endUser.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 'ten_1',
+          OR: [
+            { id: 'eu_legacy' },
+            { linkedTo: 'eu_legacy' },
+          ],
+        }),
+      }),
+    );
+    expect(db.message.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          conversationId: { in: ['conv_legacy'] },
+        }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        conversationId: 'conv_1',
+        reply: expect.stringContaining('bridge ok'),
+      }),
+    );
+  });
 });

@@ -130,12 +130,15 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   });
 
   // 6b. Resolve all conversation IDs for the unified identity history.
-  const historyConvIds = await getUnifiedConversationIds({
-    tenantId,
-    endUserId: endUser.id,
-    clawscaleUserId: endUser.clawscaleUserId ?? null,
-    linkedTo: endUser.linkedTo ?? null,
-  });
+  const historyConvIds =
+    endUser.clawscaleUserId || endUser.linkedTo
+      ? await getUnifiedConversationIds({
+          tenantId,
+          endUserId: endUser.id,
+          clawscaleUserId: endUser.clawscaleUserId ?? null,
+          linkedTo: endUser.linkedTo ?? null,
+        })
+      : [conversation.id];
 
   // 7. Load backends and ClawScale config
   const clawscaleCfg = settings.clawscale ?? {};
