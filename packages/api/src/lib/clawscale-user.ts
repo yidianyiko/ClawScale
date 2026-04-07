@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 
@@ -95,8 +94,6 @@ export async function bindEndUserToCokeAccount(
       endUserId: endUser.id,
       cokeAccountId: input.cokeAccountId,
     };
-  }, {
-    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   });
 }
 
