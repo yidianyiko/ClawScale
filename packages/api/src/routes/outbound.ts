@@ -137,19 +137,27 @@ outboundRouter.post('/', async (c) => {
       );
     }
 
-    return c.json(
-      {
-        ok: false,
-        error:
-          outboundDelivery.status === 'succeeded'
-            ? 'duplicate_request'
-            : outboundDelivery.status === 'failed'
-              ? 'idempotency_key_failed'
+    if (outboundDelivery.status === 'failed') {
+      await db.outboundDelivery.update({
+        where: { id: outboundDelivery.id },
+        data: {
+          status: 'pending',
+          error: null,
+        },
+      });
+    } else {
+      return c.json(
+        {
+          ok: false,
+          error:
+            outboundDelivery.status === 'succeeded'
+              ? 'duplicate_request'
               : 'duplicate_request_in_progress',
-        idempotency_key: body.idempotency_key,
-      },
-      409,
-    );
+          idempotency_key: body.idempotency_key,
+        },
+        409,
+      );
+    }
   }
 
   // `external_end_user_id` is the forward-compatible canonical name.

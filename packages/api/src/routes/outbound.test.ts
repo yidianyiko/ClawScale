@@ -157,6 +157,71 @@ describe('outbound router', () => {
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 
+  it('returns 409 for an in-progress duplicate with the same payload', async () => {
+    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'pending',
+      payload: {
+        external_end_user_id: 'wxid_1',
+        text: 'hello',
+      },
+    } as never);
+
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: 'duplicate_request_in_progress',
+      idempotency_key: 'push_1',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries delivery for a failed key when the payload matches', async () => {
+    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: {
+        external_end_user_id: 'wxid_1',
+        text: 'hello',
+      },
+    } as never);
+
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.outboundDelivery.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'outbound_1' },
+      data: {
+        status: 'pending',
+        error: null,
+      },
+    });
+    expect(db.outboundDelivery.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'outbound_1' },
+      data: {
+        status: 'succeeded',
+        error: null,
+      },
+    });
+    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
+  });
+
   it('persists a failed idempotency record before surfacing delivery errors', async () => {
     vi.mocked(deliverOutboundMessage).mockRejectedValueOnce(new Error('gateway down'));
 
