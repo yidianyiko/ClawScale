@@ -7,9 +7,13 @@ import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
 const bodySchema = z.object({
   tenant_id: z.string(),
   channel_id: z.string(),
-  end_user_id: z.string(),
+  external_end_user_id: z.string().min(1).optional(),
+  end_user_id: z.string().min(1).optional(),
   text: z.string().min(1),
   idempotency_key: z.string().min(1),
+}).refine((body) => body.external_end_user_id ?? body.end_user_id, {
+  message: 'One of external_end_user_id or end_user_id is required',
+  path: ['external_end_user_id'],
 });
 
 export const outboundRouter = new Hono();
@@ -28,6 +32,10 @@ outboundRouter.post('/', async (c) => {
     return c.json({ ok: false, error: 'channel_not_found' }, 404);
   }
 
-  await deliverOutboundMessage(channel, body.end_user_id, body.text);
+  // `external_end_user_id` is the forward-compatible canonical name.
+  // `end_user_id` remains a compatibility alias during the transition.
+  const externalEndUserId = body.external_end_user_id ?? body.end_user_id;
+
+  await deliverOutboundMessage(channel, externalEndUserId, body.text);
   return c.json({ ok: true, idempotency_key: body.idempotency_key });
 });
