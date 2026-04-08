@@ -20,6 +20,9 @@ import { routeInboundMessage } from '../lib/route-message.js';
 import type { Attachment } from '../lib/route-message.js';
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
+function getWeixinBootstrapBaseUrl(): string {
+  return process.env['WEIXIN_PERSONAL_BASE_URL']?.trim() || DEFAULT_BASE_URL;
+}
 export type WeixinRestoreState = 'initializing' | 'ready' | 'failed';
 let weixinRestoreState: WeixinRestoreState = 'initializing';
 
@@ -118,9 +121,10 @@ async function loginFlow(channelId: string): Promise<void> {
   const isCurrentState = () => getActiveWeixinState(channelId) === state;
 
   try {
+    const bootstrapBaseUrl = getWeixinBootstrapBaseUrl();
     while (state.running) {
       // 1. Fetch QR code
-      const qrRes = await fetch(`${DEFAULT_BASE_URL}/ilink/bot/get_bot_qrcode?bot_type=3`, {
+      const qrRes = await fetch(`${bootstrapBaseUrl}/ilink/bot/get_bot_qrcode?bot_type=3`, {
         headers: { 'iLink-App-ClientVersion': '1' },
         signal: AbortSignal.timeout(30_000),
       });
@@ -167,7 +171,7 @@ async function loginFlow(channelId: string): Promise<void> {
         };
         try {
           const statusRes = await fetch(
-            `${DEFAULT_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
+            `${bootstrapBaseUrl}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcodeId)}`,
             { headers: { 'iLink-App-ClientVersion': '1' }, signal: AbortSignal.timeout(30_000) },
           );
           statusData = (await statusRes.json()) as typeof statusData;
@@ -182,7 +186,7 @@ async function loginFlow(channelId: string): Promise<void> {
             return;
           }
 
-          const botBaseUrl = statusData.baseurl ?? DEFAULT_BASE_URL;
+          const botBaseUrl = statusData.baseurl ?? bootstrapBaseUrl;
           const token = statusData.bot_token;
 
           // Save credentials to channel config

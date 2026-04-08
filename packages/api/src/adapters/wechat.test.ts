@@ -38,10 +38,12 @@ describe('wechat personal adapter', () => {
   const originalFetch = global.fetch;
   const originalConsoleError = console.error;
   const originalConsoleLog = console.log;
+  const originalWeixinBaseUrl = process.env.WEIXIN_PERSONAL_BASE_URL;
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    delete process.env.WEIXIN_PERSONAL_BASE_URL;
     mocks.toDataURL.mockResolvedValue('data:image/png;base64,qr');
     mocks.channelUpdate.mockResolvedValue(undefined);
     mocks.channelFindMany.mockResolvedValue([]);
@@ -55,7 +57,60 @@ describe('wechat personal adapter', () => {
     global.fetch = originalFetch;
     console.error = originalConsoleError;
     console.log = originalConsoleLog;
+    if (originalWeixinBaseUrl === undefined) {
+      delete process.env.WEIXIN_PERSONAL_BASE_URL;
+    } else {
+      process.env.WEIXIN_PERSONAL_BASE_URL = originalWeixinBaseUrl;
+    }
     vi.useRealTimers();
+  });
+
+  it('uses WEIXIN_PERSONAL_BASE_URL during qr bootstrap', async () => {
+    process.env.WEIXIN_PERSONAL_BASE_URL = 'http://127.0.0.1:19090';
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes('http://127.0.0.1:19090/ilink/bot/get_bot_qrcode')) {
+        return {
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              qrcode: 'qr_123',
+              qrcode_img_content: 'https://liteapp.weixin.qq.com/q/demo',
+            }),
+        } as Response;
+      }
+
+      if (url.includes('http://127.0.0.1:19090/ilink/bot/get_qrcode_status')) {
+        return {
+          json: async () => ({
+            status: 'confirmed',
+            bot_token: 'bot-token',
+            ilink_bot_id: 'bot_123',
+          }),
+        } as Response;
+      }
+
+      if (url.includes('http://127.0.0.1:19090/ilink/bot/getupdates')) {
+        return new Promise(() => {}) as Promise<Response>;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    await startWeixinQR('ch_test');
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(mocks.channelUpdate).toHaveBeenCalledWith({
+      where: { id: 'ch_test' },
+      data: {
+        status: 'connected',
+        config: { baseUrl: 'http://127.0.0.1:19090', token: 'bot-token', botId: 'bot_123' },
+      },
+    });
+    expect(getWeixinStatus('ch_test')).toBe('connected');
   });
 
   it('keeps polling after a transient qr status timeout and connects on a later confirmation', async () => {
