@@ -10,6 +10,7 @@ vi.mock('../db/index.js', () => ({
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -53,6 +54,7 @@ describe('outbound router', () => {
     vi.mocked(db.outboundDelivery.create).mockResolvedValue({ id: 'outbound_1' } as never);
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue(null as never);
     vi.mocked(db.outboundDelivery.update).mockResolvedValue({ id: 'outbound_1' } as never);
+    vi.mocked(db.outboundDelivery.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(deliverOutboundMessage).mockResolvedValue(undefined as never);
     vi.clearAllMocks();
   });
@@ -205,14 +207,17 @@ describe('outbound router', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(db.outboundDelivery.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'outbound_1' },
+    expect(db.outboundDelivery.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'outbound_1',
+        status: 'failed',
+      },
       data: {
         status: 'pending',
         error: null,
       },
     });
-    expect(db.outboundDelivery.update).toHaveBeenNthCalledWith(2, {
+    expect(db.outboundDelivery.update).toHaveBeenCalledWith({
       where: { id: 'outbound_1' },
       data: {
         status: 'succeeded',
@@ -241,6 +246,35 @@ describe('outbound router', () => {
         error: 'gateway down',
       },
     });
+  });
+
+  it('does not deliver when a concurrent request wins the failed-key reclaim race', async () => {
+    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: {
+        external_end_user_id: 'wxid_1',
+        text: 'hello',
+      },
+    } as never);
+    vi.mocked(db.outboundDelivery.updateMany).mockResolvedValueOnce({ count: 0 } as never);
+
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: 'duplicate_request_in_progress',
+      idempotency_key: 'push_1',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 
   it('accepts end_user_id as a compatibility alias', async () => {

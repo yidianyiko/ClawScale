@@ -138,13 +138,27 @@ outboundRouter.post('/', async (c) => {
     }
 
     if (outboundDelivery.status === 'failed') {
-      await db.outboundDelivery.update({
-        where: { id: outboundDelivery.id },
+      const reclaimResult = await db.outboundDelivery.updateMany({
+        where: {
+          id: outboundDelivery.id,
+          status: 'failed',
+        },
         data: {
           status: 'pending',
           error: null,
         },
       });
+
+      if (reclaimResult.count === 0) {
+        return c.json(
+          {
+            ok: false,
+            error: 'duplicate_request_in_progress',
+            idempotency_key: body.idempotency_key,
+          },
+          409,
+        );
+      }
     } else {
       return c.json(
         {
