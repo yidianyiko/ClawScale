@@ -310,7 +310,7 @@ describe('routeInboundMessage', () => {
     expect(result).toEqual(
       expect.objectContaining({
         conversationId: 'conv_1',
-        reply: expect.stringContaining('bridge ok'),
+        reply: 'bridge ok',
       }),
     );
   });
@@ -358,7 +358,66 @@ describe('routeInboundMessage', () => {
     expect(result).toEqual(
       expect.objectContaining({
         conversationId: 'conv_1',
-        reply: expect.stringContaining('bridge ok'),
+        reply: 'bridge ok',
+      }),
+    );
+  });
+
+  it('keeps backend name prefixes when multiple active backends reply', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }, { backendId: 'ab_2' }],
+    });
+    db.aiBackend.findMany.mockResolvedValue([
+      {
+        id: 'ab_1',
+        tenantId: 'ten_1',
+        name: 'Coke Bridge',
+        type: 'custom',
+        config: {
+          baseUrl: 'http://127.0.0.1:8090/bridge/inbound',
+          responseFormat: 'json-auto',
+        },
+        isActive: true,
+        isDefault: true,
+      },
+      {
+        id: 'ab_2',
+        tenantId: 'ten_1',
+        name: 'Helper Bot',
+        type: 'custom',
+        config: {
+          baseUrl: 'http://127.0.0.1:8091/bridge/inbound',
+          responseFormat: 'json-auto',
+        },
+        isActive: true,
+        isDefault: false,
+      },
+    ]);
+    generateReply
+      .mockResolvedValueOnce('bridge ok')
+      .mockResolvedValueOnce('helper ok');
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: '在吗',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        conversationId: 'conv_1',
+        reply: '[Coke Bridge]\nbridge ok\n\n---\n\n[Helper Bot]\nhelper ok',
       }),
     );
   });

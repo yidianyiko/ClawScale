@@ -49,6 +49,16 @@ export interface RouteResult {
   reply: string;
 }
 
+function formatCombinedReplies(replies: ReplyEntry[]): string {
+  if (replies.length <= 1) {
+    return replies[0]?.reply ?? '';
+  }
+
+  return replies.map((r) =>
+    r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
+  ).join('\n\n---\n\n');
+}
+
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
 
@@ -242,7 +252,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       data: { id: generateId('msg'), conversationId: conversation!.id, role: 'assistant', content, backendId },
     });
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
-    const combined = replies.map((r) => r.reply).join('\n\n---\n\n');
+    const combined = formatCombinedReplies(replies);
     return { conversationId: conversation!.id, replies, reply: combined };
   }
 
@@ -319,9 +329,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       }
     }
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
-    const combined = replies.map((r) =>
-      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
-    ).join('\n\n---\n\n');
+    const combined = formatCombinedReplies(replies);
     return { conversationId: conversation!.id, replies, reply: combined };
   }
 
