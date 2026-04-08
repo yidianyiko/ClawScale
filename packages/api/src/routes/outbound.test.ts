@@ -6,6 +6,11 @@ vi.mock('../db/index.js', () => ({
     channel: {
       findFirst: vi.fn(),
     },
+    outboundDelivery: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 
@@ -45,6 +50,9 @@ describe('outbound router', () => {
   beforeEach(() => {
     process.env.CLAWSCALE_OUTBOUND_API_KEY = 'secret';
     vi.mocked(db.channel.findFirst).mockResolvedValue(channel as never);
+    vi.mocked(db.outboundDelivery.create).mockResolvedValue({ id: 'outbound_1' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue(null as never);
+    vi.mocked(db.outboundDelivery.update).mockResolvedValue({ id: 'outbound_1' } as never);
     vi.mocked(deliverOutboundMessage).mockResolvedValue(undefined as never);
     vi.clearAllMocks();
   });
@@ -81,6 +89,93 @@ describe('outbound router', () => {
 
     expect(res.status).toBe(200);
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
+  });
+
+  it('returns 409 and suppresses delivery for a duplicate request with the same payload', async () => {
+    vi.mocked(db.outboundDelivery.create)
+      .mockResolvedValueOnce({ id: 'outbound_1' } as never)
+      .mockRejectedValueOnce({ code: 'P2002' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: {
+        external_end_user_id: 'wxid_1',
+        text: 'hello',
+      },
+    } as never);
+
+    const first = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+    const second = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(await second.json()).toEqual({
+      ok: false,
+      error: 'duplicate_request',
+      idempotency_key: 'push_1',
+    });
+    expect(deliverOutboundMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 409 and rejects conflicting payloads for a reused idempotency key', async () => {
+    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: {
+        external_end_user_id: 'wxid_original',
+        text: 'hello',
+      },
+    } as never);
+
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_changed',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: 'idempotency_key_conflict',
+      idempotency_key: 'push_1',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('persists a failed idempotency record before surfacing delivery errors', async () => {
+    vi.mocked(deliverOutboundMessage).mockRejectedValueOnce(new Error('gateway down'));
+
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(500);
+    expect(db.outboundDelivery.update).toHaveBeenCalledWith({
+      where: { id: 'outbound_1' },
+      data: {
+        status: 'failed',
+        error: 'gateway down',
+      },
+    });
   });
 
   it('accepts end_user_id as a compatibility alias', async () => {
