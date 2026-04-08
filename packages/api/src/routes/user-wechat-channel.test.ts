@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createOrReusePersonalWeChatChannel: vi.fn(),
   disconnectPersonalWeChatChannel: vi.fn(),
   archivePersonalWeChatChannel: vi.fn(),
+  ensureClawscaleUserForCokeAccount: vi.fn(),
   findMany: vi.fn(),
   update: vi.fn(),
   startWeixinQR: vi.fn(),
@@ -36,6 +37,10 @@ vi.mock('../lib/personal-wechat-channel.js', () => ({
   archivePersonalWeChatChannel: mocks.archivePersonalWeChatChannel,
 }));
 
+vi.mock('../lib/clawscale-user.js', () => ({
+  ensureClawscaleUserForCokeAccount: mocks.ensureClawscaleUserForCokeAccount,
+}));
+
 vi.mock('../adapters/wechat.js', () => ({
   startWeixinQR: mocks.startWeixinQR,
   getWeixinQR: mocks.getWeixinQR,
@@ -52,6 +57,49 @@ describe('userWechatChannelRouter', () => {
     mocks.getWeixinStatus.mockReturnValue(null);
     mocks.getWeixinQR.mockReturnValue(null);
     mocks.getWeixinRestoreState.mockReturnValue('ready');
+  });
+
+  it('allows bridge api-key callers to resolve and create the account-owned channel', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+      created: false,
+    });
+    mocks.createOrReusePersonalWeChatChannel.mockResolvedValueOnce({
+      id: 'ch_bridge',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request('/api/internal/user/wechat-channel', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ account_id: 'acct_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'acct_1',
+    });
+    expect(mocks.createOrReusePersonalWeChatChannel).toHaveBeenCalledWith({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        channel_id: 'ch_bridge',
+        status: 'disconnected',
+        qr: null,
+        qr_url: null,
+      },
+    });
   });
 
   it('creates or reuses the authenticated user channel', async () => {

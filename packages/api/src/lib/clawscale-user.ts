@@ -3,6 +3,25 @@ import { generateId } from './id.js';
 
 export type ClawscaleUserBindingErrorCode = 'end_user_not_found' | 'end_user_already_bound';
 
+const defaultPersonalTenantSettings = {
+  personaName: 'Assistant',
+  personaPrompt: 'You are a helpful assistant.',
+  endUserAccess: 'anonymous',
+  features: { knowledgeBase: false },
+};
+const personalCokeBridgeBackendName = 'Coke Bridge';
+
+export interface EnsureClawscaleUserForCokeAccountInput {
+  cokeAccountId: string;
+  displayName?: string | null;
+}
+
+export interface EnsureClawscaleUserForCokeAccountResult {
+  tenantId: string;
+  clawscaleUserId: string;
+  created: boolean;
+}
+
 export class ClawscaleUserBindingError extends Error {
   constructor(
     public readonly code: ClawscaleUserBindingErrorCode,
@@ -31,6 +50,188 @@ export interface UnifiedConversationIdsInput {
   endUserId: string;
   clawscaleUserId: string | null;
   linkedTo: string | null;
+}
+
+function buildPersonalTenantSlug(cokeAccountId: string): string {
+  return `personal-${cokeAccountId.toLowerCase()}`;
+}
+
+function buildPersonalTenantName(displayName?: string | null): string {
+  const trimmed = displayName?.trim();
+  return trimmed ? `${trimmed}'s Workspace` : 'Personal Workspace';
+}
+
+function resolvePersonalCokeBridgeBackendConfig() {
+  const baseUrl = process.env['COKE_BRIDGE_INBOUND_URL']?.trim() || 'http://127.0.0.1:8090/bridge/inbound';
+  const apiKey = process.env['COKE_BRIDGE_API_KEY']?.trim() ?? '';
+
+  return {
+    baseUrl,
+    transport: 'http' as const,
+    responseFormat: 'json-auto' as const,
+    ...(apiKey ? { authHeader: `Bearer ${apiKey}` } : {}),
+  };
+}
+
+async function ensurePersonalCokeBridgeBackend(tenantId: string) {
+  const config = resolvePersonalCokeBridgeBackendConfig();
+  const existing = await db.aiBackend.findFirst({
+    where: {
+      tenantId,
+      name: personalCokeBridgeBackendName,
+    },
+    select: {
+      id: true,
+      isActive: true,
+      isDefault: true,
+      type: true,
+      config: true,
+    },
+  });
+
+  if (existing) {
+    await db.aiBackend.update({
+      where: { id: existing.id },
+      data: {
+        type: 'custom',
+        isActive: true,
+        isDefault: true,
+        config,
+      },
+    });
+    return;
+  }
+
+  await db.aiBackend.updateMany({
+    where: { tenantId, isDefault: true },
+    data: { isDefault: false },
+  });
+
+  await db.aiBackend.create({
+    data: {
+      id: generateId('aib'),
+      tenantId,
+      name: personalCokeBridgeBackendName,
+      type: 'custom',
+      config,
+      isActive: true,
+      isDefault: true,
+    },
+  });
+}
+
+function isUniqueConstraint(error: unknown, fieldName: string): boolean {
+  const prismaError = error as {
+    code?: string;
+    meta?: { target?: unknown };
+  };
+
+  if (prismaError.code !== 'P2002') {
+    return false;
+  }
+
+  const target = prismaError.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes(fieldName);
+  }
+
+  return target === fieldName;
+}
+
+export async function ensureClawscaleUserForCokeAccount(
+  input: EnsureClawscaleUserForCokeAccountInput,
+): Promise<EnsureClawscaleUserForCokeAccountResult> {
+  const existing = await db.clawscaleUser.findFirst({
+    where: { cokeAccountId: input.cokeAccountId },
+    select: { id: true, tenantId: true },
+  });
+
+  if (existing) {
+    await ensurePersonalCokeBridgeBackend(existing.tenantId);
+    return {
+      tenantId: existing.tenantId,
+      clawscaleUserId: existing.id,
+      created: false,
+    };
+  }
+
+  try {
+    return await db.$transaction(async (tx) => {
+      const raced = await tx.clawscaleUser.findFirst({
+        where: { cokeAccountId: input.cokeAccountId },
+        select: { id: true, tenantId: true },
+      });
+
+      if (raced) {
+        return {
+          tenantId: raced.tenantId,
+          clawscaleUserId: raced.id,
+          created: false,
+        };
+      }
+
+      const tenantId = generateId('tnt');
+      const clawscaleUserId = generateId('csu');
+
+      await tx.tenant.create({
+        data: {
+          id: tenantId,
+          slug: buildPersonalTenantSlug(input.cokeAccountId),
+          name: buildPersonalTenantName(input.displayName),
+          settings: {
+            ...defaultPersonalTenantSettings,
+            kind: 'personal',
+            ownerCokeAccountId: input.cokeAccountId,
+            autoCreated: true,
+          },
+        },
+      });
+
+      await tx.clawscaleUser.create({
+        data: {
+          id: clawscaleUserId,
+          tenantId,
+          cokeAccountId: input.cokeAccountId,
+        },
+      });
+
+      await tx.aiBackend.create({
+        data: {
+          id: generateId('aib'),
+          tenantId,
+          name: personalCokeBridgeBackendName,
+          type: 'custom',
+          config: resolvePersonalCokeBridgeBackendConfig(),
+          isActive: true,
+          isDefault: true,
+        },
+      });
+
+      return {
+        tenantId,
+        clawscaleUserId,
+        created: true,
+      };
+    });
+  } catch (error) {
+    if (!isUniqueConstraint(error, 'slug') && !isUniqueConstraint(error, 'tenantId_cokeAccountId')) {
+      throw error;
+    }
+
+    const raced = await db.clawscaleUser.findFirst({
+      where: { cokeAccountId: input.cokeAccountId },
+      select: { id: true, tenantId: true },
+    });
+    if (!raced) {
+      throw error;
+    }
+
+    return {
+      tenantId: raced.tenantId,
+      clawscaleUserId: raced.id,
+      created: false,
+    };
+  }
 }
 
 export async function bindEndUserToCokeAccount(

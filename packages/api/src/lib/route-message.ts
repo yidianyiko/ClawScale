@@ -242,9 +242,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       data: { id: generateId('msg'), conversationId: conversation!.id, role: 'assistant', content, backendId },
     });
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
-    const combined = replies.map((r) =>
-      r.backendName ? `[${r.backendName}]\n${r.reply}` : r.reply,
-    ).join('\n\n---\n\n');
+    const combined = replies.map((r) => r.reply).join('\n\n---\n\n');
     return { conversationId: conversation!.id, replies, reply: combined };
   }
 
@@ -601,8 +599,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     return routeToBackends(activeBackends);
   }
 
-  // No active backends — auto-select only for brand-new users
-  if (isNewUser) {
+  // No active backends — personal channels should always recover onto the
+  // tenant default backend, even if the EndUser record was created before the
+  // backend was provisioned. Shared channels keep the legacy "brand-new only"
+  // behavior.
+  if (isNewUser || personalChannelOwnership) {
     const defaultBackend = allBackends.find((b) => b.isDefault);
     const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
 

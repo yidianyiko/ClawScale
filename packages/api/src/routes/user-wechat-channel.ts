@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
@@ -6,6 +6,7 @@ import {
   createOrReusePersonalWeChatChannel,
   disconnectPersonalWeChatChannel,
 } from '../lib/personal-wechat-channel.js';
+import { ensureClawscaleUserForCokeAccount } from '../lib/clawscale-user.js';
 import {
   getWeixinQR,
   getWeixinStatus,
@@ -48,15 +49,57 @@ function assertValidPersonalChannelRow(row: CurrentChannelRow): void {
   }
 }
 
-function readBridgeAuth(c: Parameters<typeof requireAuth>[0]) {
-  const auth = c.get('auth');
-  if (!auth) {
-    throw new Error('unauthorized');
+async function requireUserWechatChannelAuth(c: Context, next: Next): Promise<Response | void> {
+  const expected = process.env['CLAWSCALE_IDENTITY_API_KEY'] ?? '';
+  if (c.req.header('Authorization') === `Bearer ${expected}`) {
+    await next();
+    return;
   }
 
+  return requireAuth(c, next);
+}
+
+async function readBridgeAuth(c: Context) {
+  const auth = c.get('auth');
+  if (auth) {
+    return {
+      tenantId: auth.tenantId,
+      clawscaleUserId: auth.userId,
+    };
+  }
+
+  let accountId: string | undefined;
+  if (c.req.method === 'GET') {
+    accountId = c.req.query('account_id')?.trim();
+  } else {
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      throw new Error('invalid_body');
+    }
+
+    if (typeof rawBody !== 'object' || rawBody === null) {
+      throw new Error('invalid_body');
+    }
+
+    const candidate = (rawBody as { account_id?: unknown }).account_id;
+    if (typeof candidate === 'string') {
+      accountId = candidate.trim();
+    }
+  }
+
+  if (!accountId) {
+    throw new Error('invalid_body');
+  }
+
+  const ensured = await ensureClawscaleUserForCokeAccount({
+    cokeAccountId: accountId,
+  });
+
   return {
-    tenantId: auth.tenantId,
-    clawscaleUserId: auth.userId,
+    tenantId: ensured.tenantId,
+    clawscaleUserId: ensured.clawscaleUserId,
   };
 }
 
@@ -69,7 +112,7 @@ function readErrorCode(err: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
-function respondLifecycleError(c: Parameters<typeof requireAuth>[0], err: unknown) {
+function respondLifecycleError(c: Context, err: unknown) {
   const code = readErrorCode(err) ?? (err instanceof Error ? err.message : undefined);
 
   if (code === 'clawscale_user_not_found' || code === 'personal_channel_not_found') {
@@ -82,6 +125,10 @@ function respondLifecycleError(c: Parameters<typeof requireAuth>[0], err: unknow
 
   if (code === 'invalid_personal_channel_row') {
     return c.json({ ok: false, error: code }, 500);
+  }
+
+  if (code === 'invalid_body') {
+    return c.json({ ok: false, error: code }, 400);
   }
 
   return null;
@@ -199,12 +246,11 @@ async function loadCurrentPersonalChannel(input: {
 }
 
 export const userWechatChannelRouter = new Hono()
-  .use('*', requireAuth)
+  .use('*', requireUserWechatChannelAuth)
 
   .post('/', async (c) => {
-    const auth = readBridgeAuth(c);
-
     try {
+      const auth = await readBridgeAuth(c);
       const channel = await createOrReusePersonalWeChatChannel({
         tenantId: auth.tenantId,
         clawscaleUserId: auth.clawscaleUserId,
@@ -227,9 +273,8 @@ export const userWechatChannelRouter = new Hono()
   })
 
   .post('/connect', async (c) => {
-    const auth = readBridgeAuth(c);
-
     try {
+      const auth = await readBridgeAuth(c);
       const channel = await createOrReusePersonalWeChatChannel({
         tenantId: auth.tenantId,
         clawscaleUserId: auth.clawscaleUserId,
@@ -284,8 +329,8 @@ export const userWechatChannelRouter = new Hono()
   })
 
   .get('/status', async (c) => {
-    const auth = readBridgeAuth(c);
     try {
+      const auth = await readBridgeAuth(c);
       const channel = await loadCurrentPersonalChannel({
         tenantId: auth.tenantId,
         clawscaleUserId: auth.clawscaleUserId,
@@ -327,9 +372,8 @@ export const userWechatChannelRouter = new Hono()
   })
 
   .post('/disconnect', async (c) => {
-    const auth = readBridgeAuth(c);
-
     try {
+      const auth = await readBridgeAuth(c);
       const channel = await disconnectPersonalWeChatChannel({
         tenantId: auth.tenantId,
         clawscaleUserId: auth.clawscaleUserId,
@@ -352,8 +396,8 @@ export const userWechatChannelRouter = new Hono()
   })
 
   .delete('/', async (c) => {
-    const auth = readBridgeAuth(c);
     try {
+      const auth = await readBridgeAuth(c);
       const current = await loadCurrentPersonalChannel({
         tenantId: auth.tenantId,
         clawscaleUserId: auth.clawscaleUserId,

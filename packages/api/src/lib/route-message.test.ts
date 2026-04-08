@@ -162,7 +162,7 @@ describe('routeInboundMessage', () => {
     expect(result).toEqual(
       expect.objectContaining({
         conversationId: 'conv_1',
-        reply: '[Coke Bridge]\nbridge ok',
+        reply: 'bridge ok',
       }),
     );
   });
@@ -212,6 +212,57 @@ describe('routeInboundMessage', () => {
         where: expect.objectContaining({
           conversationId: { in: ['conv_1'] },
         }),
+      }),
+    );
+  });
+
+  it('auto-selects the default backend for an existing personal-channel end user with no active backends', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      status: 'connected',
+      scope: 'personal',
+      ownerClawscaleUserId: 'csu_1',
+      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'acct_1' },
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [],
+    });
+    db.message.findMany.mockResolvedValue([{ role: 'user', content: 'historical' }]);
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: '继续聊',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(db.endUserBackend.upsert).toHaveBeenCalledWith({
+      where: { endUserId_backendId: { endUserId: 'eu_1', backendId: 'ab_1' } },
+      create: { endUserId: 'eu_1', backendId: 'ab_1' },
+      update: {},
+    });
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          channelScope: 'personal',
+          cokeAccountId: 'acct_1',
+        }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        reply: 'bridge ok',
       }),
     );
   });

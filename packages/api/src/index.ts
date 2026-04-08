@@ -14,6 +14,7 @@ import { endUsersRouter } from './routes/end-users.js';
 import { onboardRouter } from './routes/onboard.js';
 import { outboundRouter } from './routes/outbound.js';
 import { cokeBindingsRouter } from './routes/coke-bindings.js';
+import { cokeUserProvisionRouter } from './routes/coke-user-provision.js';
 import { userWechatChannelRouter } from './routes/user-wechat-channel.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
@@ -59,6 +60,7 @@ app.route('/api/conversations', conversationsRouter);
 app.route('/api/ai-backends', aiBackendsRouter);
 app.route('/api/end-users', endUsersRouter);
 app.route('/api/internal/coke-bindings', cokeBindingsRouter);
+app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
 app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
 
 // ─── Public onboarding routes ────────────────────────────────────────────────
