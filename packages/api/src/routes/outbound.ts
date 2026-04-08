@@ -11,9 +11,6 @@ const bodySchema = z.object({
   end_user_id: z.string().min(1).optional(),
   text: z.string().min(1),
   idempotency_key: z.string().min(1),
-}).refine((body) => body.external_end_user_id ?? body.end_user_id, {
-  message: 'One of external_end_user_id or end_user_id is required',
-  path: ['external_end_user_id'],
 });
 
 export const outboundRouter = new Hono();
@@ -24,7 +21,59 @@ outboundRouter.post('/', async (c) => {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  const body = bodySchema.parse(await c.req.json());
+  const parsed = bodySchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json(
+      {
+        ok: false,
+        error: 'validation_error',
+        issues: parsed.error.issues,
+      },
+      400,
+    );
+  }
+
+  const body = parsed.data;
+  const externalEndUserId = body.external_end_user_id ?? body.end_user_id;
+  if (!externalEndUserId) {
+    return c.json(
+      {
+        ok: false,
+        error: 'validation_error',
+        issues: [
+          {
+            code: 'custom',
+            message: 'One of external_end_user_id or end_user_id is required',
+            path: ['external_end_user_id'],
+          },
+        ],
+      },
+      400,
+    );
+  }
+
+  if (
+    body.external_end_user_id &&
+    body.end_user_id &&
+    body.external_end_user_id !== body.end_user_id
+  ) {
+    return c.json(
+      {
+        ok: false,
+        error: 'validation_error',
+        issues: [
+          {
+            code: 'custom',
+            message:
+              'external_end_user_id and end_user_id must match when both are provided',
+            path: ['external_end_user_id'],
+          },
+        ],
+      },
+      400,
+    );
+  }
+
   const channel = await db.channel.findFirst({
     where: { id: body.channel_id, tenantId: body.tenant_id },
   });
@@ -34,8 +83,6 @@ outboundRouter.post('/', async (c) => {
 
   // `external_end_user_id` is the forward-compatible canonical name.
   // `end_user_id` remains a compatibility alias during the transition.
-  const externalEndUserId = body.external_end_user_id ?? body.end_user_id;
-
   await deliverOutboundMessage(channel, externalEndUserId, body.text);
   return c.json({ ok: true, idempotency_key: body.idempotency_key });
 });

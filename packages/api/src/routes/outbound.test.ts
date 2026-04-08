@@ -95,4 +95,38 @@ describe('outbound router', () => {
     expect(res.status).toBe(200);
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
   });
+
+  it('accepts both fields when they match', async () => {
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_1',
+      end_user_id: 'wxid_1',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(200);
+    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
+  });
+
+  it('rejects conflicting end user ids when both fields are present', async () => {
+    const res = await postOutbound({
+      tenant_id: 'ten_1',
+      channel_id: 'ch_1',
+      external_end_user_id: 'wxid_external',
+      end_user_id: 'wxid_legacy',
+      text: 'hello',
+      idempotency_key: 'push_1',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: 'validation_error',
+      }),
+    );
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
 });
