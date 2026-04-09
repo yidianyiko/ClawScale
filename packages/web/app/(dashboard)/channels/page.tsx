@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils';
 import { CHANNEL_CONFIG_SCHEMA, type ChannelType, type Channel } from '@clawscale/shared';
 import type { ApiResponse } from '@clawscale/shared';
 import { isAdminAddChannelTypeAllowed } from './channel-options';
-import { ADD_CHANNEL_OPTIONS } from './channel-options';
 
 const CHANNEL_ICONS: Record<string, string> = {
   whatsapp: '📱', whatsapp_business: '🟢', telegram: '✈️', slack: '💬', discord: '🎮', instagram: '📸',
