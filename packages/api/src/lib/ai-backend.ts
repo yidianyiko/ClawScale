@@ -58,8 +58,18 @@ export interface GenerateOptions {
     channelId: string;
     endUserId: string;
     conversationId: string;
+    gatewayConversationId?: string;
+    inboundEventId?: string;
     externalId: string;
+    businessConversationKey?: string;
   };
+}
+
+export interface BackendReplyPayload {
+  text: string;
+  businessConversationKey?: string;
+  outputId?: string;
+  causalInboundEventId?: string;
 }
 
 // ── Lazy singletons per config hash ──────────────────────────────────────────
@@ -202,7 +212,42 @@ async function readLangGraphStream(body: ReadableStream<Uint8Array>): Promise<st
 async function parseResponse(
   res: Response,
   format: ResponseFormat,
-): Promise<string> {
+): Promise<string | BackendReplyPayload> {
+  const readString = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : undefined;
+
+  const parseGatewayReplyPayload = (value: unknown): BackendReplyPayload | null => {
+    if (typeof value !== 'object' || value === null) return null;
+    const data = value as Record<string, unknown>;
+    const text =
+      readString(data.text) ??
+      readString(data.reply) ??
+      readString(data.content) ??
+      readString(data.message) ??
+      '';
+    const businessConversationKey =
+      readString(data.businessConversationKey) ?? readString(data.business_conversation_key);
+    const outputId = readString(data.outputId) ?? readString(data.output_id);
+    const causalInboundEventId =
+      readString(data.causalInboundEventId) ?? readString(data.causal_inbound_event_id);
+
+    const hasGatewayFields =
+      businessConversationKey !== undefined ||
+      outputId !== undefined ||
+      causalInboundEventId !== undefined;
+
+    if (!hasGatewayFields) {
+      return null;
+    }
+
+    return {
+      text: text.trim(),
+      ...(businessConversationKey ? { businessConversationKey } : {}),
+      ...(outputId ? { outputId } : {}),
+      ...(causalInboundEventId ? { causalInboundEventId } : {}),
+    };
+  };
+
   switch (format) {
     case 'langgraph': {
       if (res.body) return readLangGraphStream(res.body);
@@ -230,8 +275,15 @@ async function parseResponse(
       // Handle { ok, reply, error } pattern (claude-code)
       if (typeof data.ok === 'boolean') {
         if (!data.ok) throw new Error(`Backend error: ${data.error ?? 'unknown'}`);
+        const gatewayPayload = parseGatewayReplyPayload(data);
+        if (gatewayPayload) return gatewayPayload;
+        const nestedPayload = parseGatewayReplyPayload(data.reply);
+        if (nestedPayload) return nestedPayload;
         return ((data.reply ?? '') as string).trim();
       }
+
+      const gatewayPayload = parseGatewayReplyPayload(data);
+      if (gatewayPayload) return gatewayPayload;
 
       // Try common fields
       const text = data.reply ?? data.content ?? data.message ?? data.text;
@@ -345,7 +397,7 @@ async function handleFetch(
   cfg: AiBackendProviderConfig,
   history: HistoryMessage[],
   extraBody?: Record<string, unknown>,
-): Promise<string> {
+): Promise<string | BackendReplyPayload> {
   const url = resolveEndpoint(descriptor, cfg);
   if (!url) throw new Error(`${descriptor.label} backend: baseUrl is required`);
 
@@ -441,7 +493,9 @@ function isConnectionError(err: unknown): string | null {
   return code && CONNECTION_ERROR_CODES.has(code) ? code : null;
 }
 
-export async function generateReply(options: GenerateOptions): Promise<string> {
+export async function generateReply(
+  options: GenerateOptions,
+): Promise<string | BackendReplyPayload> {
   const { backend, history, sender, platform, metadata } = options;
   const { type, config: cfg } = backend;
 

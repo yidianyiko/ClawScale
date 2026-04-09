@@ -1,15 +1,24 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
+import {
+  DeliveryRouteResolutionError,
+  resolveExactDeliveryRoute,
+} from '../lib/business-conversation.js';
 import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
 
 const bodySchema = z.object({
-  tenant_id: z.string(),
-  channel_id: z.string(),
-  external_end_user_id: z.string().min(1).optional(),
-  end_user_id: z.string().min(1).optional(),
+  output_id: z.string().min(1),
+  account_id: z.string().min(1),
+  business_conversation_key: z.string().min(1),
+  message_type: z.enum(['text']),
   text: z.string().min(1),
+  delivery_mode: z.enum(['push', 'request_response']),
+  expect_output_timestamp: z.string().min(1),
   idempotency_key: z.string().min(1),
+  trace_id: z.string().min(1),
+  causal_inbound_event_id: z.string().min(1).optional(),
 });
 
 export const outboundRouter = new Hono();
@@ -21,6 +30,34 @@ function isUniqueConstraintError(error: unknown): error is { code: string } {
     'code' in error &&
     (error as { code?: unknown }).code === 'P2002'
   );
+}
+
+function normalizePayload(body: z.infer<typeof bodySchema>): Prisma.InputJsonObject {
+  return {
+    output_id: body.output_id,
+    account_id: body.account_id,
+    business_conversation_key: body.business_conversation_key,
+    message_type: body.message_type,
+    text: body.text,
+    delivery_mode: body.delivery_mode,
+    expect_output_timestamp: body.expect_output_timestamp,
+    idempotency_key: body.idempotency_key,
+    trace_id: body.trace_id,
+    ...(body.causal_inbound_event_id
+      ? { causal_inbound_event_id: body.causal_inbound_event_id }
+      : {}),
+  };
+}
+
+function isMissingDeliveryRouteError(
+  error: unknown,
+): error is DeliveryRouteResolutionError | {
+  code: 'missing_delivery_route';
+  context?: { cokeAccountId?: string; businessConversationKey?: string };
+} {
+  if (error instanceof DeliveryRouteResolutionError) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  return (error as { code?: unknown }).code === 'missing_delivery_route';
 }
 
 outboundRouter.post('/', async (c) => {
@@ -42,142 +79,215 @@ outboundRouter.post('/', async (c) => {
   }
 
   const body = parsed.data;
-  const externalEndUserId = body.external_end_user_id ?? body.end_user_id;
-  if (!externalEndUserId) {
-    return c.json(
-      {
-        ok: false,
-        error: 'validation_error',
-        issues: [
-          {
-            code: 'custom',
-            message: 'One of external_end_user_id or end_user_id is required',
-            path: ['external_end_user_id'],
-          },
-        ],
-      },
-      400,
-    );
-  }
+  const payload = normalizePayload(body);
 
-  if (
-    body.external_end_user_id &&
-    body.end_user_id &&
-    body.external_end_user_id !== body.end_user_id
-  ) {
-    return c.json(
-      {
-        ok: false,
-        error: 'validation_error',
-        issues: [
-          {
-            code: 'custom',
-            message:
-              'external_end_user_id and end_user_id must match when both are provided',
-            path: ['external_end_user_id'],
-          },
-        ],
-      },
-      400,
-    );
-  }
-
-  const channel = await db.channel.findFirst({
-    where: { id: body.channel_id, tenantId: body.tenant_id },
-  });
-  if (!channel) {
-    return c.json({ ok: false, error: 'channel_not_found' }, 404);
-  }
-
-  const payload = {
-    external_end_user_id: externalEndUserId,
-    text: body.text,
-  };
-
-  let outboundDelivery;
-  try {
-    outboundDelivery = await db.outboundDelivery.create({
-      data: {
-        tenantId: body.tenant_id,
-        channelId: body.channel_id,
-        idempotencyKey: body.idempotency_key,
-        payload,
-        status: 'pending',
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConstraintError(error)) {
-      throw error;
-    }
-
-    outboundDelivery = await db.outboundDelivery.findUnique({
-      where: {
-        tenantId_channelId_idempotencyKey: {
-          tenantId: body.tenant_id,
-          channelId: body.channel_id,
-          idempotencyKey: body.idempotency_key,
-        },
-      },
-    });
-
-    if (!outboundDelivery) {
-      throw error;
-    }
-
-    const existingPayload = JSON.stringify(outboundDelivery.payload);
+  const handleExistingIdempotency = (
+    existingDelivery: {
+      id: string;
+      status: string;
+      payload: unknown;
+    },
+  ): { response: Response | null; shouldReclaimFailed: boolean } => {
+    const existingPayload = JSON.stringify(existingDelivery.payload);
     const requestPayload = JSON.stringify(payload);
     if (existingPayload !== requestPayload) {
-      return c.json(
-        {
-          ok: false,
-          error: 'idempotency_key_conflict',
-          idempotency_key: body.idempotency_key,
-        },
-        409,
-      );
-    }
-
-    if (outboundDelivery.status === 'failed') {
-      const reclaimResult = await db.outboundDelivery.updateMany({
-        where: {
-          id: outboundDelivery.id,
-          status: 'failed',
-        },
-        data: {
-          status: 'pending',
-          error: null,
-        },
-      });
-
-      if (reclaimResult.count === 0) {
-        return c.json(
+      return {
+        response: c.json(
           {
             ok: false,
-            error: 'duplicate_request_in_progress',
+            error: 'idempotency_key_conflict',
             idempotency_key: body.idempotency_key,
           },
           409,
-        );
-      }
-    } else {
-      return c.json(
+        ),
+        shouldReclaimFailed: false,
+      };
+    }
+
+    if (existingDelivery.status === 'failed') {
+      return {
+        response: null,
+        shouldReclaimFailed: true,
+      };
+    }
+
+    return {
+      response: c.json(
         {
           ok: false,
           error:
-            outboundDelivery.status === 'succeeded'
+            existingDelivery.status === 'succeeded'
               ? 'duplicate_request'
               : 'duplicate_request_in_progress',
           idempotency_key: body.idempotency_key,
         },
         409,
+      ),
+      shouldReclaimFailed: false,
+    };
+  };
+
+  let outboundDelivery = await db.outboundDelivery.findUnique({
+    where: {
+      idempotencyKey: body.idempotency_key,
+    },
+  });
+  let shouldReclaimFailed = false;
+
+  if (outboundDelivery) {
+    const existingResult = handleExistingIdempotency(outboundDelivery);
+    if (existingResult.response) {
+      return existingResult.response;
+    }
+    shouldReclaimFailed = existingResult.shouldReclaimFailed;
+  }
+
+  let deliveryRoute;
+  let channel;
+  if (!outboundDelivery) {
+    try {
+      deliveryRoute = await resolveExactDeliveryRoute({
+        cokeAccountId: body.account_id,
+        businessConversationKey: body.business_conversation_key,
+      });
+    } catch (error) {
+      if (!isMissingDeliveryRouteError(error)) {
+        throw error;
+      }
+      const context =
+        error instanceof DeliveryRouteResolutionError
+          ? error.context
+          : (error.context ?? {
+              cokeAccountId: body.account_id,
+              businessConversationKey: body.business_conversation_key,
+            });
+
+      return c.json(
+        {
+          ok: false,
+          error: 'missing_delivery_route',
+          context: {
+            coke_account_id: context.cokeAccountId,
+            business_conversation_key: context.businessConversationKey,
+          },
+        },
+        404,
+      );
+    }
+
+    channel = await db.channel.findFirst({
+      where: {
+        id: deliveryRoute.channelId,
+        tenantId: deliveryRoute.tenantId,
+      },
+    });
+    if (!channel) {
+      return c.json({ ok: false, error: 'channel_not_found' }, 404);
+    }
+
+    try {
+      outboundDelivery = await db.outboundDelivery.create({
+        data: {
+          tenantId: deliveryRoute.tenantId,
+          channelId: deliveryRoute.channelId,
+          idempotencyKey: body.idempotency_key,
+          payload,
+          status: 'pending',
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      outboundDelivery = await db.outboundDelivery.findUnique({
+        where: {
+          idempotencyKey: body.idempotency_key,
+        },
+      });
+
+      if (!outboundDelivery) {
+        throw error;
+      }
+
+      const existingResult = handleExistingIdempotency(outboundDelivery);
+      if (existingResult.response) {
+        return existingResult.response;
+      }
+      shouldReclaimFailed = existingResult.shouldReclaimFailed;
+    }
+  }
+
+  if (!deliveryRoute) {
+    try {
+      deliveryRoute = await resolveExactDeliveryRoute({
+        cokeAccountId: body.account_id,
+        businessConversationKey: body.business_conversation_key,
+      });
+    } catch (error) {
+      if (!isMissingDeliveryRouteError(error)) {
+        throw error;
+      }
+      const context =
+        error instanceof DeliveryRouteResolutionError
+          ? error.context
+          : (error.context ?? {
+              cokeAccountId: body.account_id,
+              businessConversationKey: body.business_conversation_key,
+            });
+
+      return c.json(
+        {
+          ok: false,
+          error: 'missing_delivery_route',
+          context: {
+            coke_account_id: context.cokeAccountId,
+            business_conversation_key: context.businessConversationKey,
+          },
+        },
+        404,
       );
     }
   }
 
-  // `external_end_user_id` is the forward-compatible canonical name.
-  // `end_user_id` remains a compatibility alias during the transition.
+  if (!channel) {
+    channel = await db.channel.findFirst({
+      where: {
+        id: deliveryRoute.channelId,
+        tenantId: deliveryRoute.tenantId,
+      },
+    });
+    if (!channel) {
+      return c.json({ ok: false, error: 'channel_not_found' }, 404);
+    }
+  }
+
+  if (shouldReclaimFailed) {
+    const reclaimResult = await db.outboundDelivery.updateMany({
+      where: {
+        id: outboundDelivery.id,
+        status: 'failed',
+      },
+      data: {
+        status: 'pending',
+        error: null,
+      },
+    });
+
+    if (reclaimResult.count === 0) {
+      return c.json(
+        {
+          ok: false,
+          error: 'duplicate_request_in_progress',
+          idempotency_key: body.idempotency_key,
+        },
+        409,
+      );
+    }
+  }
+
   try {
-    await deliverOutboundMessage(channel, externalEndUserId, body.text);
+    await deliverOutboundMessage(channel, deliveryRoute.externalEndUserId, body.text);
   } catch (error) {
     await db.outboundDelivery.update({
       where: { id: outboundDelivery.id },

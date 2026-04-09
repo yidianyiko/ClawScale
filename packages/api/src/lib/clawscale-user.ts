@@ -1,7 +1,11 @@
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 
-export type ClawscaleUserBindingErrorCode = 'end_user_not_found' | 'end_user_already_bound';
+export type ClawscaleUserBindingErrorCode =
+  | 'end_user_not_found'
+  | 'end_user_already_bound'
+  | 'coke_account_not_found'
+  | 'coke_account_tenant_mismatch';
 
 const defaultPersonalTenantSettings = {
   personaName: 'Assistant',
@@ -20,6 +24,7 @@ export interface EnsureClawscaleUserForCokeAccountResult {
   tenantId: string;
   clawscaleUserId: string;
   created: boolean;
+  ready: boolean;
 }
 
 export class ClawscaleUserBindingError extends Error {
@@ -141,7 +146,7 @@ function isUniqueConstraint(error: unknown, fieldName: string): boolean {
 export async function ensureClawscaleUserForCokeAccount(
   input: EnsureClawscaleUserForCokeAccountInput,
 ): Promise<EnsureClawscaleUserForCokeAccountResult> {
-  const existing = await db.clawscaleUser.findFirst({
+  const existing = await db.clawscaleUser.findUnique({
     where: { cokeAccountId: input.cokeAccountId },
     select: { id: true, tenantId: true },
   });
@@ -152,21 +157,24 @@ export async function ensureClawscaleUserForCokeAccount(
       tenantId: existing.tenantId,
       clawscaleUserId: existing.id,
       created: false,
+      ready: true,
     };
   }
 
   try {
     return await db.$transaction(async (tx) => {
-      const raced = await tx.clawscaleUser.findFirst({
+      const raced = await tx.clawscaleUser.findUnique({
         where: { cokeAccountId: input.cokeAccountId },
         select: { id: true, tenantId: true },
       });
 
       if (raced) {
+        await ensurePersonalCokeBridgeBackend(raced.tenantId);
         return {
           tenantId: raced.tenantId,
           clawscaleUserId: raced.id,
           created: false,
+          ready: true,
         };
       }
 
@@ -211,14 +219,15 @@ export async function ensureClawscaleUserForCokeAccount(
         tenantId,
         clawscaleUserId,
         created: true,
+        ready: true,
       };
     });
   } catch (error) {
-    if (!isUniqueConstraint(error, 'slug') && !isUniqueConstraint(error, 'tenantId_cokeAccountId')) {
+    if (!isUniqueConstraint(error, 'slug') && !isUniqueConstraint(error, 'cokeAccountId')) {
       throw error;
     }
 
-    const raced = await db.clawscaleUser.findFirst({
+    const raced = await db.clawscaleUser.findUnique({
       where: { cokeAccountId: input.cokeAccountId },
       select: { id: true, tenantId: true },
     });
@@ -226,10 +235,13 @@ export async function ensureClawscaleUserForCokeAccount(
       throw error;
     }
 
+    await ensurePersonalCokeBridgeBackend(raced.tenantId);
+
     return {
       tenantId: raced.tenantId,
       clawscaleUserId: raced.id,
       created: false,
+      ready: true,
     };
   }
 }
@@ -256,23 +268,27 @@ export async function bindEndUserToCokeAccount(
       throw new ClawscaleUserBindingError('end_user_not_found', 'End user not found');
     }
 
-    const user = await tx.clawscaleUser.upsert({
-      where: {
-        tenantId_cokeAccountId: {
-          tenantId: input.tenantId,
-          cokeAccountId: input.cokeAccountId,
-        },
-      },
-      create: {
-        id: generateId('csu'),
-        tenantId: input.tenantId,
-        cokeAccountId: input.cokeAccountId,
-      },
-      update: {},
+    const user = await tx.clawscaleUser.findUnique({
+      where: { cokeAccountId: input.cokeAccountId },
       select: {
         id: true,
+        tenantId: true,
       },
     });
+
+    if (!user) {
+      throw new ClawscaleUserBindingError(
+        'coke_account_not_found',
+        'Coke account is not bound to a Clawscale user',
+      );
+    }
+
+    if (user.tenantId !== input.tenantId) {
+      throw new ClawscaleUserBindingError(
+        'coke_account_tenant_mismatch',
+        'Coke account belongs to a different tenant',
+      );
+    }
 
     const updated = await tx.endUser.updateMany({
       where: {
