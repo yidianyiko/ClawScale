@@ -236,13 +236,17 @@ async function loadCurrentPersonalChannel(input: {
   }
 
   rows.forEach(assertValidPersonalChannelRow);
+  const firstRow = rows[0];
+  if (!firstRow) {
+    return null;
+  }
 
   const activeRows = rows.filter((row) => row.status !== 'archived');
   if (activeRows.length > 1) {
     throw new Error('duplicate_personal_channel_rows');
   }
 
-  return activeRows[0] ?? rows[0];
+  return activeRows[0] ?? firstRow;
 }
 
 export const userWechatChannelRouter = new Hono()

@@ -1,5 +1,11 @@
 FROM node:22-alpine
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_COKE_API_URL
+
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_COKE_API_URL=${NEXT_PUBLIC_COKE_API_URL}
 
 WORKDIR /app
 COPY . .
