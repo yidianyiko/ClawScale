@@ -32,6 +32,10 @@ cokeUserProvisionRouter.post('/', async (c) => {
     displayName: parsed.data.display_name,
   });
 
+  if (!result.ready) {
+    return c.json({ ok: false, error: 'provision_not_ready' }, 503);
+  }
+
   return c.json({
     ok: true,
     data: {

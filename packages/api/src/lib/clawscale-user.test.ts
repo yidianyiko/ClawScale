@@ -18,9 +18,8 @@ const db = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     clawscaleUser: {
-      findFirst: vi.fn(),
+      findUnique: vi.fn(),
       create: vi.fn(),
-      upsert: vi.fn(),
     },
     conversation: {
       findMany: vi.fn(),
@@ -53,7 +52,7 @@ describe('clawscale-user helpers', () => {
       externalId: 'ext_1',
       clawscaleUserId: null,
     });
-    db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_1' });
+    db.clawscaleUser.findUnique.mockResolvedValue({ id: 'csu_1', tenantId: 'ten_1' });
     db.endUser.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
@@ -69,16 +68,13 @@ describe('clawscale-user helpers', () => {
       cokeAccountId: 'acct_1',
     });
 
-    expect(db.clawscaleUser.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          tenantId_cokeAccountId: {
-            tenantId: 'ten_1',
-            cokeAccountId: 'acct_1',
-          },
-        },
-      }),
-    );
+    expect(db.clawscaleUser.findUnique).toHaveBeenCalledWith({
+      where: { cokeAccountId: 'acct_1' },
+      select: {
+        id: true,
+        tenantId: true,
+      },
+    });
     expect(db.endUser.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -103,7 +99,7 @@ describe('clawscale-user helpers', () => {
       externalId: 'ext_1',
       clawscaleUserId: null,
     });
-    db.clawscaleUser.upsert.mockResolvedValue({ id: 'csu_new' });
+    db.clawscaleUser.findUnique.mockResolvedValue({ id: 'csu_new', tenantId: 'ten_1' });
     db.endUser.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
@@ -126,6 +122,28 @@ describe('clawscale-user helpers', () => {
         },
       }),
     );
+  });
+
+  it('bindEndUserToCokeAccount fails when coke account has no global binding', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'ext_1',
+      clawscaleUserId: null,
+    });
+    db.clawscaleUser.findUnique.mockResolvedValue(null);
+
+    await expect(
+      bindEndUserToCokeAccount({
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        externalId: 'ext_1',
+        cokeAccountId: 'acct_missing',
+      }),
+    ).rejects.toMatchObject({ code: 'coke_account_not_found' });
+
+    expect(db.endUser.updateMany).not.toHaveBeenCalled();
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {
@@ -157,7 +175,7 @@ describe('clawscale-user helpers', () => {
   });
 
   it('ensureClawscaleUserForCokeAccount creates a personal tenant and user when missing', async () => {
-    db.clawscaleUser.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    db.clawscaleUser.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     db.tenant.create.mockResolvedValue({ id: 'tnt_new' });
     db.clawscaleUser.create.mockResolvedValue({ id: 'csu_new', tenantId: 'tnt_new' });
     db.aiBackend.create.mockResolvedValue({ id: 'aib_bridge' });
@@ -171,6 +189,7 @@ describe('clawscale-user helpers', () => {
       tenantId: expect.any(String),
       clawscaleUserId: expect.any(String),
       created: true,
+      ready: true,
     });
 
     expect(db.tenant.create).toHaveBeenCalledWith({
@@ -205,7 +224,7 @@ describe('clawscale-user helpers', () => {
   });
 
   it('ensureClawscaleUserForCokeAccount reuses an existing mapping', async () => {
-    db.clawscaleUser.findFirst.mockResolvedValueOnce({
+    db.clawscaleUser.findUnique.mockResolvedValueOnce({
       id: 'csu_existing',
       tenantId: 'tnt_existing',
     });
@@ -231,6 +250,7 @@ describe('clawscale-user helpers', () => {
       tenantId: 'tnt_existing',
       clawscaleUserId: 'csu_existing',
       created: false,
+      ready: true,
     });
 
     expect(db.tenant.create).not.toHaveBeenCalled();
@@ -238,8 +258,35 @@ describe('clawscale-user helpers', () => {
     expect(db.aiBackend.create).not.toHaveBeenCalled();
   });
 
+  it('ensureClawscaleUserForCokeAccount recovers when cokeAccountId create races', async () => {
+    db.clawscaleUser.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'csu_raced',
+        tenantId: 'tnt_raced',
+      });
+    db.tenant.create.mockResolvedValue({ id: 'tnt_new' });
+    db.clawscaleUser.create.mockRejectedValue({
+      code: 'P2002',
+      meta: { target: ['cokeAccountId'] },
+    });
+
+    await expect(
+      ensureClawscaleUserForCokeAccount({
+        cokeAccountId: 'acct_race',
+        displayName: 'Race User',
+      }),
+    ).resolves.toEqual({
+      tenantId: 'tnt_raced',
+      clawscaleUserId: 'csu_raced',
+      created: false,
+      ready: true,
+    });
+  });
+
   it('ensureClawscaleUserForCokeAccount backfills the default Coke Bridge backend for an existing personal tenant', async () => {
-    db.clawscaleUser.findFirst.mockResolvedValueOnce({
+    db.clawscaleUser.findUnique.mockResolvedValueOnce({
       id: 'csu_existing',
       tenantId: 'tnt_existing',
     });
@@ -254,6 +301,7 @@ describe('clawscale-user helpers', () => {
       tenantId: 'tnt_existing',
       clawscaleUserId: 'csu_existing',
       created: false,
+      ready: true,
     });
 
     expect(db.aiBackend.updateMany).toHaveBeenCalledWith({

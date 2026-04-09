@@ -81,6 +81,7 @@ model Tenant {
   workflows     Workflow[]
   auditLogs     AuditLog[]
   aiBackends    AiBackend[]
+  deliveryRoutes DeliveryRoute[]
 
   @@map("tenants")
 }
@@ -140,6 +141,7 @@ model Channel {
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
   conversations     Conversation[]
   endUsers          EndUser[]
+  deliveryRoutes    DeliveryRoute[]
 
   @@index([tenantId])
   @@index([ownerClawscaleUserId])
@@ -173,6 +175,7 @@ model EndUser {
   conversations   Conversation[]
   activeBackends  EndUserBackend[]
   linkCodes       LinkCode[]
+  deliveryRoutes  DeliveryRoute[]
 
   @@unique([tenantId, channelId, externalId])
   @@index([clawscaleUserId])
@@ -187,11 +190,14 @@ model ClawscaleUser {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channels Channel[]
-  endUsers EndUser[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channels       Channel[]
+  endUsers       EndUser[]
+  deliveryRoutes DeliveryRoute[]
+  conversations  Conversation[]
 
   @@unique([tenantId, cokeAccountId])
+  @@unique([cokeAccountId])
   @@index([tenantId])
   @@map("clawscale_users")
 }
@@ -216,19 +222,47 @@ model Conversation {
   tenantId  String   @map("tenant_id")
   channelId String   @map("channel_id")
   endUserId String   @map("end_user_id")
+  clawscaleUserId String? @map("clawscale_user_id")
   backendId String?  @map("backend_id")
+  businessConversationKey String? @map("business_conversation_key")
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
   endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  clawscaleUser ClawscaleUser? @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
   backend  AiBackend? @relation(fields: [backendId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([tenantId])
   @@index([endUserId])
+  @@index([clawscaleUserId])
+  @@unique([clawscaleUserId, businessConversationKey])
   @@map("conversations")
+}
+
+model DeliveryRoute {
+  tenantId                String   @map("tenant_id")
+  cokeAccountId           String   @map("coke_account_id")
+  businessConversationKey String   @map("business_conversation_key")
+  channelId               String   @map("channel_id")
+  endUserId               String   @map("end_user_id")
+  externalEndUserId       String   @map("external_end_user_id")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel                 Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  endUser                 EndUser  @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  clawscaleUser           ClawscaleUser @relation(fields: [cokeAccountId], references: [cokeAccountId], onDelete: Cascade)
+
+  @@id([cokeAccountId, businessConversationKey])
+  @@index([tenantId])
+  @@index([channelId])
+  @@index([endUserId])
+  @@map("delivery_routes")
 }
 
 model Message {
@@ -259,7 +293,7 @@ model OutboundDelivery {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  @@unique([tenantId, channelId, idempotencyKey])
+  @@unique([idempotencyKey])
   @@index([tenantId])
   @@index([channelId])
   @@map("outbound_deliveries")

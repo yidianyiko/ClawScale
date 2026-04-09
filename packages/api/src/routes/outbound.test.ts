@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
 vi.mock('../db/index.js', () => ({
@@ -15,17 +15,71 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
+vi.mock('../lib/business-conversation.js', () => ({
+  DeliveryRouteResolutionError: class DeliveryRouteResolutionError extends Error {
+    code: 'missing_delivery_route';
+    context: { cokeAccountId: string; businessConversationKey: string };
+
+    constructor(
+      code: 'missing_delivery_route',
+      context: { cokeAccountId: string; businessConversationKey: string },
+    ) {
+      super('missing route');
+      this.name = 'DeliveryRouteResolutionError';
+      this.code = code;
+      this.context = context;
+    }
+  },
+  resolveExactDeliveryRoute: vi.fn(),
+}));
+
 vi.mock('../lib/outbound-delivery.js', () => ({
   deliverOutboundMessage: vi.fn(),
 }));
 
-import { outboundRouter } from './outbound.js';
 import { db } from '../db/index.js';
+import { resolveExactDeliveryRoute } from '../lib/business-conversation.js';
 import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
+import { outboundRouter } from './outbound.js';
+
+interface OutboundBody {
+  output_id: string;
+  account_id: string;
+  business_conversation_key: string;
+  message_type: string;
+  text: string;
+  delivery_mode: string;
+  expect_output_timestamp: string;
+  idempotency_key: string;
+  trace_id: string;
+  causal_inbound_event_id?: string;
+}
+
+const resolvedRoute = {
+  tenantId: 'ten_1',
+  cokeAccountId: 'acct_1',
+  businessConversationKey: 'biz_conv_1',
+  channelId: 'ch_1',
+  endUserId: 'eu_1',
+  externalEndUserId: 'wxid_1',
+  isActive: true,
+};
 
 const channel = {
   id: 'ch_1',
   tenantId: 'ten_1',
+  type: 'wechat_personal',
+};
+
+const movedRoute = {
+  ...resolvedRoute,
+  channelId: 'ch_2',
+};
+
+const movedChannel = {
+  id: 'ch_2',
+  tenantId: 'ten_1',
+  type: 'wechat_personal',
 };
 
 function makeApp() {
@@ -34,9 +88,41 @@ function makeApp() {
   return app;
 }
 
-async function postOutbound(body: Record<string, unknown>) {
-  const app = makeApp();
+function makeBody(overrides?: Partial<OutboundBody>): OutboundBody {
+  return {
+    output_id: 'out_1',
+    account_id: 'acct_1',
+    business_conversation_key: 'biz_conv_1',
+    message_type: 'text',
+    text: 'hello',
+    delivery_mode: 'push',
+    expect_output_timestamp: '2026-04-09T10:00:00.000Z',
+    idempotency_key: 'idem_1',
+    trace_id: 'trace_1',
+    ...overrides,
+  };
+}
 
+function normalizePayload(body: OutboundBody): Record<string, string> {
+  const payload: Record<string, string> = {
+    output_id: body.output_id,
+    account_id: body.account_id,
+    business_conversation_key: body.business_conversation_key,
+    message_type: body.message_type,
+    text: body.text,
+    delivery_mode: body.delivery_mode,
+    expect_output_timestamp: body.expect_output_timestamp,
+    idempotency_key: body.idempotency_key,
+    trace_id: body.trace_id,
+  };
+  if (body.causal_inbound_event_id) {
+    payload.causal_inbound_event_id = body.causal_inbound_event_id;
+  }
+  return payload;
+}
+
+async function postOutbound(body: unknown) {
+  const app = makeApp();
   return app.request('/api/outbound', {
     method: 'POST',
     headers: {
@@ -49,14 +135,15 @@ async function postOutbound(body: Record<string, unknown>) {
 
 describe('outbound router', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     process.env.CLAWSCALE_OUTBOUND_API_KEY = 'secret';
+    vi.mocked(resolveExactDeliveryRoute).mockResolvedValue(resolvedRoute as never);
     vi.mocked(db.channel.findFirst).mockResolvedValue(channel as never);
     vi.mocked(db.outboundDelivery.create).mockResolvedValue({ id: 'outbound_1' } as never);
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue(null as never);
     vi.mocked(db.outboundDelivery.update).mockResolvedValue({ id: 'outbound_1' } as never);
     vi.mocked(db.outboundDelivery.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(deliverOutboundMessage).mockResolvedValue(undefined as never);
-    vi.clearAllMocks();
   });
 
   it('rejects invalid bearer tokens', async () => {
@@ -68,143 +155,287 @@ describe('outbound router', () => {
         'content-type': 'application/json',
         authorization: 'Bearer wrong',
       },
-      body: JSON.stringify({
-        tenant_id: 'ten_1',
-        channel_id: 'ch_1',
-        end_user_id: 'wxid_1',
-        text: 'hello',
-        idempotency_key: 'push_1',
-      }),
+      body: JSON.stringify(makeBody()),
     });
 
     expect(res.status).toBe(401);
   });
 
-  it('accepts external_end_user_id as the canonical peer id field', async () => {
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
+  it('rejects unsupported message_type values', async () => {
+    const res = await postOutbound(
+      makeBody({
+        message_type: 'image',
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported delivery_mode values', async () => {
+    const res = await postOutbound(
+      makeBody({
+        delivery_mode: 'scheduled',
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns structured missing_delivery_route when exact route is absent', async () => {
+    vi.mocked(resolveExactDeliveryRoute).mockRejectedValueOnce({
+      name: 'DeliveryRouteResolutionError',
+      code: 'missing_delivery_route',
+      context: {
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_missing',
+      },
     });
 
+    const res = await postOutbound(
+      makeBody({
+        business_conversation_key: 'biz_missing',
+      }),
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'missing_delivery_route',
+      context: {
+        coke_account_id: 'acct_1',
+        business_conversation_key: 'biz_missing',
+      },
+    });
+    expect(db.outboundDelivery.create).not.toHaveBeenCalled();
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns duplicate for succeeded idempotency record even when current route lookup would fail', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValueOnce({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+    vi.mocked(resolveExactDeliveryRoute).mockImplementation(async () => {
+      throw {
+        name: 'DeliveryRouteResolutionError',
+        code: 'missing_delivery_route',
+        context: {
+          cokeAccountId: 'acct_1',
+          businessConversationKey: 'biz_conv_1',
+        },
+      };
+    });
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'duplicate_request',
+      idempotency_key: 'idem_1',
+    });
+    expect(resolveExactDeliveryRoute).not.toHaveBeenCalled();
+    expect(db.outboundDelivery.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reclaim failed key when route lookup fails, preventing pending wedge on retries', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+    vi.mocked(resolveExactDeliveryRoute).mockRejectedValue({
+      name: 'DeliveryRouteResolutionError',
+      code: 'missing_delivery_route',
+      context: {
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_conv_1',
+      },
+    });
+
+    const first = await postOutbound(body);
+    const second = await postOutbound(body);
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    await expect(first.json()).resolves.toEqual({
+      ok: false,
+      error: 'missing_delivery_route',
+      context: {
+        coke_account_id: 'acct_1',
+        business_conversation_key: 'biz_conv_1',
+      },
+    });
+    expect(db.outboundDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not reclaim failed key when channel is missing, preventing pending wedge on retries', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+    vi.mocked(resolveExactDeliveryRoute).mockResolvedValue(resolvedRoute as never);
+    vi.mocked(db.channel.findFirst).mockResolvedValue(null as never);
+
+    const first = await postOutbound(body);
+    const second = await postOutbound(body);
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    await expect(first.json()).resolves.toEqual({
+      ok: false,
+      error: 'channel_not_found',
+    });
+    expect(db.outboundDelivery.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('resolves exact delivery route and delivers via external end-user id', async () => {
+    const res = await postOutbound(makeBody());
+
     expect(res.status).toBe(200);
+    expect(resolveExactDeliveryRoute).toHaveBeenCalledWith({
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+    });
+    expect(db.channel.findFirst).toHaveBeenCalledWith({
+      where: { id: 'ch_1', tenantId: 'ten_1' },
+    });
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
   });
 
-  it('returns 409 and suppresses delivery for a duplicate request with the same payload', async () => {
-    vi.mocked(db.outboundDelivery.create)
-      .mockResolvedValueOnce({ id: 'outbound_1' } as never)
-      .mockRejectedValueOnce({ code: 'P2002' } as never);
-    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+  it('returns 409 and suppresses delivery for duplicate request with same payload', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({
       id: 'outbound_1',
       status: 'succeeded',
-      payload: {
-        external_end_user_id: 'wxid_1',
-        text: 'hello',
-      },
-    } as never);
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+      } as never);
 
-    const first = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
-    const second = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const first = await postOutbound(body);
+    const second = await postOutbound(body);
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(409);
-    expect(await second.json()).toEqual({
+    await expect(second.json()).resolves.toEqual({
       ok: false,
       error: 'duplicate_request',
-      idempotency_key: 'push_1',
+      idempotency_key: 'idem_1',
+    });
+    expect(db.outboundDelivery.findUnique).toHaveBeenCalledWith({
+      where: { idempotencyKey: 'idem_1' },
     });
     expect(deliverOutboundMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 409 and rejects conflicting payloads for a reused idempotency key', async () => {
-    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+  it('keeps idempotency global when exact route changes channels between retries', async () => {
+    const body = makeBody();
+    vi.mocked(resolveExactDeliveryRoute)
+      .mockResolvedValueOnce(resolvedRoute as never);
+    vi.mocked(db.channel.findFirst)
+      .mockResolvedValueOnce(channel as never);
+    vi.mocked(db.outboundDelivery.findUnique)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+      } as never);
+
+    const first = await postOutbound(body);
+    const second = await postOutbound(body);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toEqual({
+      ok: false,
+      error: 'duplicate_request',
+      idempotency_key: 'idem_1',
+    });
+    expect(db.outboundDelivery.findUnique).toHaveBeenCalledWith({
+      where: { idempotencyKey: 'idem_1' },
+    });
+    expect(resolveExactDeliveryRoute).toHaveBeenCalledTimes(1);
+    expect(deliverOutboundMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 409 for conflicting payload with reused idempotency key', async () => {
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'succeeded',
-      payload: {
-        external_end_user_id: 'wxid_original',
-        text: 'hello',
-      },
+      payload: normalizePayload(
+        makeBody({
+          text: 'original',
+        }),
+      ),
     } as never);
 
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_changed',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const res = await postOutbound(
+      makeBody({
+        text: 'changed',
+      }),
+    );
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({
+    await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'idempotency_key_conflict',
-      idempotency_key: 'push_1',
+      idempotency_key: 'idem_1',
     });
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 
-  it('returns 409 for an in-progress duplicate with the same payload', async () => {
-    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+  it('returns 409 for in-progress duplicate with same payload', async () => {
+    const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'pending',
-      payload: {
-        external_end_user_id: 'wxid_1',
-        text: 'hello',
-      },
+      payload: normalizePayload(body),
     } as never);
 
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const res = await postOutbound(body);
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({
+    await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'duplicate_request_in_progress',
-      idempotency_key: 'push_1',
+      idempotency_key: 'idem_1',
     });
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 
-  it('retries delivery for a failed key when the payload matches', async () => {
-    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+  it('retries delivery for failed key when payload matches', async () => {
+    const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: {
-        external_end_user_id: 'wxid_1',
-        text: 'hello',
-      },
+      payload: normalizePayload(body),
     } as never);
 
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const res = await postOutbound(body);
 
     expect(res.status).toBe(200);
     expect(db.outboundDelivery.updateMany).toHaveBeenCalledWith({
@@ -227,16 +458,10 @@ describe('outbound router', () => {
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
   });
 
-  it('persists a failed idempotency record before surfacing delivery errors', async () => {
+  it('persists failed idempotency status before surfacing delivery errors', async () => {
     vi.mocked(deliverOutboundMessage).mockRejectedValueOnce(new Error('gateway down'));
 
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const res = await postOutbound(makeBody());
 
     expect(res.status).toBe(500);
     expect(db.outboundDelivery.update).toHaveBeenCalledWith({
@@ -248,79 +473,23 @@ describe('outbound router', () => {
     });
   });
 
-  it('does not deliver when a concurrent request wins the failed-key reclaim race', async () => {
-    vi.mocked(db.outboundDelivery.create).mockRejectedValueOnce({ code: 'P2002' } as never);
+  it('does not deliver when failed-key reclaim race is lost', async () => {
+    const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: {
-        external_end_user_id: 'wxid_1',
-        text: 'hello',
-      },
+      payload: normalizePayload(body),
     } as never);
     vi.mocked(db.outboundDelivery.updateMany).mockResolvedValueOnce({ count: 0 } as never);
 
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
+    const res = await postOutbound(body);
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({
+    await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'duplicate_request_in_progress',
-      idempotency_key: 'push_1',
+      idempotency_key: 'idem_1',
     });
-    expect(deliverOutboundMessage).not.toHaveBeenCalled();
-  });
-
-  it('accepts end_user_id as a compatibility alias', async () => {
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
-
-    expect(res.status).toBe(200);
-    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
-  });
-
-  it('accepts both fields when they match', async () => {
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_1',
-      end_user_id: 'wxid_1',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
-
-    expect(res.status).toBe(200);
-    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
-  });
-
-  it('rejects conflicting end user ids when both fields are present', async () => {
-    const res = await postOutbound({
-      tenant_id: 'ten_1',
-      channel_id: 'ch_1',
-      external_end_user_id: 'wxid_external',
-      end_user_id: 'wxid_legacy',
-      text: 'hello',
-      idempotency_key: 'push_1',
-    });
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual(
-      expect.objectContaining({
-        ok: false,
-        error: 'validation_error',
-      }),
-    );
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 });

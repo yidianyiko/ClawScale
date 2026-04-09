@@ -13,10 +13,11 @@
 
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
-import { generateReply } from './ai-backend.js';
+import { generateReply, type BackendReplyPayload } from './ai-backend.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
-import { getUnifiedConversationIds } from './clawscale-user.js';
+import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
+import { bindBusinessConversation } from './business-conversation.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
@@ -156,6 +157,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       data: { id: generateId('conv'), tenantId, channelId, endUserId: endUser.id },
     });
   }
+  const inboundEventId = generateId('in_evt');
 
   // 6. Persist inbound message
   await db.message.create({
@@ -164,6 +166,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       metadata: {
         ...(meta ?? {}),
         ...(personalChannelOwnership ?? {}),
+        inboundEventId,
         ...(attachments?.length ? { attachments } : {}),
       } as any,
     },
@@ -297,12 +300,17 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
-        const replyText = await runBackend(backend, historyConvIds, {
+        const backendReply = await runBackend(backend, historyConvIds, {
           tenantId,
           channelId,
           endUserId: endUser!.id,
           conversationId: conversation!.id,
+          gatewayConversationId: conversation!.id,
+          inboundEventId,
           externalId: endUser!.externalId,
+          ...(conversation!.businessConversationKey
+            ? { businessConversationKey: conversation!.businessConversationKey }
+            : {}),
           ...(resolvedClawscaleUserId ? { clawscaleUserId: resolvedClawscaleUserId } : {}),
           ...(resolvedCokeAccountId ? { cokeAccountId: resolvedCokeAccountId } : {}),
           ...(personalChannelOwnership ?? {}),
@@ -310,18 +318,71 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           sender: endUser!.name ?? displayName,
           platform,
         });
-        return { backend, replyText };
+        let bindingErrorCode: string | undefined;
+        let bindingErrorMessage: string | undefined;
+        if (backendReply.businessConversationKey && resolvedCokeAccountId) {
+          try {
+            await bindEndUserToCokeAccount({
+              tenantId,
+              channelId,
+              externalId: endUser!.externalId,
+              cokeAccountId: resolvedCokeAccountId,
+            });
+            await bindBusinessConversation({
+              tenantId,
+              conversationId: conversation!.id,
+              cokeAccountId: resolvedCokeAccountId,
+              businessConversationKey: backendReply.businessConversationKey,
+              channelId,
+              endUserId: endUser!.id,
+              externalEndUserId: endUser!.externalId,
+            });
+          } catch (error) {
+            const code = (error as { code?: unknown })?.code;
+            bindingErrorCode = typeof code === 'string' ? code : undefined;
+            bindingErrorMessage = error instanceof Error ? error.message : 'business conversation bind failed';
+            console.error('[business conversation bind error]', {
+              tenantId,
+              channelId,
+              endUserId: endUser!.id,
+              externalId: endUser!.externalId,
+              conversationId: conversation!.id,
+              cokeAccountId: resolvedCokeAccountId,
+              businessConversationKey: backendReply.businessConversationKey,
+              ...(bindingErrorCode ? { code: bindingErrorCode } : {}),
+              message: bindingErrorMessage,
+            });
+          }
+        }
+        return {
+          backend,
+          backendReply,
+          ...(bindingErrorCode ? { bindingErrorCode } : {}),
+          ...(bindingErrorMessage ? { bindingErrorMessage } : {}),
+        };
       }),
     );
     for (const result of results) {
       if (result.status === 'fulfilled') {
-        const { backend, replyText } = result.value;
+        const { backend, backendReply, bindingErrorCode, bindingErrorMessage } = result.value;
+        const replyText = backendReply.text;
         replies.push({ backendId: backend.id, backendName: backend.name, reply: replyText });
         await db.message.create({
           data: {
             id: generateId('msg'), conversationId: conversation!.id,
             role: 'assistant', content: replyText, backendId: backend.id,
-            metadata: { backendName: backend.name },
+            metadata: {
+              backendName: backend.name,
+              ...(backendReply.businessConversationKey
+                ? { businessConversationKey: backendReply.businessConversationKey }
+                : {}),
+              ...(backendReply.outputId ? { outputId: backendReply.outputId } : {}),
+              ...(backendReply.causalInboundEventId
+                ? { causalInboundEventId: backendReply.causalInboundEventId }
+                : {}),
+              ...(bindingErrorCode ? { businessConversationBindingErrorCode: bindingErrorCode } : {}),
+              ...(bindingErrorMessage ? { businessConversationBindingErrorMessage: bindingErrorMessage } : {}),
+            },
           },
         });
       } else {
@@ -666,19 +727,22 @@ async function runBackend(
     channelId: string;
     endUserId: string;
     conversationId: string;
+    gatewayConversationId: string;
+    inboundEventId: string;
     externalId: string;
+    businessConversationKey?: string;
     clawscaleUserId?: string;
     cokeAccountId?: string;
     channelScope?: 'personal' | 'tenant_shared';
   },
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: { sender?: string; platform?: string },
-): Promise<string> {
+): Promise<BackendReplyPayload> {
   const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
   // Pass backend ID through for cli-bridge WebSocket lookup
   (cfg as any).__backendId = backend.id;
-  return generateReply({
+  const backendReply = await generateReply({
     backend: {
       type: backend.type as AiBackendType,
       config: cfg,
@@ -689,4 +753,17 @@ async function runBackend(
     platform: meta?.platform,
     metadata,
   });
+  if (typeof backendReply === 'string') {
+    return { text: backendReply };
+  }
+  return {
+    text: backendReply.text ?? '',
+    ...(backendReply.businessConversationKey
+      ? { businessConversationKey: backendReply.businessConversationKey }
+      : {}),
+    ...(backendReply.outputId ? { outputId: backendReply.outputId } : {}),
+    ...(backendReply.causalInboundEventId
+      ? { causalInboundEventId: backendReply.causalInboundEventId }
+      : {}),
+  };
 }

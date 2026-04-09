@@ -39,6 +39,7 @@ describe('coke-user-provision router', () => {
       tenantId: 'ten_1',
       clawscaleUserId: 'csu_1',
       created: true,
+      ready: true,
     });
 
     const app = new Hono();
