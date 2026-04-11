@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 
 const COKE_JWT_SECRET = process.env['COKE_JWT_SECRET'] ?? 'dev-coke-secret-change-me';
 const COKE_JWT_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '7d';
-const BCRYPT_ROUNDS = 12;
+const BCRYPT_ROUNDS = 10;
 
 export interface CokeJwtPayload {
   sub: string;

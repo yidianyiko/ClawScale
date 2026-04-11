@@ -204,6 +204,7 @@ model ClawscaleUser {
   account       CokeAccount @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
   channels      Channel[]
   endUsers      EndUser[]
+  deliveryRoutes DeliveryRoute[]
   conversations Conversation[]
 
   @@unique([tenantId, cokeAccountId])
@@ -225,7 +226,6 @@ model CokeAccount {
   clawscaleUser  ClawscaleUser?
   subscriptions  Subscription[]
   verifyTokens   VerifyToken[]
-  deliveryRoutes DeliveryRoute[]
 
   @@map("coke_accounts")
 }
@@ -313,10 +313,10 @@ model DeliveryRoute {
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
-  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channel  Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  endUser  EndUser     @relation(fields: [endUserId], references: [id], onDelete: Cascade)
-  account  CokeAccount @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel       Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  endUser       EndUser       @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  clawscaleUser ClawscaleUser @relation(fields: [cokeAccountId], references: [cokeAccountId], onDelete: Cascade)
 
   @@id([cokeAccountId, businessConversationKey])
   @@index([tenantId])
