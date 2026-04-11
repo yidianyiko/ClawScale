@@ -13,6 +13,7 @@ import { aiBackendsRouter } from './routes/ai-backends.js';
 import { endUsersRouter } from './routes/end-users.js';
 import { onboardRouter } from './routes/onboard.js';
 import { outboundRouter } from './routes/outbound.js';
+import { cokeAuthRouter } from './routes/coke-auth-routes.js';
 import { cokeBindingsRouter } from './routes/coke-bindings.js';
 import { cokeDeliveryRoutesRouter } from './routes/coke-delivery-routes.js';
 import { cokeUserProvisionRouter } from './routes/coke-user-provision.js';
@@ -69,6 +70,7 @@ app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
 
 app.route('/api/onboard', onboardRouter);
 app.route('/api/outbound', outboundRouter);
+app.route('/api/coke', cokeAuthRouter);
 
 // ─── Gateway (inbound messages from social channels) ─────────────────────────
 
