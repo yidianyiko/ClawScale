@@ -1,31 +1,37 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
 
-export default function CokeLoginPage() {
+export default function VerifyEmailPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [enteredToken, setEnteredToken] = useState('');
+  const [enteredEmail, setEnteredEmail] = useState('');
   const [error, setError] = useState('');
-  const [statusMessage, setStatusMessage] = useState('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEnteredToken(params.get('token') ?? '');
+    setEnteredEmail(params.get('email') ?? '');
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError('');
-    setStatusMessage('');
+    setMessage('');
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/login', {
-        email,
-        password,
+      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/verify-email', {
+        token: enteredToken,
+        email: enteredEmail,
       });
 
       if (!res.ok) {
@@ -34,30 +40,10 @@ export default function CokeLoginPage() {
       }
 
       storeCokeUserAuth(res.data);
-
-      if (res.data.user.status === 'suspended') {
-        setError('Your Coke account is suspended.');
-        return;
-      }
-
-      if (res.data.user.email_verified !== true) {
-        setStatusMessage('Email verification is required.');
-        router.push('/coke/verify-email');
-        return;
-      }
-
-      if (res.data.user.subscription_active !== true) {
-        setStatusMessage('Subscription renewal is required.');
-        router.push('/coke/renew');
-        return;
-      }
-
-      setStatusMessage('Sign-in succeeded.');
-      const next =
-        typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
-      router.push(next && next.startsWith('/coke/') ? next : '/coke/bind-wechat');
+      setMessage('Email verified.');
+      router.push(res.data.user.subscription_active === false ? '/coke/renew' : '/coke/bind-wechat');
     } catch {
-      setError('Unable to sign in right now.');
+      setError('Unable to verify your email right now.');
     } finally {
       setLoading(false);
     }
@@ -65,9 +51,9 @@ export default function CokeLoginPage() {
 
   return (
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Sign in to Coke</h1>
+      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Verify your email</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">
-        Sign in on the website first, then manage the personal WeChat channel attached to this account.
+        Use the link from your inbox, or paste the verification token here to finish account setup.
       </p>
 
       {error ? (
@@ -76,7 +62,7 @@ export default function CokeLoginPage() {
         </div>
       ) : null}
 
-      {statusMessage ? <p className="mt-4 text-sm text-slate-600">{statusMessage}</p> : null}
+      {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
         <div>
@@ -87,24 +73,23 @@ export default function CokeLoginPage() {
             id="email"
             type="email"
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={enteredEmail}
+            onChange={(e) => setEnteredEmail(e.target.value)}
             placeholder="alice@example.com"
             required
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-            Password
+          <label htmlFor="token" className="mb-2 block text-sm font-medium text-slate-700">
+            Verification token
           </label>
           <input
-            id="password"
-            type="password"
+            id="token"
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
+            value={enteredToken}
+            onChange={(e) => setEnteredToken(e.target.value)}
+            placeholder="Paste the token from your email"
             required
           />
         </div>
@@ -114,14 +99,14 @@ export default function CokeLoginPage() {
           className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           disabled={loading}
         >
-          {loading ? 'Signing in...' : 'Sign in to Coke'}
+          {loading ? 'Verifying...' : 'Verify email'}
         </button>
       </form>
 
       <p className="mt-6 text-sm text-slate-600">
-        Need an account?{' '}
-        <Link href="/coke/register" className="font-medium text-slate-950 underline underline-offset-4">
-          Create one
+        Need to sign in instead?{' '}
+        <Link href="/coke/login" className="font-medium text-slate-950 underline underline-offset-4">
+          Back to sign in
         </Link>
       </p>
     </section>

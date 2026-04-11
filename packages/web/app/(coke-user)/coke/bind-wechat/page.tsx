@@ -4,8 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
-import { clearCokeUserAuth, getCokeUser, getCokeUserToken } from '../../../../lib/coke-user-auth';
 import type { ApiResponse } from '@clawscale/shared';
+import {
+  clearCokeUserAuth,
+  getCokeUser,
+  getCokeUserToken,
+  isCokeUserSuspended,
+  needsCokeEmailVerification,
+  needsCokeSubscriptionRenewal,
+  type CokeUser,
+} from '../../../../lib/coke-user-auth';
 import {
   archiveCokeUserWechatChannel,
   connectCokeUserWechatChannel,
@@ -16,26 +24,62 @@ import {
   type CokeUserWechatChannelState,
 } from '../../../../lib/coke-user-wechat-channel';
 import {
-  applyCokeUserWechatChannelMutationResult,
   applyCokeUserWechatChannelMutationFailure,
+  applyCokeUserWechatChannelMutationResult,
   applyCokeUserWechatChannelRefreshFailure,
 } from '../../../../lib/coke-user-wechat-channel-machine';
+
+type BlockedAccessState = {
+  title: string;
+  description: string;
+  actions: Array<{ href: string; label: string }>;
+};
+
+function getBlockedAccessState(user: CokeUser | null): BlockedAccessState | null {
+  if (isCokeUserSuspended(user)) {
+    return {
+      title: 'Your Coke account is suspended',
+      description: 'Contact support to restore access before binding a personal WeChat channel.',
+      actions: [{ href: '/coke/login', label: 'Sign out' }],
+    };
+  }
+
+  const actions: Array<{ href: string; label: string }> = [];
+  if (needsCokeEmailVerification(user)) {
+    actions.push({ href: '/coke/verify-email', label: 'Verify email' });
+  }
+  if (needsCokeSubscriptionRenewal(user)) {
+    actions.push({ href: '/coke/renew', label: 'Renew subscription' });
+  }
+
+  if (actions.length === 0) {
+    return null;
+  }
+
+  return {
+    title: 'Verify your email and renew your subscription before creating a WeChat channel.',
+    description: 'Finish the required account steps, then come back here to create or reconnect your channel.',
+    actions,
+  };
+}
 
 export default function BindWechatPage() {
   const router = useRouter();
   const [channel, setChannel] = useState<CokeUserWechatChannelState | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [hasToken, setHasToken] = useState<boolean | null>(null);
+  const [hasToken, setHasToken] = useState<boolean>(() => getCokeUserToken() != null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [userName, setUserName] = useState('');
+  const [user, setUser] = useState<CokeUser | null>(() => getCokeUser());
   const channelRef = useRef<CokeUserWechatChannelState | null>(null);
   const busyActionRef = useRef<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const channelRevisionRef = useRef(0);
   const channelViewModel = useMemo(() => getCokeUserWechatChannelViewModel(channel), [channel]);
+  const blockedAccessState = useMemo(() => getBlockedAccessState(user), [user]);
+  const userName = user?.display_name ?? '';
 
   useEffect(() => {
     channelRef.current = channel;
@@ -102,24 +146,19 @@ export default function BindWechatPage() {
   }, []);
 
   useEffect(() => {
-    const token = getCokeUserToken();
-    setHasToken(token != null);
-    setUserName(getCokeUser()?.display_name ?? '');
-  }, []);
-
-  useEffect(() => {
-    if (hasToken === false) {
+    if (!hasToken) {
       router.replace('/coke/login');
       setLoading(false);
       return;
     }
 
-    if (hasToken !== true) {
+    if (blockedAccessState != null) {
+      setLoading(false);
       return;
     }
 
     void refreshChannel();
-  }, [hasToken, refreshChannel, router]);
+  }, [blockedAccessState, hasToken, refreshChannel, router]);
 
   useEffect(() => {
     if (channel?.status !== 'pending' || !channel.connect_url) {
@@ -216,8 +255,36 @@ export default function BindWechatPage() {
     await runAction('archive', () => archiveCokeUserWechatChannel());
   }
 
-  if (hasToken === false) {
+  if (!hasToken) {
     return null;
+  }
+
+  if (blockedAccessState != null) {
+    return (
+      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-200 bg-amber-50 p-8">
+        <p className="text-sm font-medium uppercase tracking-[0.2em] text-amber-700">Account access</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{blockedAccessState.title}</h1>
+        <p className="mt-4 text-sm leading-6 text-slate-700">{blockedAccessState.description}</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          {blockedAccessState.actions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              {action.label}
+            </Link>
+          ))}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
+          >
+            Sign out
+          </button>
+        </div>
+      </section>
+    );
   }
 
   if (loadError && !channel) {

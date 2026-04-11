@@ -37,6 +37,9 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
   getCokeUserToken: () => getCokeUserTokenMock(),
   getCokeUser: () => getCokeUserMock(),
   clearCokeUserAuth: () => clearCokeUserAuthMock(),
+  isCokeUserSuspended: (user: { status?: string } | null) => user?.status === 'suspended',
+  needsCokeEmailVerification: (user: { email_verified?: boolean } | null) => user?.email_verified !== true,
+  needsCokeSubscriptionRenewal: (user: { subscription_active?: boolean } | null) => user?.subscription_active !== true,
 }));
 
 vi.mock('../../../../lib/coke-user-api', () => ({
@@ -102,7 +105,13 @@ describe('BindWechatPage initial load failure', () => {
     getCokeUserWechatChannelStatusMock.mockReset();
 
     getCokeUserTokenMock.mockReturnValue('token');
-    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -133,6 +142,50 @@ describe('BindWechatPage initial load failure', () => {
   });
 });
 
+describe('BindWechatPage blocked access states', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: false,
+      status: 'normal',
+      subscription_active: false,
+      subscription_expires_at: null,
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('shows the blocked access prompt and does not load channel state', async () => {
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+    await flushTicks(2);
+
+    expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Verify your email and renew your subscription');
+    expect(container.querySelector('a[href="/coke/verify-email"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/coke/renew"]')).toBeTruthy();
+  });
+});
+
 describe('BindWechatPage archive action', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -147,7 +200,13 @@ describe('BindWechatPage archive action', () => {
     deleteCokeUserWechatChannelMock.mockReset();
 
     getCokeUserTokenMock.mockReturnValue('token');
-    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
     deleteCokeUserWechatChannelMock.mockResolvedValue(undefined);
 
     container = document.createElement('div');
@@ -183,7 +242,7 @@ describe('BindWechatPage archive action', () => {
     archiveButton?.click();
     await waitForText(container, 'This WeChat channel is archived');
 
-    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/user/wechat-channel');
+    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/api/coke/wechat-channel');
     expect(container.textContent).toContain('This WeChat channel is archived');
     expect(container.textContent).toContain('Create my WeChat channel again');
     expect(container.textContent).not.toContain('Reconnect or archive your channel');
@@ -204,7 +263,13 @@ describe('BindWechatPage concurrent mutation guard', () => {
     deleteCokeUserWechatChannelMock.mockReset();
 
     getCokeUserTokenMock.mockReturnValue('token');
-    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
     connectCokeUserWechatChannelMock.mockReturnValue(new Promise(() => {}));
 
     container = document.createElement('div');
@@ -250,6 +315,49 @@ describe('BindWechatPage concurrent mutation guard', () => {
   });
 });
 
+describe('BindWechatPage suspended account state', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'suspended',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('shows a suspended account message without loading channel state', async () => {
+    flushSync(() => {
+      root.render(<BindWechatPage />);
+    });
+    await flushTicks(2);
+
+    expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Your Coke account is suspended');
+    expect(container.textContent).not.toContain('Create my WeChat channel');
+  });
+});
+
 describe('BindWechatPage refresh ordering', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -276,7 +384,13 @@ describe('BindWechatPage refresh ordering', () => {
     vi.spyOn(window, 'clearInterval').mockImplementation(() => undefined);
 
     getCokeUserTokenMock.mockReturnValue('token');
-    getCokeUserMock.mockReturnValue({ display_name: 'Alice' });
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
 
     container = document.createElement('div');
     document.body.appendChild(container);

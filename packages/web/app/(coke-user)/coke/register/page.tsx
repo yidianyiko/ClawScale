@@ -5,8 +5,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '@clawscale/shared';
-import { cokeUserApi } from '@/lib/coke-user-api';
-import { storeCokeUserAuth, type CokeAuthResult } from '@/lib/coke-user-auth';
+import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
 
 export default function CokeRegisterPage() {
   const router = useRouter();
@@ -22,8 +22,8 @@ export default function CokeRegisterPage() {
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/user/register', {
-        display_name: displayName,
+      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/register', {
+        displayName,
         email,
         password,
       });
@@ -34,7 +34,7 @@ export default function CokeRegisterPage() {
       }
 
       storeCokeUserAuth(res.data);
-      router.push('/coke/bind-wechat');
+      router.push('/coke/verify-email');
     } catch {
       setError('Unable to create your account right now.');
     } finally {

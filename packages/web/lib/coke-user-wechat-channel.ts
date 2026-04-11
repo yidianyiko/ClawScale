@@ -91,23 +91,23 @@ export function getCokeUserWechatChannelViewModel(
 }
 
 export function createCokeUserWechatChannel(): Promise<ApiResponse<CokeUserWechatChannelState>> {
-  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/user/wechat-channel');
+  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/api/coke/wechat-channel');
 }
 
 export function connectCokeUserWechatChannel(): Promise<ApiResponse<CokeUserWechatChannelState>> {
-  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/user/wechat-channel/connect');
+  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/api/coke/wechat-channel/connect');
 }
 
 export function getCokeUserWechatChannelStatus(): Promise<ApiResponse<CokeUserWechatChannelState>> {
-  return cokeUserApi.get<ApiResponse<CokeUserWechatChannelState>>('/user/wechat-channel/status');
+  return cokeUserApi.get<ApiResponse<CokeUserWechatChannelState>>('/api/coke/wechat-channel/status');
 }
 
 export function disconnectCokeUserWechatChannel(): Promise<ApiResponse<CokeUserWechatChannelState>> {
-  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/user/wechat-channel/disconnect');
+  return cokeUserApi.post<ApiResponse<CokeUserWechatChannelState>>('/api/coke/wechat-channel/disconnect');
 }
 
 export function archiveCokeUserWechatChannel(): Promise<ApiResponse<CokeUserWechatChannelState>> {
   return cokeUserApi
-    .delete<ApiResponse<CokeUserWechatChannelState> | undefined>('/user/wechat-channel')
+    .delete<ApiResponse<CokeUserWechatChannelState> | undefined>('/api/coke/wechat-channel')
     .then(normalizeEmptyArchiveResponse);
 }

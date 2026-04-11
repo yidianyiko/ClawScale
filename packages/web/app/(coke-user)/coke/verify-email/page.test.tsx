@@ -1,0 +1,83 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushSync } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
+
+const pushMock = vi.hoisted(() => vi.fn());
+const postMock = vi.hoisted(() => vi.fn());
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: pushMock,
+  }),
+}));
+
+vi.mock('../../../../lib/coke-user-api', () => ({
+  cokeUserApi: {
+    post: (...args: unknown[]) => postMock(...args),
+  },
+}));
+
+import VerifyEmailPage from './page';
+
+async function flushTicks(count: number) {
+  for (let i = 0; i < count; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+describe('VerifyEmailPage', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    pushMock.mockReset();
+    postMock.mockReset();
+    postMock.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+    window.history.pushState({}, '', '/coke/verify-email?token=verify-token&email=alice@example.com');
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('submits the verification token to the Gateway contract', async () => {
+    flushSync(() => {
+      root.render(<VerifyEmailPage />);
+    });
+
+    await flushTicks(1);
+
+    expect((container.querySelector('input#token') as HTMLInputElement | null)?.value).toBe('verify-token');
+    expect((container.querySelector('input#email') as HTMLInputElement | null)?.value).toBe('alice@example.com');
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await flushTicks(1);
+
+    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email', {
+      token: 'verify-token',
+      email: 'alice@example.com',
+    });
+    expect(pushMock).toHaveBeenCalledWith('/coke/bind-wechat');
+  });
+});

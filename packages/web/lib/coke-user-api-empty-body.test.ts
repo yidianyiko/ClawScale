@@ -33,7 +33,7 @@ describe('cokeUserApi empty-body success handling', () => {
       })) as typeof fetch,
     );
 
-    await expect(cokeUserApi.delete('/user/wechat-channel')).resolves.toBeUndefined();
+    await expect(cokeUserApi.delete('/api/coke/wechat-channel')).resolves.toBeUndefined();
   });
 
   it('rejects when a non-2xx response has an empty body', async () => {
@@ -48,6 +48,6 @@ describe('cokeUserApi empty-body success handling', () => {
       })) as typeof fetch,
     );
 
-    await expect(cokeUserApi.delete('/user/wechat-channel')).rejects.toThrow('HTTP 500');
+    await expect(cokeUserApi.delete('/api/coke/wechat-channel')).rejects.toThrow('HTTP 500');
   });
 });

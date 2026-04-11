@@ -39,11 +39,11 @@ describe('coke-user-wechat-channel api helpers', () => {
     await disconnectCokeUserWechatChannel();
     await archiveCokeUserWechatChannel();
 
-    expect(postSpy).toHaveBeenNthCalledWith(1, '/user/wechat-channel');
-    expect(postSpy).toHaveBeenNthCalledWith(2, '/user/wechat-channel/connect');
-    expect(postSpy).toHaveBeenNthCalledWith(3, '/user/wechat-channel/disconnect');
-    expect(getSpy).toHaveBeenCalledWith('/user/wechat-channel/status');
-    expect(deleteSpy).toHaveBeenCalledWith('/user/wechat-channel');
+    expect(postSpy).toHaveBeenNthCalledWith(1, '/api/coke/wechat-channel');
+    expect(postSpy).toHaveBeenNthCalledWith(2, '/api/coke/wechat-channel/connect');
+    expect(postSpy).toHaveBeenNthCalledWith(3, '/api/coke/wechat-channel/disconnect');
+    expect(getSpy).toHaveBeenCalledWith('/api/coke/wechat-channel/status');
+    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
   });
 
   it('normalizes an empty archive success into an archived channel state', async () => {
@@ -54,7 +54,7 @@ describe('coke-user-wechat-channel api helpers', () => {
       data: { status: 'archived' },
     });
 
-    expect(deleteSpy).toHaveBeenCalledWith('/user/wechat-channel');
+    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
   });
 });
 
