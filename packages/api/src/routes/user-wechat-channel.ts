@@ -1,4 +1,4 @@
-import { Hono, type Context, type Next } from 'hono';
+import { Hono, type Context, type MiddlewareHandler, type Next } from 'hono';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
@@ -35,6 +35,26 @@ type CurrentChannelRow = {
   updatedAt: Date;
 };
 
+export type PersonalWechatLifecycleAction =
+  | 'create'
+  | 'connect'
+  | 'status'
+  | 'disconnect'
+  | 'delete';
+
+export interface PersonalWechatLifecycleAuth {
+  tenantId: string;
+  clawscaleUserId: string;
+}
+
+interface PersonalWechatChannelRouterOptions {
+  authMiddleware: MiddlewareHandler;
+  resolveAuth: (
+    c: Context,
+    action: PersonalWechatLifecycleAction,
+  ) => Promise<PersonalWechatLifecycleAuth>;
+}
+
 function assertValidPersonalChannelRow(row: CurrentChannelRow): void {
   if (row.type !== PERSONAL_CHANNEL_TYPE) {
     throw new Error('invalid_personal_channel_row');
@@ -59,7 +79,10 @@ async function requireUserWechatChannelAuth(c: Context, next: Next): Promise<Res
   return requireAuth(c, next);
 }
 
-async function readBridgeAuth(c: Context) {
+async function readBridgeAuth(
+  c: Context,
+  _action: PersonalWechatLifecycleAction,
+): Promise<PersonalWechatLifecycleAuth> {
   const auth = c.get('auth');
   if (auth) {
     return {
@@ -115,12 +138,20 @@ function readErrorCode(err: unknown): string | undefined {
 function respondLifecycleError(c: Context, err: unknown) {
   const code = readErrorCode(err) ?? (err instanceof Error ? err.message : undefined);
 
-  if (code === 'coke_account_not_found') {
+  if (code === 'coke_account_not_found' || code === 'account_not_found') {
     return c.json({ ok: false, error: code }, 404);
   }
 
   if (code === 'clawscale_user_not_found' || code === 'personal_channel_not_found') {
     return c.json({ ok: false, error: code }, 404);
+  }
+
+  if (code === 'account_suspended' || code === 'email_not_verified') {
+    return c.json({ ok: false, error: code }, 403);
+  }
+
+  if (code === 'subscription_required') {
+    return c.json({ ok: false, error: code }, 402);
   }
 
   if (code === 'duplicate_personal_channel_rows' || code === 'disconnect_before_archive') {
@@ -253,199 +284,212 @@ async function loadCurrentPersonalChannel(input: {
   return activeRows[0] ?? firstRow;
 }
 
-export const userWechatChannelRouter = new Hono()
-  .use('*', requireUserWechatChannelAuth)
+export function createPersonalWechatChannelRouter(
+  options: PersonalWechatChannelRouterOptions,
+) {
+  return new Hono()
+    .use('*', options.authMiddleware)
 
-  .post('/', async (c) => {
-    try {
-      const auth = await readBridgeAuth(c);
-      const channel = await createOrReusePersonalWeChatChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
+    .post('/', async (c) => {
+      try {
+        const auth = await options.resolveAuth(c, 'create');
+        const channel = await createOrReusePersonalWeChatChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
+        });
 
-      return c.json({
-        ok: true,
-        data: {
-          ...buildLifecyclePayload(channel.id, channel.status as LifecycleStatus, null),
-        },
-      });
-    } catch (err) {
-      const response = respondLifecycleError(c, err);
-      if (response) {
-        return response;
-      }
-
-      throw err;
-    }
-  })
-
-  .post('/connect', async (c) => {
-    try {
-      const auth = await readBridgeAuth(c);
-      const channel = await createOrReusePersonalWeChatChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
-
-      const liveStatus = getWeixinStatus(channel.id);
-      const restoreState = getWeixinRestoreState();
-      const status = resolveStatus(channel.status, liveStatus, restoreState);
-
-      if (status === 'connected') {
         return c.json({
           ok: true,
-          data: buildLifecyclePayload(channel.id, status, null),
+          data: {
+            ...buildLifecyclePayload(channel.id, channel.status as LifecycleStatus, null),
+          },
         });
-      }
-
-      const shouldRestart = channel.status !== 'pending' || liveStatus !== 'qr_pending';
-
-      if (shouldRestart) {
-        if (liveStatus && liveStatus !== 'connected') {
-          await stopWeixinBot(channel.id);
+      } catch (err) {
+        const response = respondLifecycleError(c, err);
+        if (response) {
+          return response;
         }
 
-        await db.channel.update({
-          where: { id: channel.id },
-          data: { status: 'pending' },
+        throw err;
+      }
+    })
+
+    .post('/connect', async (c) => {
+      try {
+        const auth = await options.resolveAuth(c, 'connect');
+        const channel = await createOrReusePersonalWeChatChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
         });
 
-        await startWeixinQR(channel.id);
-      }
+        const liveStatus = getWeixinStatus(channel.id);
+        const restoreState = getWeixinRestoreState();
+        const status = resolveStatus(channel.status, liveStatus, restoreState);
 
-      const qr = await waitForWeixinQR(channel.id);
-      const latestLiveStatus = getWeixinStatus(channel.id);
-      const latestStatus = resolveStatus(
-        channel.status,
-        latestLiveStatus,
-        getWeixinRestoreState(),
-      );
+        if (status === 'connected') {
+          return c.json({
+            ok: true,
+            data: buildLifecyclePayload(channel.id, status, null),
+          });
+        }
 
-      return c.json({
-        ok: true,
-        data: buildLifecyclePayload(channel.id, latestStatus, latestStatus === 'pending' ? qr : null),
-      });
-    } catch (err) {
-      const response = respondLifecycleError(c, err);
-      if (response) {
-        return response;
-      }
+        const shouldRestart = channel.status !== 'pending' || liveStatus !== 'qr_pending';
 
-      throw err;
-    }
-  })
+        if (shouldRestart) {
+          if (liveStatus && liveStatus !== 'connected') {
+            await stopWeixinBot(channel.id);
+          }
 
-  .get('/status', async (c) => {
-    try {
-      const auth = await readBridgeAuth(c);
-      const channel = await loadCurrentPersonalChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
+          await db.channel.update({
+            where: { id: channel.id },
+            data: { status: 'pending' },
+          });
 
-      if (!channel) {
+          await startWeixinQR(channel.id);
+        }
+
+        const qr = await waitForWeixinQR(channel.id);
+        const latestLiveStatus = getWeixinStatus(channel.id);
+        const latestStatus = resolveStatus(
+          channel.status,
+          latestLiveStatus,
+          getWeixinRestoreState(),
+        );
+
         return c.json({
           ok: true,
-          data: buildLifecyclePayload(null, 'missing', null),
+          data: buildLifecyclePayload(
+            channel.id,
+            latestStatus,
+            latestStatus === 'pending' ? qr : null,
+          ),
         });
+      } catch (err) {
+        const response = respondLifecycleError(c, err);
+        if (response) {
+          return response;
+        }
+
+        throw err;
       }
+    })
 
-      const liveStatus = getWeixinStatus(channel.id);
-      const status = resolveStatus(channel.status, liveStatus, getWeixinRestoreState());
-      const qr = status === 'pending' ? await waitForWeixinQR(channel.id) : null;
-      const latestLiveStatus = getWeixinStatus(channel.id);
-      const latestStatus = resolveStatus(
-        channel.status,
-        latestLiveStatus,
-        getWeixinRestoreState(),
-      );
+    .get('/status', async (c) => {
+      try {
+        const auth = await options.resolveAuth(c, 'status');
+        const channel = await loadCurrentPersonalChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
+        });
 
-      return c.json({
-        ok: true,
-        data: buildLifecyclePayload(
-          channel.id,
-          latestStatus,
-          latestStatus === 'pending' ? qr : null,
-        ),
-      });
-    } catch (err) {
-      const response = respondLifecycleError(c, err);
-      if (response) {
-        return response;
-      }
+        if (!channel) {
+          return c.json({
+            ok: true,
+            data: buildLifecyclePayload(null, 'missing', null),
+          });
+        }
 
-      throw err;
-    }
-  })
+        const liveStatus = getWeixinStatus(channel.id);
+        const status = resolveStatus(channel.status, liveStatus, getWeixinRestoreState());
+        const qr = status === 'pending' ? await waitForWeixinQR(channel.id) : null;
+        const latestLiveStatus = getWeixinStatus(channel.id);
+        const latestStatus = resolveStatus(
+          channel.status,
+          latestLiveStatus,
+          getWeixinRestoreState(),
+        );
 
-  .post('/disconnect', async (c) => {
-    try {
-      const auth = await readBridgeAuth(c);
-      const channel = await disconnectPersonalWeChatChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
-
-      await stopWeixinBot(channel.id);
-
-      return c.json({
-        ok: true,
-        data: buildLifecyclePayload(channel.id, 'disconnected', null),
-      });
-    } catch (err) {
-      const response = respondLifecycleError(c, err);
-      if (response) {
-        return response;
-      }
-
-      throw err;
-    }
-  })
-
-  .delete('/', async (c) => {
-    try {
-      const auth = await readBridgeAuth(c);
-      const current = await loadCurrentPersonalChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
-
-      if (!current) {
-        return c.json({ ok: false, error: 'personal_channel_not_found' }, 404);
-      }
-
-      const liveStatus = getWeixinStatus(current.id);
-      const resolvedStatus = resolveStatus(current.status, liveStatus, getWeixinRestoreState());
-
-      if (resolvedStatus === 'archived') {
         return c.json({
           ok: true,
-          data: buildLifecyclePayload(current.id, 'archived', null),
+          data: buildLifecyclePayload(
+            channel.id,
+            latestStatus,
+            latestStatus === 'pending' ? qr : null,
+          ),
         });
+      } catch (err) {
+        const response = respondLifecycleError(c, err);
+        if (response) {
+          return response;
+        }
+
+        throw err;
       }
+    })
 
-      if (resolvedStatus === 'pending' || resolvedStatus === 'connected') {
-        return c.json({ ok: false, error: 'disconnect_before_archive' }, 409);
+    .post('/disconnect', async (c) => {
+      try {
+        const auth = await options.resolveAuth(c, 'disconnect');
+        const channel = await disconnectPersonalWeChatChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
+        });
+
+        await stopWeixinBot(channel.id);
+
+        return c.json({
+          ok: true,
+          data: buildLifecyclePayload(channel.id, 'disconnected', null),
+        });
+      } catch (err) {
+        const response = respondLifecycleError(c, err);
+        if (response) {
+          return response;
+        }
+
+        throw err;
       }
+    })
 
-      await stopWeixinBot(current.id);
+    .delete('/', async (c) => {
+      try {
+        const auth = await options.resolveAuth(c, 'delete');
+        const current = await loadCurrentPersonalChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
+        });
 
-      const archived = await archivePersonalWeChatChannel({
-        tenantId: auth.tenantId,
-        clawscaleUserId: auth.clawscaleUserId,
-      });
+        if (!current) {
+          return c.json({ ok: false, error: 'personal_channel_not_found' }, 404);
+        }
 
-      return c.json({
-        ok: true,
-        data: buildLifecyclePayload(archived.id, 'archived', null),
-      });
-    } catch (err) {
-      const response = respondLifecycleError(c, err);
-      if (response) {
-        return response;
+        const liveStatus = getWeixinStatus(current.id);
+        const resolvedStatus = resolveStatus(current.status, liveStatus, getWeixinRestoreState());
+
+        if (resolvedStatus === 'archived') {
+          return c.json({
+            ok: true,
+            data: buildLifecyclePayload(current.id, 'archived', null),
+          });
+        }
+
+        if (resolvedStatus === 'pending' || resolvedStatus === 'connected') {
+          return c.json({ ok: false, error: 'disconnect_before_archive' }, 409);
+        }
+
+        await stopWeixinBot(current.id);
+
+        const archived = await archivePersonalWeChatChannel({
+          tenantId: auth.tenantId,
+          clawscaleUserId: auth.clawscaleUserId,
+        });
+
+        return c.json({
+          ok: true,
+          data: buildLifecyclePayload(archived.id, 'archived', null),
+        });
+      } catch (err) {
+        const response = respondLifecycleError(c, err);
+        if (response) {
+          return response;
+        }
+
+        throw err;
       }
+    });
+}
 
-      throw err;
-    }
-  });
+export const userWechatChannelRouter = createPersonalWechatChannelRouter({
+  authMiddleware: requireUserWechatChannelAuth,
+  resolveAuth: readBridgeAuth,
+});
