@@ -115,6 +115,10 @@ function readErrorCode(err: unknown): string | undefined {
 function respondLifecycleError(c: Context, err: unknown) {
   const code = readErrorCode(err) ?? (err instanceof Error ? err.message : undefined);
 
+  if (code === 'coke_account_not_found') {
+    return c.json({ ok: false, error: code }, 404);
+  }
+
   if (code === 'clawscale_user_not_found' || code === 'personal_channel_not_found') {
     return c.json({ ok: false, error: code }, 404);
   }

@@ -7,6 +7,15 @@ const bodySchema = z.object({
   display_name: z.string().trim().min(1).max(120).optional(),
 });
 
+function readErrorCode(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null || !('code' in err)) {
+    return undefined;
+  }
+
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
 export const cokeUserProvisionRouter = new Hono();
 
 cokeUserProvisionRouter.post('/', async (c) => {
@@ -27,20 +36,29 @@ cokeUserProvisionRouter.post('/', async (c) => {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
 
-  const result = await ensureClawscaleUserForCokeAccount({
-    cokeAccountId: parsed.data.coke_account_id,
-    displayName: parsed.data.display_name,
-  });
+  try {
+    const result = await ensureClawscaleUserForCokeAccount({
+      cokeAccountId: parsed.data.coke_account_id,
+      displayName: parsed.data.display_name,
+    });
 
-  if (!result.ready) {
-    return c.json({ ok: false, error: 'provision_not_ready' }, 503);
+    if (!result.ready) {
+      return c.json({ ok: false, error: 'provision_not_ready' }, 503);
+    }
+
+    return c.json({
+      ok: true,
+      data: {
+        tenant_id: result.tenantId,
+        clawscale_user_id: result.clawscaleUserId,
+      },
+    });
+  } catch (err) {
+    const code = readErrorCode(err);
+    if (code === 'coke_account_not_found') {
+      return c.json({ ok: false, error: code }, 404);
+    }
+
+    throw err;
   }
-
-  return c.json({
-    ok: true,
-    data: {
-      tenant_id: result.tenantId,
-      clawscale_user_id: result.clawscaleUserId,
-    },
-  });
 });

@@ -14,6 +14,10 @@ function hasMailgunConfig(): boolean {
   return Boolean(process.env['MAILGUN_API_KEY']?.trim() && process.env['MAILGUN_DOMAIN']?.trim());
 }
 
+function hasSmtpConfig(): boolean {
+  return Boolean(process.env['EMAIL_HOST']?.trim());
+}
+
 async function sendViaMailgun(input: SendCokeEmailInput): Promise<void> {
   const apiKey = process.env['MAILGUN_API_KEY']?.trim();
   const domain = process.env['MAILGUN_DOMAIN']?.trim();
@@ -74,7 +78,10 @@ export async function sendCokeEmail(input: SendCokeEmailInput): Promise<void> {
     try {
       await sendViaMailgun(input);
       return;
-    } catch {
+    } catch (error) {
+      if (!hasSmtpConfig()) {
+        throw error;
+      }
       // Fall back to SMTP when Mailgun is configured but unavailable.
     }
   }

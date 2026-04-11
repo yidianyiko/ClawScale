@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const COKE_JWT_SECRET = process.env['COKE_JWT_SECRET'] ?? 'dev-coke-secret-change-me';
 const COKE_JWT_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '7d';
 const BCRYPT_ROUNDS = 10;
 
@@ -20,6 +19,15 @@ export interface VerifyTokenIssued {
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function readCokeJwtSecret(): string {
+  const secret = process.env['COKE_JWT_SECRET']?.trim();
+  if (!secret) {
+    throw new Error('COKE_JWT_SECRET is required');
+  }
+
+  return secret;
 }
 
 export function sha256Hex(value: string): string {
@@ -43,9 +51,9 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 }
 
 export function signCokeToken(payload: Omit<CokeJwtPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, COKE_JWT_SECRET, { expiresIn: COKE_JWT_EXPIRES_IN });
+  return jwt.sign(payload, readCokeJwtSecret(), { expiresIn: COKE_JWT_EXPIRES_IN });
 }
 
 export function verifyCokeToken(token: string): CokeJwtPayload {
-  return jwt.verify(token, COKE_JWT_SECRET) as CokeJwtPayload;
+  return jwt.verify(token, readCokeJwtSecret()) as CokeJwtPayload;
 }

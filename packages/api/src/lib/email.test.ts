@@ -56,4 +56,19 @@ describe('sendCokeEmail', () => {
       html: '<p>hello</p>',
     });
   });
+
+  it('rethrows the Mailgun error when SMTP fallback is unavailable', async () => {
+    delete process.env.EMAIL_HOST;
+
+    await expect(
+      sendCokeEmail({
+        to: 'alice@example.com',
+        subject: 'Verify your email',
+        html: '<p>hello</p>',
+      }),
+    ).rejects.toThrow('mailgun_send_failed:500');
+
+    expect(mocks.createTransportMock).not.toHaveBeenCalled();
+    expect(mocks.sendMailMock).not.toHaveBeenCalled();
+  });
 });

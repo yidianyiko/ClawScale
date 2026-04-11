@@ -17,6 +17,9 @@ const db = vi.hoisted(() => {
       updateMany: vi.fn(),
       findMany: vi.fn(),
     },
+    cokeAccount: {
+      findUnique: vi.fn(),
+    },
     clawscaleUser: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -42,6 +45,7 @@ describe('clawscale-user helpers', () => {
     vi.clearAllMocks();
     process.env.COKE_BRIDGE_INBOUND_URL = 'http://127.0.0.1:8090/bridge/inbound';
     process.env.COKE_BRIDGE_API_KEY = 'dev-bridge-key';
+    db.cokeAccount.findUnique.mockResolvedValue({ id: 'acct_1' });
   });
 
   it('bindEndUserToCokeAccount upserts a tenant-scoped ClawscaleUser and attaches an EndUser', async () => {
@@ -144,6 +148,20 @@ describe('clawscale-user helpers', () => {
     ).rejects.toMatchObject({ code: 'coke_account_not_found' });
 
     expect(db.endUser.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('ensureClawscaleUserForCokeAccount fails when the coke account is missing', async () => {
+    db.cokeAccount.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      ensureClawscaleUserForCokeAccount({
+        cokeAccountId: 'acct_missing',
+        displayName: 'Missing',
+      }),
+    ).rejects.toMatchObject({ code: 'coke_account_not_found' });
+
+    expect(db.tenant.create).not.toHaveBeenCalled();
+    expect(db.clawscaleUser.create).not.toHaveBeenCalled();
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {
