@@ -71,8 +71,12 @@ async function sendViaSmtp(input: SendCokeEmailInput): Promise<void> {
 
 export async function sendCokeEmail(input: SendCokeEmailInput): Promise<void> {
   if (hasMailgunConfig()) {
-    await sendViaMailgun(input);
-    return;
+    try {
+      await sendViaMailgun(input);
+      return;
+    } catch {
+      // Fall back to SMTP when Mailgun is configured but unavailable.
+    }
   }
 
   await sendViaSmtp(input);
