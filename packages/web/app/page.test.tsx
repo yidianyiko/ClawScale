@@ -3,14 +3,6 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 
-const pushMock = vi.hoisted(() => vi.fn());
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: pushMock,
-  }),
-}));
-
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
     <a href={href} {...props}>
@@ -19,41 +11,30 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    post: vi.fn(),
-  },
-}));
+import HomePage from './page';
 
-vi.mock('../../../../lib/coke-user-auth', () => ({
-  storeCokeUserAuth: vi.fn(),
-}));
-
-import CokeLoginPage from './page';
-
-describe('CokeLoginPage', () => {
+describe('HomePage', () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
-    pushMock.mockReset();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
   });
 
   afterEach(() => {
-    root?.unmount();
-    container?.remove();
+    root.unmount();
+    container.remove();
   });
 
-  it('shows public-home and recovery entry points', () => {
+  it('links public visitors to Coke registration and sign-in from the homepage', () => {
     flushSync(() => {
-      root.render(<CokeLoginPage />);
+      root.render(<HomePage />);
     });
 
-    expect(container.querySelector('a[href="/"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/forgot-password"]')).toBeTruthy();
     expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/coke/login"]')).toBeTruthy();
+    expect(container.textContent).toContain('An AI Partner That Grows With You');
   });
 });

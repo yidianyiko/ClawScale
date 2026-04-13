@@ -33,7 +33,7 @@ export default function Register() {
       const res = await api.post<ApiResponse<AuthResult>>('/auth/register', form);
       if (!res.ok) { setError(res.error); return; }
       storeAuth(res.data);
-      router.push('/');
+      router.push('/dashboard');
     } finally { setLoading(false); }
   }
 
@@ -82,10 +82,10 @@ export default function Register() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Already have a workspace?{' '}
-            <Link href="/login" className="text-teal-600 hover:underline font-medium">Sign in</Link>
-          </p>
+        <p className="mt-6 text-center text-sm text-gray-500">
+          Already have a workspace?{' '}
+          <Link href="/dashboard/login" className="text-teal-600 hover:underline font-medium">Sign in</Link>
+        </p>
         </div>
 
         <p className="mt-4 text-center text-xs text-white/30">Free forever for up to 5 users. No credit card required.</p>

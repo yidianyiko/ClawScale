@@ -202,7 +202,7 @@ export default function Settings() {
                   const res = await api.delete<ApiResponse<null>>('/auth/account');
                   if (!res.ok) { setError(res.error); return; }
                   clearAuth();
-                  router.push('/login');
+                  router.push('/dashboard/login');
                 } finally { setDeleting(false); }
               }}
             >
