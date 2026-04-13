@@ -143,9 +143,25 @@ function isUniqueConstraint(error: unknown, fieldName: string): boolean {
   return target === fieldName;
 }
 
+async function ensureCokeAccountExists(cokeAccountId: string) {
+  const account = await db.cokeAccount.findUnique({
+    where: { id: cokeAccountId },
+    select: { id: true },
+  });
+
+  if (!account) {
+    throw new ClawscaleUserBindingError(
+      'coke_account_not_found',
+      'Coke account not found',
+    );
+  }
+}
+
 export async function ensureClawscaleUserForCokeAccount(
   input: EnsureClawscaleUserForCokeAccountInput,
 ): Promise<EnsureClawscaleUserForCokeAccountResult> {
+  await ensureCokeAccountExists(input.cokeAccountId);
+
   const existing = await db.clawscaleUser.findUnique({
     where: { cokeAccountId: input.cokeAccountId },
     select: { id: true, tenantId: true },
@@ -163,6 +179,8 @@ export async function ensureClawscaleUserForCokeAccount(
 
   try {
     return await db.$transaction(async (tx) => {
+      await ensureCokeAccountExists(input.cokeAccountId);
+
       const raced = await tx.clawscaleUser.findUnique({
         where: { cokeAccountId: input.cokeAccountId },
         select: { id: true, tenantId: true },

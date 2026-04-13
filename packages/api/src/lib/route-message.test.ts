@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   endUser: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   conversation: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   message: { create: vi.fn(), findMany: vi.fn() },
+  cokeAccount: { findUnique: vi.fn() },
   aiBackend: { findMany: vi.fn() },
   endUserBackend: { upsert: vi.fn(), deleteMany: vi.fn() },
 }));
@@ -14,11 +15,13 @@ const generateReply = vi.hoisted(() => vi.fn());
 const getUnifiedConversationIds = vi.hoisted(() => vi.fn());
 const bindEndUserToCokeAccount = vi.hoisted(() => vi.fn());
 const bindBusinessConversation = vi.hoisted(() => vi.fn());
+const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
 vi.mock('./clawscale-user.js', () => ({ getUnifiedConversationIds, bindEndUserToCokeAccount }));
 vi.mock('./business-conversation.js', () => ({ bindBusinessConversation }));
+vi.mock('./coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('./clawscale-agent.js', () => ({
   buildSelectionMenu: vi.fn(() => 'menu'),
   runClawscaleAgent: vi.fn(),
@@ -84,6 +87,7 @@ describe('routeInboundMessage', () => {
     db.endUserBackend.deleteMany.mockResolvedValue({});
     db.conversation.update.mockResolvedValue({});
     generateReply.mockResolvedValue('bridge ok');
+    db.cokeAccount.findUnique.mockResolvedValue(null);
     bindBusinessConversation.mockResolvedValue({
       tenantId: 'ten_1',
       cokeAccountId: 'acct_1',
@@ -97,6 +101,15 @@ describe('routeInboundMessage', () => {
       clawscaleUserId: 'csu_1',
       endUserId: 'eu_1',
       cokeAccountId: 'acct_1',
+    });
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
     });
     getUnifiedConversationIds.mockResolvedValue(['conv_1', 'conv_2']);
   });
@@ -364,6 +377,68 @@ describe('routeInboundMessage', () => {
       expect.objectContaining({
         conversationId: 'conv_1',
         reply: 'bridge ok',
+      }),
+    );
+  });
+
+  it('forwards Coke account access metadata to bridge backends on personal channels', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      status: 'connected',
+      scope: 'personal',
+      ownerClawscaleUserId: 'csu_1',
+      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'acct_1' },
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.cokeAccount.findUnique.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: true,
+      status: 'normal',
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello bridge',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        cokeAccountId: 'acct_1',
+        cokeAccountDisplayName: 'Alice',
+        accountStatus: 'normal',
+        emailVerified: true,
+        subscriptionActive: true,
+        subscriptionExpiresAt: null,
+        accountAccessAllowed: true,
+        accountAccessDeniedReason: null,
+        renewalUrl: 'https://coke.example/coke/renew',
+      }),
+    );
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        gatewayConversationId: 'conv_1',
+        inboundEventId: expect.any(String),
+        channelScope: 'personal',
       }),
     );
   });

@@ -18,6 +18,7 @@ import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
 import { bindBusinessConversation } from './business-conversation.js';
+import { resolveCokeAccountAccess } from './coke-account-access.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
@@ -138,6 +139,28 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.clawscaleUserId ?? endUser.clawscaleUserId ?? null;
   const resolvedCokeAccountId =
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
+  const resolvedCokeAccount = resolvedCokeAccountId
+    ? await db.cokeAccount.findUnique({
+        where: { id: resolvedCokeAccountId },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          emailVerified: true,
+          status: true,
+        },
+      })
+    : null;
+  const resolvedCokeAccountAccess = resolvedCokeAccount
+    ? await resolveCokeAccountAccess({
+        account: {
+          id: resolvedCokeAccount.id,
+          emailVerified: resolvedCokeAccount.emailVerified,
+          displayName: resolvedCokeAccount.displayName,
+          status: resolvedCokeAccount.status,
+        },
+      })
+    : null;
 
   // 4. Enforce access policy
   const access = settings.endUserAccess ?? 'anonymous';
@@ -314,6 +337,18 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           ...(resolvedClawscaleUserId ? { clawscaleUserId: resolvedClawscaleUserId } : {}),
           ...(resolvedCokeAccountId ? { cokeAccountId: resolvedCokeAccountId } : {}),
           ...(personalChannelOwnership ?? {}),
+          ...(resolvedCokeAccount && resolvedCokeAccountAccess
+            ? {
+                cokeAccountDisplayName: resolvedCokeAccount.displayName,
+                accountStatus: resolvedCokeAccountAccess.accountStatus,
+                emailVerified: resolvedCokeAccountAccess.emailVerified,
+                subscriptionActive: resolvedCokeAccountAccess.subscriptionActive,
+                subscriptionExpiresAt: resolvedCokeAccountAccess.subscriptionExpiresAt,
+                accountAccessAllowed: resolvedCokeAccountAccess.accountAccessAllowed,
+                accountAccessDeniedReason: resolvedCokeAccountAccess.accountAccessDeniedReason,
+                renewalUrl: resolvedCokeAccountAccess.renewalUrl,
+              }
+            : {}),
         }, palmosCtx, {
           sender: endUser!.name ?? displayName,
           platform,
@@ -733,6 +768,18 @@ async function runBackend(
     businessConversationKey?: string;
     clawscaleUserId?: string;
     cokeAccountId?: string;
+    cokeAccountDisplayName?: string | null;
+    accountStatus?: 'normal' | 'suspended';
+    emailVerified?: boolean;
+    subscriptionActive?: boolean;
+    subscriptionExpiresAt?: string | null;
+    accountAccessAllowed?: boolean;
+    accountAccessDeniedReason?:
+      | 'email_not_verified'
+      | 'subscription_required'
+      | 'account_suspended'
+      | null;
+    renewalUrl?: string;
     channelScope?: 'personal' | 'tenant_shared';
   },
   palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },

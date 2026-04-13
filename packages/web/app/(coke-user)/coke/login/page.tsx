@@ -5,23 +5,25 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '@clawscale/shared';
-import { cokeUserApi } from '@/lib/coke-user-api';
-import { storeCokeUserAuth, type CokeAuthResult } from '@/lib/coke-user-auth';
+import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
 
 export default function CokeLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+    setStatusMessage('');
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/user/login', {
+      const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/login', {
         email,
         password,
       });
@@ -32,7 +34,28 @@ export default function CokeLoginPage() {
       }
 
       storeCokeUserAuth(res.data);
-      router.push('/coke/bind-wechat');
+
+      if (res.data.user.status === 'suspended') {
+        setError('Your Coke account is suspended.');
+        return;
+      }
+
+      if (res.data.user.email_verified !== true) {
+        setStatusMessage('Email verification is required.');
+        router.push('/coke/verify-email');
+        return;
+      }
+
+      if (res.data.user.subscription_active !== true) {
+        setStatusMessage('Subscription renewal is required.');
+        router.push('/coke/renew');
+        return;
+      }
+
+      setStatusMessage('Sign-in succeeded.');
+      const next =
+        typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
+      router.push(next && next.startsWith('/coke/') ? next : '/coke/bind-wechat');
     } catch {
       setError('Unable to sign in right now.');
     } finally {
@@ -52,6 +75,8 @@ export default function CokeLoginPage() {
           {error}
         </div>
       ) : null}
+
+      {statusMessage ? <p className="mt-4 text-sm text-slate-600">{statusMessage}</p> : null}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
         <div>
