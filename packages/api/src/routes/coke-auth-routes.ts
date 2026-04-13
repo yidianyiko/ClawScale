@@ -152,7 +152,15 @@ export const cokeAuthRouter = new Hono()
       displayName: created.displayName,
     });
 
-    await sendVerificationEmail({ id: created.id, email: created.email });
+    try {
+      await sendVerificationEmail({ id: created.id, email: created.email });
+    } catch (error) {
+      console.error('[coke-auth] failed to send verification email after registration', {
+        accountId: created.id,
+        email: created.email,
+        error,
+      });
+    }
 
     return c.json(
       {

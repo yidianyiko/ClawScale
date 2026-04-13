@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
+import { getCokeUser, storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
 
 interface MessageResponse {
   message?: string;
@@ -26,7 +26,7 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setEnteredToken(params.get('token') ?? '');
-    setEnteredEmail(params.get('email') ?? '');
+    setEnteredEmail(params.get('email') ?? getCokeUser()?.email ?? '');
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

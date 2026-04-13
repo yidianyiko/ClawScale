@@ -119,6 +119,13 @@ export default function CokeLoginPage() {
       </form>
 
       <p className="mt-6 text-sm text-slate-600">
+        Forgot your password?{' '}
+        <Link href="/coke/forgot-password" className="font-medium text-slate-950 underline underline-offset-4">
+          Reset it
+        </Link>
+      </p>
+
+      <p className="mt-3 text-sm text-slate-600">
         Need an account?{' '}
         <Link href="/coke/register" className="font-medium text-slate-950 underline underline-offset-4">
           Create one

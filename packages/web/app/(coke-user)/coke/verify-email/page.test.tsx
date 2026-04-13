@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 
 const pushMock = vi.hoisted(() => vi.fn());
 const postMock = vi.hoisted(() => vi.fn());
+const getCokeUserMock = vi.hoisted(() => vi.fn());
+const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -16,6 +18,11 @@ vi.mock('../../../../lib/coke-user-api', () => ({
   cokeUserApi: {
     post: (...args: unknown[]) => postMock(...args),
   },
+}));
+
+vi.mock('../../../../lib/coke-user-auth', () => ({
+  getCokeUser: () => getCokeUserMock(),
+  storeCokeUserAuth: (...args: unknown[]) => storeCokeUserAuthMock(...args),
 }));
 
 import VerifyEmailPage from './page';
@@ -33,6 +40,8 @@ describe('VerifyEmailPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
     postMock.mockReset();
+    getCokeUserMock.mockReset();
+    storeCokeUserAuthMock.mockReset();
     postMock.mockResolvedValue({
       ok: true,
       data: {
@@ -48,6 +57,7 @@ describe('VerifyEmailPage', () => {
         },
       },
     });
+    getCokeUserMock.mockReturnValue(null);
     window.history.pushState({}, '', '/coke/verify-email?token=verify-token&email=alice@example.com');
 
     container = document.createElement('div');
@@ -104,5 +114,39 @@ describe('VerifyEmailPage', () => {
       email: 'alice@example.com',
     });
     expect(container.textContent).toContain('If the account exists, a verification email has been sent.');
+  });
+
+  it('falls back to the stored Coke user email when the query string omits email', async () => {
+    getCokeUserMock.mockReturnValue({
+      id: 'acct_1',
+      email: 'stored@example.com',
+      display_name: 'Alice',
+    });
+    postMock.mockResolvedValue({
+      ok: true,
+      data: {
+        message: 'If the account exists, a verification email has been sent.',
+      },
+    });
+    window.history.pushState({}, '', '/coke/verify-email?token=verify-token');
+
+    flushSync(() => {
+      root.render(<VerifyEmailPage />);
+    });
+
+    await flushTicks(1);
+
+    expect((container.querySelector('input#email') as HTMLInputElement | null)?.value).toBe(
+      'stored@example.com',
+    );
+
+    const resendButton = container.querySelector('[data-testid="resend-email"]');
+    resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await flushTicks(1);
+
+    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+      email: 'stored@example.com',
+    });
   });
 });

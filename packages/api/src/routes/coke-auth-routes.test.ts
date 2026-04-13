@@ -139,6 +139,55 @@ describe('coke auth routes', () => {
     });
   });
 
+  it('still returns the auth payload when verification email delivery fails during registration', async () => {
+    db.cokeAccount.findUnique.mockResolvedValue(null);
+    db.cokeAccount.create.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: false,
+      status: 'normal',
+    });
+    ensureClawscaleUserForCokeAccount.mockResolvedValue({
+      tenantId: 'ten_1',
+      clawscaleUserId: 'csu_1',
+      created: true,
+      ready: true,
+    });
+    sendCokeEmail.mockRejectedValueOnce(new Error('smtp down'));
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/register', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: 'Alice',
+        email: 'alice@example.com',
+        password: 'password123',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(sendCokeEmail).toHaveBeenCalledOnce();
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        token: 'signed-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: false,
+          status: 'normal',
+        },
+      },
+    });
+  });
+
   it('rejects duplicate email registration', async () => {
     db.cokeAccount.findUnique.mockResolvedValue({
       id: 'acct_existing',
