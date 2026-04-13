@@ -8,6 +8,12 @@ import type { ApiResponse } from '@clawscale/shared';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
 
+interface MessageResponse {
+  message?: string;
+}
+
+const RESEND_SUCCESS_MESSAGE = 'If the account exists, a verification email has been sent.';
+
 export default function VerifyEmailPage() {
   const router = useRouter();
   const [enteredToken, setEnteredToken] = useState('');
@@ -15,6 +21,7 @@ export default function VerifyEmailPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -46,6 +53,29 @@ export default function VerifyEmailPage() {
       setError('Unable to verify your email right now.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    setError('');
+    setMessage('');
+    setResending(true);
+
+    try {
+      const res = await cokeUserApi.post<ApiResponse<MessageResponse>>('/api/coke/verify-email/resend', {
+        email: enteredEmail,
+      });
+
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+
+      setMessage(res.data?.message ?? RESEND_SUCCESS_MESSAGE);
+    } catch {
+      setError('Unable to resend the verification email right now.');
+    } finally {
+      setResending(false);
     }
   }
 
@@ -97,11 +127,21 @@ export default function VerifyEmailPage() {
         <button
           type="submit"
           className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-          disabled={loading}
+          disabled={loading || resending}
         >
           {loading ? 'Verifying...' : 'Verify email'}
         </button>
       </form>
+
+      <button
+        type="button"
+        data-testid="resend-email"
+        className="mt-4 w-full rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-950 transition hover:border-slate-950 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+        onClick={handleResend}
+        disabled={loading || resending || enteredEmail.trim() === ''}
+      >
+        {resending ? 'Sending...' : 'Resend verification email'}
+      </button>
 
       <p className="mt-6 text-sm text-slate-600">
         Need to sign in instead?{' '}

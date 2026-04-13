@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
@@ -67,13 +68,13 @@ export default function BindWechatPage() {
   const router = useRouter();
   const [channel, setChannel] = useState<CokeUserWechatChannelState | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [hasToken, setHasToken] = useState<boolean>(() => getCokeUserToken() != null);
+  const [hasToken] = useState<boolean>(() => getCokeUserToken() != null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [user, setUser] = useState<CokeUser | null>(() => getCokeUser());
+  const [user] = useState<CokeUser | null>(() => getCokeUser());
   const channelRef = useRef<CokeUserWechatChannelState | null>(null);
   const busyActionRef = useRef<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const channelRevisionRef = useRef(0);
@@ -360,9 +361,12 @@ export default function BindWechatPage() {
         {channel.status === 'pending' ? (
           <div className="mt-8 flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white p-6">
             {qrDataUrl ? (
-              <img
+              <Image
                 src={qrDataUrl}
                 alt="Personal Coke WeChat login QR"
+                width={288}
+                height={288}
+                unoptimized
                 className="h-72 w-72 rounded-2xl border border-slate-200"
               />
             ) : (

@@ -80,4 +80,29 @@ describe('VerifyEmailPage', () => {
     });
     expect(pushMock).toHaveBeenCalledWith('/coke/bind-wechat');
   });
+
+  it('resends a verification email from the current email field', async () => {
+    postMock.mockResolvedValue({
+      ok: true,
+      data: {
+        message: 'If the account exists, a verification email has been sent.',
+      },
+    });
+
+    flushSync(() => {
+      root.render(<VerifyEmailPage />);
+    });
+
+    await flushTicks(1);
+
+    const resendButton = container.querySelector('[data-testid="resend-email"]');
+    resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await flushTicks(1);
+
+    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+      email: 'alice@example.com',
+    });
+    expect(container.textContent).toContain('If the account exists, a verification email has been sent.');
+  });
 });

@@ -58,4 +58,19 @@ describe('RenewPage', () => {
     expect(postMock).toHaveBeenCalledWith('/api/coke/checkout');
     expect(openMock).toHaveBeenCalledWith('https://checkout.stripe.com/pay/cs_test_1', '_self');
   });
+
+  it('redirects unauthenticated users without showing the renewal fallback actions', async () => {
+    getCokeUserTokenMock.mockReturnValue(null);
+
+    flushSync(() => {
+      root.render(<RenewPage />);
+    });
+
+    await Promise.resolve();
+
+    expect(replaceMock).toHaveBeenCalledWith('/coke/login?next=/coke/renew');
+    expect(postMock).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain('Return to checkout when you are ready.');
+    expect(container.querySelector('a[href="/coke/login"]')).toBeNull();
+  });
 });

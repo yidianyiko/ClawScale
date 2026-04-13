@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
+const tx = vi.hoisted(() => ({
+  cokeAccount: {
+    update: vi.fn(),
+  },
+  verifyToken: {
+    update: vi.fn(),
+  },
+}));
+
 const db = vi.hoisted(() => ({
   cokeAccount: {
     findUnique: vi.fn(),
@@ -8,7 +17,10 @@ const db = vi.hoisted(() => ({
   },
   verifyToken: {
     create: vi.fn(),
+    findFirst: vi.fn(),
+    deleteMany: vi.fn(),
   },
+  $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
 }));
 
 const ensureClawscaleUserForCokeAccount = vi.hoisted(() => vi.fn());
@@ -26,7 +38,7 @@ vi.mock('../lib/coke-auth.js', async () => {
   );
   return {
     ...actual,
-    hashPassword: vi.fn(async () => 'hashed-password'),
+    hashPassword: vi.fn(async (plain: string) => 'hashed:' + plain),
     verifyPassword: vi.fn(async () => true),
     verifyCokeToken,
     issueVerifyToken: vi.fn(() => ({
@@ -37,12 +49,17 @@ vi.mock('../lib/coke-auth.js', async () => {
   };
 });
 
+import { sha256Hex } from '../lib/coke-auth.js';
 import { cokeAuthRouter } from './coke-auth-routes.js';
 
 describe('coke auth routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.DOMAIN_CLIENT = 'https://coke.example';
+    db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx));
+    db.verifyToken.create.mockResolvedValue({ id: 'vrt_1' });
+    db.verifyToken.deleteMany.mockResolvedValue({ count: 1 });
+    tx.verifyToken.update.mockResolvedValue({ id: 'vrt_1' });
   });
 
   it('registers a new Coke account and sends a verification email', async () => {
@@ -60,7 +77,6 @@ describe('coke auth routes', () => {
       created: true,
       ready: true,
     });
-    db.verifyToken.create.mockResolvedValue({ id: 'vrt_1' });
 
     const app = new Hono();
     app.route('/api/coke', cokeAuthRouter);
@@ -85,7 +101,7 @@ describe('coke auth routes', () => {
       data: {
         email: 'alice@example.com',
         displayName: 'Alice',
-        passwordHash: 'hashed-password',
+        passwordHash: 'hashed:password123',
       },
     });
     expect(ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
@@ -104,7 +120,7 @@ describe('coke auth routes', () => {
       expect.objectContaining({
         to: 'alice@example.com',
         html: expect.stringContaining(
-          'https://coke.example/coke/verify-email?token=plain-token&email=alice@example.com',
+          'https://coke.example/coke/verify-email?token=plain-token&email=alice%40example.com',
         ),
       }),
     );
@@ -147,6 +163,288 @@ describe('coke auth routes', () => {
     expect(res.status).toBe(409);
     expect(db.cokeAccount.create).not.toHaveBeenCalled();
     expect(sendCokeEmail).not.toHaveBeenCalled();
+  });
+
+  it('verifies a Coke email token and returns a fresh auth payload', async () => {
+    db.verifyToken.findFirst.mockResolvedValue({
+      id: 'vrt_1',
+      cokeAccountId: 'acct_1',
+      type: 'email_verify',
+      used: false,
+      expiresAt: new Date(Date.now() + 60_000),
+      account: {
+        id: 'acct_1',
+        email: 'alice@example.com',
+        displayName: 'Alice',
+        emailVerified: false,
+        status: 'normal',
+        passwordHash: 'hashed-password',
+      },
+    });
+    tx.cokeAccount.update.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: true,
+      status: 'normal',
+      passwordHash: 'hashed-password',
+    });
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/verify-email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: ' Alice@Example.com ',
+        token: 'plain-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.verifyToken.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tokenHash: sha256Hex('plain-token'),
+          type: 'email_verify',
+          used: false,
+        }),
+        include: { account: true },
+      }),
+    );
+    expect(tx.cokeAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      data: { emailVerified: true },
+    });
+    expect(tx.verifyToken.update).toHaveBeenCalledWith({
+      where: { id: 'vrt_1' },
+      data: { used: true },
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        token: 'signed-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: '2026-05-10T00:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('rejects invalid or expired email verification tokens', async () => {
+    db.verifyToken.findFirst.mockResolvedValue(null);
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/verify-email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+        token: 'plain-token',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_or_expired_token',
+    });
+  });
+
+  it('resends a verification email for an unverified account', async () => {
+    db.cokeAccount.findUnique.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: false,
+      status: 'normal',
+      passwordHash: 'hashed-password',
+    });
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/verify-email/resend', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.verifyToken.deleteMany).toHaveBeenCalledWith({
+      where: {
+        cokeAccountId: 'acct_1',
+        type: 'email_verify',
+        used: false,
+      },
+    });
+    expect(sendCokeEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'alice@example.com',
+        html: expect.stringContaining('/coke/verify-email?token=plain-token&email=alice%40example.com'),
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'If the account exists, a verification email has been sent.',
+      },
+    });
+  });
+
+  it('returns a generic resend response when the account is missing', async () => {
+    db.cokeAccount.findUnique.mockResolvedValue(null);
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/verify-email/resend', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'missing@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.verifyToken.deleteMany).not.toHaveBeenCalled();
+    expect(sendCokeEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends a password reset email when the account exists', async () => {
+    db.cokeAccount.findUnique.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: true,
+      status: 'normal',
+      passwordHash: 'hashed-password',
+    });
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/forgot-password', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.verifyToken.deleteMany).toHaveBeenCalledWith({
+      where: {
+        cokeAccountId: 'acct_1',
+        type: 'password_reset',
+        used: false,
+      },
+    });
+    expect(sendCokeEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'alice@example.com',
+        html: expect.stringContaining('/coke/reset-password?token=plain-token'),
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'Password reset instructions were sent if the account exists.',
+      },
+    });
+  });
+
+  it('resets the password when the token is valid', async () => {
+    db.verifyToken.findFirst.mockResolvedValue({
+      id: 'vrt_2',
+      cokeAccountId: 'acct_1',
+      type: 'password_reset',
+      used: false,
+      expiresAt: new Date(Date.now() + 60_000),
+      account: {
+        id: 'acct_1',
+        email: 'alice@example.com',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+        passwordHash: 'hashed-password',
+      },
+    });
+    tx.cokeAccount.update.mockResolvedValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: true,
+      status: 'normal',
+      passwordHash: 'hashed:new-password123',
+    });
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/reset-password', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: 'plain-token',
+        password: 'new-password123',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.verifyToken.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tokenHash: sha256Hex('plain-token'),
+          type: 'password_reset',
+          used: false,
+        }),
+      }),
+    );
+    expect(tx.cokeAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      data: { passwordHash: 'hashed:new-password123' },
+    });
+    expect(tx.verifyToken.update).toHaveBeenCalledWith({
+      where: { id: 'vrt_2' },
+      data: { used: true },
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: null,
+    });
   });
 
   it('returns unauthorized when /me is missing a bearer token', async () => {

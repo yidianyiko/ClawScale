@@ -8,11 +8,16 @@ import {
   hashPassword,
   issueVerifyToken,
   normalizeEmail,
+  sha256Hex,
   signCokeToken,
   verifyPassword,
 } from '../lib/coke-auth.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
+
+const VERIFY_TOKEN_TTL_MS = 15 * 60 * 1000;
+const VERIFY_EMAIL_SENT_MESSAGE = 'If the account exists, a verification email has been sent.';
+const PASSWORD_RESET_SENT_MESSAGE = 'Password reset instructions were sent if the account exists.';
 
 const registerSchema = z.object({
   displayName: z.string().trim().min(1).max(120),
@@ -25,18 +30,34 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-function readErrorCode(err: unknown): string | undefined {
-  if (typeof err !== 'object' || err === null || !('code' in err)) {
-    return undefined;
-  }
+const verifyEmailSchema = z.object({
+  email: z.string().trim().email(),
+  token: z.string().trim().min(1),
+});
 
-  const code = (err as { code?: unknown }).code;
-  return typeof code === 'string' ? code : undefined;
+const emailOnlySchema = z.object({
+  email: z.string().trim().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1),
+  password: z.string().min(8),
+});
+
+function getDomainClient(): string {
+  return process.env['DOMAIN_CLIENT']?.replace(/\/$/, '') ?? '';
 }
 
 function getVerifyEmailUrl(token: string, email: string): string {
-  const domainClient = process.env['DOMAIN_CLIENT']?.replace(/\/$/, '') ?? '';
-  return `${domainClient}/coke/verify-email?token=${token}&email=${email}`;
+  return `${getDomainClient()}/coke/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+}
+
+function getResetPasswordUrl(token: string): string {
+  return `${getDomainClient()}/coke/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function createTokenExpiry(): Date {
+  return new Date(Date.now() + VERIFY_TOKEN_TTL_MS);
 }
 
 function serializeCokeAccount(account: {
@@ -66,6 +87,46 @@ function withSubscriptionState(
   };
 }
 
+function isTokenExpired(expiresAt: Date, now = new Date()): boolean {
+  return expiresAt.getTime() <= now.getTime();
+}
+
+async function sendVerificationEmail(account: { id: string; email: string }): Promise<void> {
+  const issued = issueVerifyToken();
+  await db.verifyToken.create({
+    data: {
+      cokeAccountId: account.id,
+      tokenHash: issued.tokenHash,
+      type: 'email_verify',
+      expiresAt: createTokenExpiry(),
+    },
+  });
+
+  await sendCokeEmail({
+    to: account.email,
+    subject: 'Verify your Coke email',
+    html: `<a href="${getVerifyEmailUrl(issued.plainToken, account.email)}">Verify your email</a>`,
+  });
+}
+
+async function sendPasswordResetEmail(account: { id: string; email: string }): Promise<void> {
+  const issued = issueVerifyToken();
+  await db.verifyToken.create({
+    data: {
+      cokeAccountId: account.id,
+      tokenHash: issued.tokenHash,
+      type: 'password_reset',
+      expiresAt: createTokenExpiry(),
+    },
+  });
+
+  await sendCokeEmail({
+    to: account.email,
+    subject: 'Reset your Coke password',
+    html: `<a href="${getResetPasswordUrl(issued.plainToken)}">Reset your password</a>`,
+  });
+}
+
 export const cokeAuthRouter = new Hono()
   .post('/register', zValidator('json', registerSchema), async (c) => {
     const input = c.req.valid('json');
@@ -91,21 +152,7 @@ export const cokeAuthRouter = new Hono()
       displayName: created.displayName,
     });
 
-    const { plainToken, tokenHash } = issueVerifyToken();
-    await db.verifyToken.create({
-      data: {
-        cokeAccountId: created.id,
-        tokenHash,
-        type: 'email_verify',
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-      },
-    });
-
-    await sendCokeEmail({
-      to: created.email,
-      subject: 'Verify your Coke email',
-      html: `<a href="${getVerifyEmailUrl(plainToken, created.email)}">Verify your email</a>`,
-    });
+    await sendVerificationEmail({ id: created.id, email: created.email });
 
     return c.json(
       {
@@ -151,6 +198,161 @@ export const cokeAuthRouter = new Hono()
         token: signCokeToken({ sub: account.id, email: account.email }),
         user: withSubscriptionState(serializeCokeAccount(account), access),
       },
+    });
+  })
+  .post('/verify-email', zValidator('json', verifyEmailSchema), async (c) => {
+    const input = c.req.valid('json');
+    const email = normalizeEmail(input.email);
+    const tokenHash = sha256Hex(input.token);
+
+    const token = await db.verifyToken.findFirst({
+      where: {
+        tokenHash,
+        type: 'email_verify',
+        used: false,
+        account: {
+          is: {
+            email,
+          },
+        },
+      },
+      include: {
+        account: true,
+      },
+    });
+
+    if (!token || isTokenExpired(token.expiresAt)) {
+      return c.json({ ok: false, error: 'invalid_or_expired_token' }, 400);
+    }
+
+    if (!token.account) {
+      return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
+    const updatedAccount = await db.$transaction(async (tx) => {
+      const account = await tx.cokeAccount.update({
+        where: { id: token.account.id },
+        data: { emailVerified: true },
+      });
+
+      await tx.verifyToken.update({
+        where: { id: token.id },
+        data: { used: true },
+      });
+
+      return account;
+    });
+
+    const access = await resolveCokeAccountAccess({
+      account: {
+        id: updatedAccount.id,
+        status: updatedAccount.status,
+        emailVerified: updatedAccount.emailVerified,
+        displayName: updatedAccount.displayName,
+      },
+    });
+
+    return c.json({
+      ok: true,
+      data: {
+        token: signCokeToken({ sub: updatedAccount.id, email: updatedAccount.email }),
+        user: withSubscriptionState(serializeCokeAccount(updatedAccount), access),
+      },
+    });
+  })
+  .post('/verify-email/resend', zValidator('json', emailOnlySchema), async (c) => {
+    const input = c.req.valid('json');
+    const email = normalizeEmail(input.email);
+    const account = await db.cokeAccount.findUnique({ where: { email } });
+
+    if (!account || account.emailVerified) {
+      return c.json({
+        ok: true,
+        data: {
+          message: VERIFY_EMAIL_SENT_MESSAGE,
+        },
+      });
+    }
+
+    await db.verifyToken.deleteMany({
+      where: {
+        cokeAccountId: account.id,
+        type: 'email_verify',
+        used: false,
+      },
+    });
+
+    await sendVerificationEmail({ id: account.id, email: account.email });
+
+    return c.json({
+      ok: true,
+      data: {
+        message: VERIFY_EMAIL_SENT_MESSAGE,
+      },
+    });
+  })
+  .post('/forgot-password', zValidator('json', emailOnlySchema), async (c) => {
+    const input = c.req.valid('json');
+    const email = normalizeEmail(input.email);
+    const account = await db.cokeAccount.findUnique({ where: { email } });
+
+    if (account) {
+      await db.verifyToken.deleteMany({
+        where: {
+          cokeAccountId: account.id,
+          type: 'password_reset',
+          used: false,
+        },
+      });
+
+      await sendPasswordResetEmail({ id: account.id, email: account.email });
+    }
+
+    return c.json({
+      ok: true,
+      data: {
+        message: PASSWORD_RESET_SENT_MESSAGE,
+      },
+    });
+  })
+  .post('/reset-password', zValidator('json', resetPasswordSchema), async (c) => {
+    const input = c.req.valid('json');
+    const tokenHash = sha256Hex(input.token);
+    const token = await db.verifyToken.findFirst({
+      where: {
+        tokenHash,
+        type: 'password_reset',
+        used: false,
+      },
+      include: {
+        account: true,
+      },
+    });
+
+    if (!token || isTokenExpired(token.expiresAt)) {
+      return c.json({ ok: false, error: 'invalid_or_expired_token' }, 400);
+    }
+
+    if (!token.account) {
+      return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
+    const passwordHash = await hashPassword(input.password);
+    await db.$transaction(async (tx) => {
+      await tx.cokeAccount.update({
+        where: { id: token.account.id },
+        data: { passwordHash },
+      });
+
+      await tx.verifyToken.update({
+        where: { id: token.id },
+        data: { used: true },
+      });
+    });
+
+    return c.json({
+      ok: true,
+      data: null,
     });
   })
   .get('/me', requireCokeUserAuth, async (c) => {

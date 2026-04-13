@@ -10,12 +10,12 @@ import { getCokeUserToken } from '../../../../lib/coke-user-auth';
 export default function RenewPage() {
   const router = useRouter();
   const [error, setError] = useState('');
+  const [hasToken] = useState(() => getCokeUserToken() != null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getCokeUserToken()) {
+    if (!hasToken) {
       router.replace('/coke/login?next=/coke/renew');
-      setLoading(false);
       return;
     }
 
@@ -46,7 +46,11 @@ export default function RenewPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [hasToken, router]);
+
+  if (!hasToken) {
+    return null;
+  }
 
   return (
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">

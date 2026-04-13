@@ -6,8 +6,18 @@ export interface SendCokeEmailInput {
   html: string;
 }
 
-function getEmailFrom(): string {
+function isEnabled(value: string | undefined): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(value?.trim().toLowerCase() ?? '');
+}
+
+function getEmailFromAddress(): string {
   return process.env['EMAIL_FROM']?.trim() || 'noreply@coke.app';
+}
+
+function getEmailFrom(): string {
+  const fromAddress = getEmailFromAddress();
+  const fromName = process.env['EMAIL_FROM_NAME']?.trim();
+  return fromName ? '"' + fromName + '" <' + fromAddress + '>' : fromAddress;
 }
 
 function hasMailgunConfig(): boolean {
@@ -15,7 +25,7 @@ function hasMailgunConfig(): boolean {
 }
 
 function hasSmtpConfig(): boolean {
-  return Boolean(process.env['EMAIL_HOST']?.trim());
+  return Boolean(process.env['EMAIL_SERVICE']?.trim() || process.env['EMAIL_HOST']?.trim());
 }
 
 async function sendViaMailgun(input: SendCokeEmailInput): Promise<void> {
@@ -32,38 +42,63 @@ async function sendViaMailgun(input: SendCokeEmailInput): Promise<void> {
     html: input.html,
   });
 
-  const auth = Buffer.from(`api:${apiKey}`).toString('base64');
-  const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+  const auth = Buffer.from('api:' + apiKey).toString('base64');
+  const response = await fetch('https://api.mailgun.net/v3/' + domain + '/messages', {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${auth}`,
+      Authorization: 'Basic ' + auth,
     },
     body,
   });
 
   if (!response.ok) {
-    throw new Error(`mailgun_send_failed:${response.status}`);
+    throw new Error('mailgun_send_failed:' + response.status);
   }
 }
 
 async function sendViaSmtp(input: SendCokeEmailInput): Promise<void> {
+  const service = process.env['EMAIL_SERVICE']?.trim();
   const host = process.env['EMAIL_HOST']?.trim();
   const port = Number(process.env['EMAIL_PORT']?.trim() || '587');
-  if (!host) {
+  const encryption = process.env['EMAIL_ENCRYPTION']?.trim().toLowerCase();
+  if (!service && !host) {
     throw new Error('smtp_config_missing');
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: process.env['EMAIL_USERNAME'] || process.env['EMAIL_PASSWORD']
-      ? {
-          user: process.env['EMAIL_USERNAME'],
-          pass: process.env['EMAIL_PASSWORD'],
-        }
-      : undefined,
-  });
+  const transporterOptions: Record<string, unknown> = {
+    secure: encryption === 'tls' || (!encryption && port === 465),
+    requireTls: encryption === 'starttls',
+    tls: {
+      rejectUnauthorized: !isEnabled(process.env['EMAIL_ALLOW_SELFSIGNED']),
+    },
+  };
+
+  const encryptionHostname = process.env['EMAIL_ENCRYPTION_HOSTNAME']?.trim();
+  if (encryptionHostname) {
+    (transporterOptions['tls'] as { servername?: string }).servername = encryptionHostname;
+  }
+
+  if (service) {
+    transporterOptions['service'] = service;
+  } else {
+    transporterOptions['host'] = host;
+    transporterOptions['port'] = port;
+  }
+
+  const username = process.env['EMAIL_USERNAME']?.trim();
+  const password = process.env['EMAIL_PASSWORD']?.trim();
+  if (username && password) {
+    transporterOptions['auth'] = {
+      user: username,
+      pass: password,
+    };
+  } else if (username || password) {
+    console.warn(
+      '[coke-email] EMAIL_USERNAME and EMAIL_PASSWORD must both be set for authenticated SMTP, or both omitted for unauthenticated SMTP.',
+    );
+  }
+
+  const transporter = nodemailer.createTransport(transporterOptions);
 
   await transporter.sendMail({
     from: getEmailFrom(),
