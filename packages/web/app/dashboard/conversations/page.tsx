@@ -28,7 +28,7 @@ function ConversationDetail({ id }: { id: string }) {
     setDeleting(true);
     const res = await api.delete<{ ok: boolean }>(`/api/conversations/${id}`);
     if (res.ok) {
-      router.push('/conversations');
+      router.push('/dashboard/conversations');
     } else {
       setDeleting(false);
       alert('Failed to delete conversation.');
@@ -39,7 +39,7 @@ function ConversationDetail({ id }: { id: string }) {
 
   return (
     <div className="p-8 max-w-3xl">
-      <Link href="/conversations" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors">
+      <Link href="/dashboard/conversations" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back
       </Link>
 
@@ -126,12 +126,12 @@ function ConversationList() {
         <div className="card p-12 text-center">
           <MessageSquare className="h-10 w-10 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">No conversations yet. Connect a channel to get started.</p>
-          <Link href="/channels" className="btn-primary inline-flex mt-4">Go to Channels</Link>
+          <Link href="/dashboard/channels" className="btn-primary inline-flex mt-4">Go to Channels</Link>
         </div>
       ) : (
         <div className="card divide-y divide-gray-100">
           {rows.map((conv) => (
-            <Link key={conv.id} href={`/conversations?id=${conv.id}`}
+            <Link key={conv.id} href={`/dashboard/conversations?id=${conv.id}`}
               className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors group">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-600 text-sm font-semibold">
                 {(conv.endUser?.name ?? conv.endUser?.externalId ?? '?')[0]?.toUpperCase()}

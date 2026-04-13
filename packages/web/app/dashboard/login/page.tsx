@@ -21,7 +21,7 @@ export default function Login() {
       const res = await api.post<ApiResponse<AuthResult>>('/auth/login', { email, password });
       if (!res.ok) { setError(res.error); return; }
       storeAuth(res.data);
-      router.push('/');
+      router.push('/dashboard');
     } finally { setLoading(false); }
   }
 
@@ -57,7 +57,7 @@ export default function Login() {
 
           <p className="mt-6 text-center text-sm text-gray-500">
             No workspace yet?{' '}
-            <Link href="/register" className="text-teal-600 hover:underline font-medium">Create one free</Link>
+            <Link href="/dashboard/register" className="text-teal-600 hover:underline font-medium">Create one free</Link>
           </p>
         </div>
       </div>

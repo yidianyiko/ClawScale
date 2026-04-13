@@ -4,18 +4,18 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
-import { isAuthenticated, clearAuth, getUser, getTenant } from '@/lib/auth';
-import { cn } from '@/lib/utils';
+import { isAuthenticated, clearAuth, getUser, getTenant } from '../../lib/auth';
+import { cn } from '../../lib/utils';
 
 const navItems = [
-  { href: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { href: '/conversations', icon: MessageSquare, label: 'Conversations' },
-  { href: '/channels', icon: Radio, label: 'Channels' },
-  { href: '/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
-  { href: '/workflows', icon: Zap, label: 'Workflows' },
-  { href: '/end-users', icon: UserCheck, label: 'End Users' },
-  { href: '/users', icon: Users, label: 'Team' },
-  { href: '/settings', icon: Settings, label: 'Settings' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { href: '/dashboard/conversations', icon: MessageSquare, label: 'Conversations' },
+  { href: '/dashboard/channels', icon: Radio, label: 'Channels' },
+  { href: '/dashboard/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
+  { href: '/dashboard/workflows', icon: Zap, label: 'Workflows' },
+  { href: '/dashboard/end-users', icon: UserCheck, label: 'End Users' },
+  { href: '/dashboard/users', icon: Users, label: 'Team' },
+  { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace('/login');
+      router.replace('/dashboard/login');
     } else {
       setReady(true);
     }
@@ -38,7 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   function handleLogout() {
     clearAuth();
-    router.push('/login');
+    router.push('/dashboard/login');
   }
 
   return (

@@ -50,13 +50,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <QuickCard to="/conversations" title="Conversations"
+        <QuickCard to="/dashboard/conversations" title="Conversations"
           desc="View all conversations end-users are having with your bot."
           icon={<MessageSquare className="h-5 w-5" />} />
-        <QuickCard to="/channels" title="Channels"
+        <QuickCard to="/dashboard/channels" title="Channels"
           desc="Connect WhatsApp, Telegram, Slack, and more to your bot."
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/workflows" title="Workflows"
+        <QuickCard to="/dashboard/workflows" title="Workflows"
           desc="Define scripts and API integrations the bot can invoke."
           icon={<Zap className="h-5 w-5" />} />
       </div>
