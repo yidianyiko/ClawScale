@@ -30,7 +30,7 @@ describe('cokeUserApi empty-body success handling', () => {
         ok: true,
         status: 204,
         text: async () => '',
-      })) as typeof fetch,
+      })) as unknown as typeof fetch,
     );
 
     await expect(cokeUserApi.delete('/api/coke/wechat-channel')).resolves.toBeUndefined();
@@ -45,7 +45,7 @@ describe('cokeUserApi empty-body success handling', () => {
         ok: false,
         status: 500,
         text: async () => '',
-      })) as typeof fetch,
+      })) as unknown as typeof fetch,
     );
 
     await expect(cokeUserApi.delete('/api/coke/wechat-channel')).rejects.toThrow('HTTP 500');

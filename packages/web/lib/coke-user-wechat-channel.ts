@@ -1,4 +1,5 @@
-import type { ApiResponse } from '@clawscale/shared';
+import type { ApiResponse } from '../../shared/src/types/api';
+import type { LocaleMessages } from './i18n';
 import { cokeUserApi } from './coke-user-api';
 
 export type CokeUserWechatChannelStatus =
@@ -26,6 +27,8 @@ export interface CokeUserWechatChannelViewModel {
   secondaryActionLabel?: string;
 }
 
+type CokeUserWechatChannelViewModelMessages = LocaleMessages['cokeUserPages']['bindWechat']['viewModel'];
+
 function normalizeEmptyArchiveResponse(
   response: ApiResponse<CokeUserWechatChannelState> | undefined,
 ): ApiResponse<CokeUserWechatChannelState> {
@@ -41,51 +44,54 @@ function normalizeEmptyArchiveResponse(
 
 export function getCokeUserWechatChannelViewModel(
   channel: Pick<CokeUserWechatChannelState, 'status' | 'masked_identity' | 'error'> | null,
+  copy: CokeUserWechatChannelViewModelMessages,
 ): CokeUserWechatChannelViewModel {
   switch (channel?.status) {
     case 'disconnected':
       return {
-        eyebrow: 'Channel created',
-        title: 'Connect WeChat',
-        description: 'Your personal WeChat channel exists. Start a QR login session to bring it online.',
-        primaryActionLabel: 'Connect WeChat',
+        eyebrow: copy.disconnected.eyebrow,
+        title: copy.disconnected.title,
+        description: copy.disconnected.description,
+        primaryActionLabel: copy.disconnected.primaryActionLabel,
       };
     case 'pending':
       return {
-        eyebrow: 'QR login in progress',
-        title: 'Scan the QR code to connect',
-        description: 'Use the QR below to log your personal channel into WeChat.',
-        primaryActionLabel: 'Refresh QR',
+        eyebrow: copy.pending.eyebrow,
+        title: copy.pending.title,
+        description: copy.pending.description,
+        primaryActionLabel: copy.pending.primaryActionLabel,
       };
     case 'connected':
       return {
-        eyebrow: 'Connected',
-        title: 'WeChat is connected',
-        description: `Your personal channel is live${channel.masked_identity ? ` as ${channel.masked_identity}` : ''}.`,
-        primaryActionLabel: 'Disconnect WeChat',
+        eyebrow: copy.connected.eyebrow,
+        title: copy.connected.title,
+        description: channel.masked_identity
+          ? copy.connected.descriptionWithIdentity.replace('{identity}', channel.masked_identity)
+          : copy.connected.descriptionWithoutIdentity,
+        primaryActionLabel: copy.connected.primaryActionLabel,
       };
     case 'error':
       return {
-        eyebrow: 'Connection error',
-        title: 'Reconnect or archive your channel',
-        description: channel.error ?? 'The last connect attempt failed. You can retry or archive this channel.',
-        primaryActionLabel: 'Reconnect',
-        secondaryActionLabel: 'Archive channel',
+        eyebrow: copy.error.eyebrow,
+        title: copy.error.title,
+        description: copy.error.descriptionFallback,
+        primaryActionLabel: copy.error.primaryActionLabel,
+        secondaryActionLabel: copy.error.secondaryActionLabel,
       };
     case 'archived':
       return {
-        eyebrow: 'Archived',
-        title: 'This WeChat channel is archived',
-        description: 'Create a fresh personal channel if you want to use WeChat again.',
-        primaryActionLabel: 'Create my WeChat channel again',
+        eyebrow: copy.archived.eyebrow,
+        title: copy.archived.title,
+        description: copy.archived.description,
+        primaryActionLabel: copy.archived.primaryActionLabel,
       };
     case 'missing':
     default:
       return {
-        eyebrow: 'No channel yet',
-        title: 'Create my WeChat channel',
-        description: 'Create a personal WeChat channel for this Coke account, then connect it with a QR login.',
-        primaryActionLabel: 'Create my WeChat channel',
+        eyebrow: copy.missing.eyebrow,
+        title: copy.missing.title,
+        description: copy.missing.description,
+        primaryActionLabel: copy.missing.primaryActionLabel,
       };
   }
 }

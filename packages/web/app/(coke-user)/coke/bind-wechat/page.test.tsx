@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
+import { LocaleProvider } from '../../../../components/locale-provider';
 
 const replaceMock = vi.hoisted(() => vi.fn());
 const getCokeUserTokenMock = vi.hoisted(() => vi.fn());
@@ -93,6 +94,16 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+function renderWithLocale(root: Root, locale: 'en' | 'zh') {
+  flushSync(() => {
+    root.render(
+      <LocaleProvider initialLocale={locale}>
+        <BindWechatPage />
+      </LocaleProvider>,
+    );
+  });
+}
+
 describe('BindWechatPage initial load failure', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -130,9 +141,7 @@ describe('BindWechatPage initial load failure', () => {
       error: 'Temporary bridge failure',
     });
 
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'en');
     await flushTicks(5);
 
     expect(container.textContent).toContain('Unable to load your WeChat channel');
@@ -174,15 +183,14 @@ describe('BindWechatPage blocked access states', () => {
   });
 
   it('shows the blocked access prompt and does not load channel state', async () => {
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'zh');
     await flushTicks(2);
 
     expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Verify your email and renew your subscription');
+    expect(container.textContent).toContain('先完成邮箱验证和订阅续费');
     expect(container.querySelector('a[href="/coke/verify-email"]')).toBeTruthy();
     expect(container.querySelector('a[href="/coke/renew"]')).toBeTruthy();
+    expect(container.textContent).not.toContain('Verify your email and renew your subscription');
   });
 });
 
@@ -229,9 +237,7 @@ describe('BindWechatPage archive action', () => {
       },
     });
 
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'en');
     await flushTicks(5);
 
     const archiveButton = Array.from(container.querySelectorAll('button')).find(
@@ -292,9 +298,7 @@ describe('BindWechatPage concurrent mutation guard', () => {
       },
     });
 
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'en');
     await flushTicks(5);
 
     const reconnectButton = Array.from(container.querySelectorAll('button')).find((button) =>
@@ -347,9 +351,7 @@ describe('BindWechatPage suspended account state', () => {
   });
 
   it('shows a suspended account message without loading channel state', async () => {
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'en');
     await flushTicks(2);
 
     expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
@@ -433,9 +435,7 @@ describe('BindWechatPage refresh ordering', () => {
       },
     });
 
-    flushSync(() => {
-      root.render(<BindWechatPage />);
-    });
+    renderWithLocale(root, 'en');
 
     const freshExpiryText = new Date(1710003600 * 1000).toLocaleString();
     const staleExpiryText = new Date(1709990000 * 1000).toLocaleString();

@@ -1,4 +1,6 @@
-import type { AuthResult, PublicUser, Tenant } from '@clawscale/shared';
+import type { AuthResult } from '../../shared/src/types/api';
+import type { Tenant } from '../../shared/src/types/tenant';
+import type { PublicUser } from '../../shared/src/types/user';
 
 const TOKEN_KEY = 'cs_token';
 const USER_KEY = 'cs_user';

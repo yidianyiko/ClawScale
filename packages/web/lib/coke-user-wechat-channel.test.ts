@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cokeUserApi } from './coke-user-api';
+import { messages } from './i18n';
 import {
   archiveCokeUserWechatChannel,
   connectCokeUserWechatChannel,
@@ -60,15 +61,17 @@ describe('coke-user-wechat-channel api helpers', () => {
 
 describe('getCokeUserWechatChannelViewModel', () => {
   it('maps lifecycle states to the expected copy', () => {
-    expect(getCokeUserWechatChannelViewModel(null)).toMatchObject({
+    const copy = messages.en.cokeUserPages.bindWechat.viewModel;
+
+    expect(getCokeUserWechatChannelViewModel(null, copy)).toMatchObject({
       eyebrow: 'No channel yet',
       primaryActionLabel: 'Create my WeChat channel',
     });
-    expect(getCokeUserWechatChannelViewModel({ status: 'disconnected' })).toMatchObject({
+    expect(getCokeUserWechatChannelViewModel({ status: 'disconnected' }, copy)).toMatchObject({
       title: 'Connect WeChat',
       primaryActionLabel: 'Connect WeChat',
     });
-    expect(getCokeUserWechatChannelViewModel({ status: 'pending' })).toMatchObject({
+    expect(getCokeUserWechatChannelViewModel({ status: 'pending' }, copy)).toMatchObject({
       title: 'Scan the QR code to connect',
       primaryActionLabel: 'Refresh QR',
     });
@@ -76,7 +79,7 @@ describe('getCokeUserWechatChannelViewModel', () => {
       getCokeUserWechatChannelViewModel({
         status: 'connected',
         masked_identity: 'wx***1234',
-      }),
+      }, copy),
     ).toMatchObject({
       eyebrow: 'Connected',
       primaryActionLabel: 'Disconnect WeChat',
@@ -86,14 +89,14 @@ describe('getCokeUserWechatChannelViewModel', () => {
       getCokeUserWechatChannelViewModel({
         status: 'error',
         error: 'Temporary bridge failure',
-      }),
+      }, copy),
     ).toMatchObject({
       eyebrow: 'Connection error',
       primaryActionLabel: 'Reconnect',
       secondaryActionLabel: 'Archive channel',
-      description: 'Temporary bridge failure',
+      description: 'The last connect attempt failed. You can retry or archive this channel.',
     });
-    expect(getCokeUserWechatChannelViewModel({ status: 'archived' })).toMatchObject({
+    expect(getCokeUserWechatChannelViewModel({ status: 'archived' }, copy)).toMatchObject({
       title: 'This WeChat channel is archived',
       primaryActionLabel: 'Create my WeChat channel again',
     });
