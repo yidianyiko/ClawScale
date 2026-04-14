@@ -4,14 +4,19 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, MessageSquare, ChevronRight, Trash2, ArrowLeft, User, Bot } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { useLocale } from '@/components/locale-provider';
+import { getDashboardCopy } from '@/lib/dashboard-copy';
 import { formatDateTime, cn } from '@/lib/utils';
-import type { ApiResponse, Conversation } from '@clawscale/shared';
+import type { ApiResponse } from '../../../../shared/src/types/api';
+import type { Conversation } from '../../../../shared/src/types/conversation';
 
 function ConversationDetail({ id }: { id: string }) {
   const router = useRouter();
+  const { locale } = useLocale();
   const [conv, setConv] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const copy = getDashboardCopy(locale);
 
   useEffect(() => {
     api.get<ApiResponse<Conversation>>(`/api/conversations/${id}`).then((r) => {
@@ -21,26 +26,29 @@ function ConversationDetail({ id }: { id: string }) {
   }, [id]);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-teal-500" /></div>;
-  if (!conv) return <div className="p-8 text-gray-500">Conversation not found.</div>;
+  if (!conv) return <div className="p-8 text-gray-500">{copy.conversations.notFound}</div>;
 
   async function handleDelete() {
-    if (!confirm('Delete this conversation and all its messages? This cannot be undone.')) return;
+    if (!confirm(copy.conversations.confirmDeleteDetail)) return;
     setDeleting(true);
     const res = await api.delete<{ ok: boolean }>(`/api/conversations/${id}`);
     if (res.ok) {
       router.push('/dashboard/conversations');
     } else {
       setDeleting(false);
-      alert('Failed to delete conversation.');
+      alert(copy.conversations.deleteFailed);
     }
   }
 
-  const displayName = conv.endUser?.name ?? conv.endUser?.externalId ?? 'Anonymous';
+  const displayName = conv.endUser?.name ?? conv.endUser?.externalId ?? copy.conversations.anonymous;
+  const channelTypeLabel = conv.channel?.type
+    ? copy.onboard.channelLabels[conv.channel.type] ?? conv.channel.type
+    : null;
 
   return (
     <div className="p-8 max-w-3xl">
       <Link href="/dashboard/conversations" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> {copy.conversations.back}
       </Link>
 
       <div className="card p-5 mb-6 flex items-center gap-4">
@@ -50,17 +58,17 @@ function ConversationDetail({ id }: { id: string }) {
         <div className="flex-1">
           <p className="font-semibold text-gray-900">{displayName}</p>
           <p className="text-sm text-gray-400">
-            {conv.channel?.name} · {conv.channel?.type}
+            {conv.channel?.name}{channelTypeLabel ? ` · ${channelTypeLabel}` : ''}
             {conv.endUser?.email && ` · ${conv.endUser.email}`}
           </p>
         </div>
         {conv.endUser?.status === 'blocked' && (
-          <span className="badge-red text-xs">Blocked</span>
+          <span className="badge-red text-xs">{copy.conversations.blocked}</span>
         )}
         <button onClick={handleDelete} disabled={deleting}
           className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 transition-colors disabled:opacity-50">
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-          Delete
+          {copy.conversations.delete}
         </button>
       </div>
 
@@ -95,8 +103,10 @@ export default function Conversations() {
 }
 
 function ConversationList() {
+  const { locale } = useLocale();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const copy = getDashboardCopy(locale);
 
   useEffect(() => {
     api.get<ApiResponse<Conversation[]>>('/api/conversations').then((r) => {
@@ -108,7 +118,7 @@ function ConversationList() {
   async function handleDelete(e: React.MouseEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm('Delete this conversation and all its messages?')) return;
+    if (!confirm(copy.conversations.confirmDeleteList)) return;
     const res = await api.delete<{ ok: boolean }>(`/api/conversations/${id}`);
     if (res.ok) setRows((prev) => prev.filter((c) => c.id !== id));
   }
@@ -118,15 +128,15 @@ function ConversationList() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Conversations</h1>
-        <p className="text-gray-500 mt-1">All conversations end-users are having with your bot.</p>
+        <h1 className="text-2xl font-semibold text-gray-900">{copy.conversations.title}</h1>
+        <p className="text-gray-500 mt-1">{copy.conversations.subtitle}</p>
       </div>
 
       {rows.length === 0 ? (
         <div className="card p-12 text-center">
           <MessageSquare className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">No conversations yet. Connect a channel to get started.</p>
-          <Link href="/dashboard/channels" className="btn-primary inline-flex mt-4">Go to Channels</Link>
+          <p className="text-gray-500">{copy.conversations.empty}</p>
+          <Link href="/dashboard/channels" className="btn-primary inline-flex mt-4">{copy.conversations.goToChannels}</Link>
         </div>
       ) : (
         <div className="card divide-y divide-gray-100">
@@ -138,21 +148,21 @@ function ConversationList() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {conv.endUser?.name ?? conv.endUser?.externalId ?? 'Anonymous'}
+                  {conv.endUser?.name ?? conv.endUser?.externalId ?? copy.conversations.anonymous}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {conv.channel?.name} · {conv.channel?.type} · {(conv._count?.messages ?? 0)} messages
+                  {conv.channel?.name} · {copy.onboard.channelLabels[conv.channel?.type ?? ''] ?? conv.channel?.type} · {copy.conversations.messages(conv._count?.messages ?? 0)}
                 </p>
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs text-gray-400">{formatDateTime(conv.updatedAt)}</p>
                 {conv.endUser?.status === 'blocked' && (
-                  <span className="text-xs text-red-500 font-medium">Blocked</span>
+                  <span className="text-xs text-red-500 font-medium">{copy.conversations.blocked}</span>
                 )}
               </div>
               <button onClick={(e) => handleDelete(e, conv.id)}
                 className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
-                title="Delete conversation">
+                title={copy.conversations.deleteTitle}>
                 <Trash2 className="h-4 w-4" />
               </button>
               <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-teal-500 transition-colors shrink-0" />

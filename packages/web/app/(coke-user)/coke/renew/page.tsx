@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '@clawscale/shared';
+import type { ApiResponse } from '../../../../../shared/src/types/api';
+import { useLocale } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { getCokeUserToken } from '../../../../lib/coke-user-auth';
 
 export default function RenewPage() {
+  const { messages } = useLocale();
+  const copy = messages.cokeUserPages.renew;
   const router = useRouter();
   const [error, setError] = useState('');
   const [hasToken] = useState(() => getCokeUserToken() != null);
   const [loading, setLoading] = useState(true);
+  const getGenericError = useEffectEvent(() => copy.genericError);
 
   useEffect(() => {
     if (!hasToken) {
@@ -29,7 +33,7 @@ export default function RenewPage() {
         }
 
         if (!res.ok) {
-          setError(res.error ?? 'Unable to start renewal right now.');
+          setError(getGenericError());
           setLoading(false);
           return;
         }
@@ -38,7 +42,7 @@ export default function RenewPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          setError('Unable to start renewal right now.');
+          setError(getGenericError());
           setLoading(false);
         }
       });
@@ -46,7 +50,7 @@ export default function RenewPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasToken, router]);
+  }, [getGenericError, hasToken, router]);
 
   if (!hasToken) {
     return null;
@@ -54,9 +58,9 @@ export default function RenewPage() {
 
   return (
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Renew your access</h1>
+      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">
-        {error || (loading ? 'Preparing your renewal checkout...' : 'Return to checkout when you are ready.')}
+        {error || (loading ? copy.preparing : copy.ready)}
       </p>
 
       {!loading || error ? (
@@ -65,13 +69,13 @@ export default function RenewPage() {
             href="/coke/login"
             className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
           >
-            Sign in
+            {copy.signIn}
           </Link>
           <Link
             href="/coke/bind-wechat"
             className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
           >
-            Back to setup
+            {copy.backToSetup}
           </Link>
         </div>
       ) : null}

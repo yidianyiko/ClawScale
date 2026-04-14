@@ -6,22 +6,27 @@ import Image from 'next/image';
 import { LayoutDashboard, Users, UserCheck, Radio, Settings, LogOut, MessageSquare, Zap, BotMessageSquare } from 'lucide-react';
 import { isAuthenticated, clearAuth, getUser, getTenant } from '../../lib/auth';
 import { cn } from '../../lib/utils';
+import { useLocale } from '../../components/locale-provider';
+import { LocaleSwitch } from '../../components/locale-switch';
+import { getDashboardCopy } from '../../lib/dashboard-copy';
 
-const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { href: '/dashboard/conversations', icon: MessageSquare, label: 'Conversations' },
-  { href: '/dashboard/channels', icon: Radio, label: 'Channels' },
-  { href: '/dashboard/ai-backends', icon: BotMessageSquare, label: 'AI Backends' },
-  { href: '/dashboard/workflows', icon: Zap, label: 'Workflows' },
-  { href: '/dashboard/end-users', icon: UserCheck, label: 'End Users' },
-  { href: '/dashboard/users', icon: Users, label: 'Team' },
-  { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
-];
+const navIcons = {
+  '/dashboard': LayoutDashboard,
+  '/dashboard/conversations': MessageSquare,
+  '/dashboard/channels': Radio,
+  '/dashboard/ai-backends': BotMessageSquare,
+  '/dashboard/workflows': Zap,
+  '/dashboard/end-users': UserCheck,
+  '/dashboard/users': Users,
+  '/dashboard/settings': Settings,
+} as const;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { locale, messages } = useLocale();
   const [ready, setReady] = useState(false);
+  const copy = getDashboardCopy(locale);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -58,8 +63,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
+        <div className="mx-4 mt-4 rounded-lg border border-white/10 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-white/40">{messages.common.languageLabel}</div>
+          <div className="mt-2 text-sm text-white/80">
+            <LocaleSwitch />
+          </div>
+        </div>
+
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map(({ href, icon: Icon, label, exact }) => {
+          {copy.layout.nav.map(({ href, label, exact }) => {
+            const Icon = navIcons[href as keyof typeof navIcons];
             const isActive = exact ? pathname === href : pathname.startsWith(href);
             return (
               <Link
@@ -86,9 +99,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-white truncate">{user?.name}</p>
-              <p className="text-xs text-white/40 capitalize">{user?.role}</p>
+              <p className="text-xs text-white/40">{user?.role ? copy.layout.roleLabels[user.role] ?? user.role : ''}</p>
             </div>
-            <button onClick={handleLogout} className="text-white/40 hover:text-white transition-colors" title="Sign out">
+            <button
+              onClick={handleLogout}
+              className="text-white/40 hover:text-white transition-colors"
+              title={copy.layout.signOutTitle}
+              aria-label={copy.layout.signOutTitle}
+            >
               <LogOut className="h-4 w-4" />
             </button>
           </div>

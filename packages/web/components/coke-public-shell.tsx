@@ -1,6 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { LocaleSwitch } from './locale-switch';
+import { useLocale } from './locale-provider';
 import { cn } from '../lib/utils';
 
 interface CokePublicShellProps {
@@ -9,14 +13,9 @@ interface CokePublicShellProps {
   contentClassName?: string;
 }
 
-const navItems = [
-  { href: '/#platforms', label: 'Platforms', sublabel: '平台' },
-  { href: '/#features', label: 'Features', sublabel: '功能' },
-  { href: '/#architecture', label: 'Architecture', sublabel: '架构' },
-  { href: '/#contact', label: 'Contact', sublabel: '联系' },
-];
-
 export function CokePublicShell({ children, className, contentClassName }: CokePublicShellProps) {
+  const { messages } = useLocale();
+
   return (
     <div
       className={cn(
@@ -32,31 +31,31 @@ export function CokePublicShell({ children, className, contentClassName }: CokeP
             </span>
             <div>
               <p className="text-base font-semibold tracking-tight">Coke AI</p>
-              <p className="text-xs text-slate-400">An AI Partner That Grows With You</p>
+              <p className="text-xs text-slate-400">{messages.publicShell.brandTagline}</p>
             </div>
           </Link>
 
           <nav className="hidden items-center gap-5 text-sm text-slate-300 lg:flex">
-            {navItems.map((item) => (
+            {messages.publicShell.nav.map((item) => (
               <Link key={item.href} href={item.href} className="transition hover:text-white">
                 {item.label}
-                <span className="ml-1 text-slate-500">/{item.sublabel}</span>
               </Link>
             ))}
           </nav>
 
           <div className="flex items-center gap-3">
+            <LocaleSwitch />
             <Link
               href="/coke/login"
               className="inline-flex items-center rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/5"
             >
-              Sign in / 登录
+              {messages.publicShell.cta.signIn}
             </Link>
             <Link
               href="/coke/register"
               className="inline-flex items-center rounded-full bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-teal-300"
             >
-              Register / 注册
+              {messages.publicShell.cta.register}
             </Link>
           </div>
         </div>

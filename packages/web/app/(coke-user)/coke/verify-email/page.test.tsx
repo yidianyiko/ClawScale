@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
+import { LocaleProvider } from '../../../../components/locale-provider';
 
 const pushMock = vi.hoisted(() => vi.fn());
 const postMock = vi.hoisted(() => vi.fn());
@@ -73,7 +74,11 @@ describe('VerifyEmailPage', () => {
 
   it('submits the verification token to the Gateway contract', async () => {
     flushSync(() => {
-      root.render(<VerifyEmailPage />);
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <VerifyEmailPage />
+        </LocaleProvider>,
+      );
     });
 
     await flushTicks(1);
@@ -100,7 +105,11 @@ describe('VerifyEmailPage', () => {
     });
 
     flushSync(() => {
-      root.render(<VerifyEmailPage />);
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <VerifyEmailPage />
+        </LocaleProvider>,
+      );
     });
 
     await flushTicks(1);
@@ -131,7 +140,11 @@ describe('VerifyEmailPage', () => {
     window.history.pushState({}, '', '/coke/verify-email?token=verify-token');
 
     flushSync(() => {
-      root.render(<VerifyEmailPage />);
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <VerifyEmailPage />
+        </LocaleProvider>,
+      );
     });
 
     await flushTicks(1);
@@ -148,5 +161,22 @@ describe('VerifyEmailPage', () => {
     expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
       email: 'stored@example.com',
     });
+  });
+
+  it('renders Chinese verification copy without mixed English labels', async () => {
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="zh">
+          <VerifyEmailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await flushTicks(1);
+
+    expect(container.textContent).toContain('验证邮箱');
+    expect(container.textContent).toContain('重新发送验证邮件');
+    expect(container.textContent).not.toContain('Verify your email');
+    expect(container.textContent).not.toContain('Resend verification email');
   });
 });

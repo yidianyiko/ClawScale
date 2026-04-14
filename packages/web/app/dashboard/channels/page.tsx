@@ -3,9 +3,11 @@ import { useEffect, useState, useRef } from 'react';
 import { Plus, Loader2, Plug, PlugZap, Trash2, Radio, Pencil, Check, X, Copy, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
+import { useLocale } from '@/components/locale-provider';
+import { getLocalizedChannelCopy } from '@/lib/dashboard-schema-copy';
 import { cn } from '@/lib/utils';
-import { CHANNEL_CONFIG_SCHEMA, type ChannelType, type Channel } from '@clawscale/shared';
-import type { ApiResponse } from '@clawscale/shared';
+import type { ApiResponse } from '../../../../shared/src/types/api';
+import type { ChannelType, Channel } from '../../../../shared/src/types/channel';
 import { isAdminAddChannelTypeAllowed } from './channel-options';
 
 const CHANNEL_ICONS: Record<string, string> = {
@@ -24,6 +26,8 @@ type ChannelRow = Omit<Channel, 'config'>;
 export default function Channels() {
   const me = getUser();
   const isAdmin = me?.role === 'admin';
+  const { locale } = useLocale();
+  const copy = getLocalizedChannelCopy(locale);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -87,7 +91,7 @@ export default function Channels() {
     e.preventDefault(); setAddError(''); setAdding(true);
     try {
       const res = await api.post<ApiResponse<ChannelRow>>('/api/channels', { type: addType, name: addName, config: addConfig });
-      if (!res.ok) { setAddError(res.error); return; }
+      if (!res.ok) { setAddError(copy.genericError); return; }
       setChannels((prev) => [...prev, res.data]);
       setShowAdd(false); resetAddForm();
     } finally { setAdding(false); }
@@ -115,7 +119,7 @@ export default function Channels() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this channel? This cannot be undone.')) return;
+    if (!confirm(copy.deleteConfirm)) return;
     const res = await api.delete<ApiResponse<null>>(`/api/channels/${id}`);
     if (res.ok) setChannels((prev) => prev.filter((c) => c.id !== id));
   }
@@ -181,14 +185,14 @@ export default function Channels() {
         name: editChannelName,
         config: editChannelConfig,
       });
-      if (!res.ok) { setEditChannelError(res.error); return; }
+      if (!res.ok) { setEditChannelError(copy.genericError); return; }
       setChannels((prev) => prev.map((c) => c.id === editChannelId ? { ...c, name: editChannelName } : c));
       closeEditChannel();
     } finally { setEditChannelSaving(false); }
   }
 
-  const schema = CHANNEL_CONFIG_SCHEMA[addType];
-  const editSchema = CHANNEL_CONFIG_SCHEMA[editChannelType];
+  const schema = copy.schema[addType];
+  const editSchema = copy.schema[editChannelType];
 
   const apiBase = process.env['NEXT_PUBLIC_API_URL'] ?? '';
 
@@ -196,23 +200,23 @@ export default function Channels() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Channels</h1>
-          <p className="text-gray-500 mt-1">Connect messaging platforms to your AI assistant.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">{copy.pageTitle}</h1>
+          <p className="text-gray-500 mt-1">{copy.pageDescription}</p>
         </div>
-        {isAdmin && <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Add channel</button>}
+        {isAdmin && <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {copy.addChannelButton}</button>}
       </div>
 
       {/* Add channel modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold mb-4">Add a channel</h2>
+            <h2 className="text-lg font-semibold mb-4">{copy.addModalTitle}</h2>
             {addError && <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{addError}</div>}
             <form onSubmit={handleAdd} className="space-y-4">
               <div>
-                <label className="label">Platform</label>
+                <label className="label">{copy.platformLabel}</label>
                 <select className="input" value={addType} onChange={(e) => { setAddType(e.target.value as ChannelType); setAddConfig({}); }}>
-                  {Object.entries(CHANNEL_CONFIG_SCHEMA)
+                  {Object.entries(copy.schema)
                     .filter(([type]) => isAdminAddChannelTypeAllowed(type))
                     .map(([type, s]) => (
                     <option key={type} value={type}>{CHANNEL_ICONS[type] ?? '🔌'} {s.label}</option>
@@ -220,12 +224,12 @@ export default function Channels() {
                 </select>
               </div>
               <div>
-                <label className="label">Display name</label>
-                <input className="input" placeholder={`My ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
+                <label className="label">{copy.displayNameLabel}</label>
+                <input className="input" placeholder={`${copy.displayNamePlaceholderPrefix} ${schema.label}`} value={addName} onChange={(e) => setAddName(e.target.value)} required />
               </div>
               {addType === 'whatsapp' && (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                  After adding, click <strong>Connect</strong> to get a QR code to scan with your phone.
+                  {copy.addWhatsappHint}
                 </p>
               )}
               {schema.fields.map((field) => (
@@ -238,9 +242,9 @@ export default function Channels() {
               ))}
               <div className="flex gap-3 pt-2">
                 <button type="submit" className="btn-primary flex-1" disabled={adding}>
-                  {adding && <Loader2 className="h-4 w-4 animate-spin" />} Add channel
+                  {adding && <Loader2 className="h-4 w-4 animate-spin" />} {copy.addSubmit}
                 </button>
-                <button type="button" className="btn-secondary flex-1" onClick={() => { setShowAdd(false); resetAddForm(); }}>Cancel</button>
+                <button type="button" className="btn-secondary flex-1" onClick={() => { setShowAdd(false); resetAddForm(); }}>{copy.cancel}</button>
               </div>
             </form>
           </div>
@@ -251,14 +255,12 @@ export default function Channels() {
       {qrChannelId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-sm p-6 text-center">
-            <h2 className="text-lg font-semibold mb-1">Scan QR Code</h2>
+            <h2 className="text-lg font-semibold mb-1">{copy.qrTitle}</h2>
             <p className="text-sm text-gray-500 mb-5">
-              {channels.find((c) => c.id === qrChannelId)?.type === 'wechat_personal'
-                ? 'Open WeChat → Me → WeChat ID → scan the code'
-                : 'Open WhatsApp → Linked Devices → Link a device'}
+              {copy.qrInstructions[channels.find((c) => c.id === qrChannelId)?.type === 'wechat_personal' ? 'wechat_personal' : 'whatsapp']}
             </p>
             {qrImage ? (
-              <img src={qrImage} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
+              <img src={qrImage} alt={copy.qrImageAlt} className="mx-auto w-56 h-56 rounded-lg border border-gray-200" />
             ) : (
               <div className="mx-auto w-56 h-56 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
                 <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
@@ -272,14 +274,14 @@ export default function Channels() {
                   className="shrink-0 text-xs text-teal-600 hover:text-teal-700 font-medium"
                   onClick={() => void navigator.clipboard.writeText(qrUrl)}
                 >
-                  Copy
+                  {copy.qrCopy}
                 </button>
               </div>
             )}
             <p className="mt-3 text-xs text-gray-400">
-              {qrStatus === 'qr_pending' ? 'Waiting for scan…' : qrStatus ?? 'Generating QR…'}
+              {qrStatus === 'qr_pending' ? copy.qrPending : qrStatus ?? copy.qrGenerating}
             </p>
-            <button className="btn-secondary w-full mt-5" onClick={closeQrModal}>Cancel</button>
+            <button className="btn-secondary w-full mt-5" onClick={closeQrModal}>{copy.cancel}</button>
           </div>
         </div>
       )}
@@ -289,7 +291,7 @@ export default function Channels() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Edit channel</h2>
+              <h2 className="text-lg font-semibold">{copy.editModalTitle}</h2>
               <button onClick={closeEditChannel} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
             {editChannelLoading ? (
@@ -300,7 +302,7 @@ export default function Channels() {
               <form onSubmit={saveEditChannel} className="space-y-4">
                 {editChannelError && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{editChannelError}</div>}
                 <div>
-                  <label className="label">Display name</label>
+                  <label className="label">{copy.displayNameLabel}</label>
                   <input className="input" value={editChannelName} onChange={(e) => setEditChannelName(e.target.value)} required />
                 </div>
                 {editSchema.fields.map((field) => (
@@ -312,13 +314,13 @@ export default function Channels() {
                   </div>
                 ))}
                 {editSchema.fields.length === 0 && (
-                  <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">This channel type has no configurable settings.</p>
+                  <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">{copy.noSettings}</p>
                 )}
                 <div className="flex gap-3 pt-2">
                   <button type="submit" className="btn-primary flex-1" disabled={editChannelSaving}>
-                    {editChannelSaving && <Loader2 className="h-4 w-4 animate-spin" />} Save changes
+                    {editChannelSaving && <Loader2 className="h-4 w-4 animate-spin" />} {copy.saveChanges}
                   </button>
-                  <button type="button" className="btn-secondary flex-1" onClick={closeEditChannel}>Cancel</button>
+                  <button type="button" className="btn-secondary flex-1" onClick={closeEditChannel}>{copy.cancel}</button>
                 </div>
               </form>
             )}
@@ -331,9 +333,9 @@ export default function Channels() {
       ) : channels.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <Radio className="h-10 w-10 text-gray-200 mb-3" />
-          <p className="text-gray-500 font-medium">No channels yet</p>
-          <p className="text-sm text-gray-400 mt-1 max-w-xs">Connect WhatsApp, Telegram, Discord, and more to start routing messages through your AI assistant.</p>
-          {isAdmin && <button className="btn-primary mt-5" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> Add your first channel</button>}
+          <p className="text-gray-500 font-medium">{copy.emptyTitle}</p>
+          <p className="text-sm text-gray-400 mt-1 max-w-xs">{copy.emptyDescription}</p>
+          {isAdmin && <button className="btn-primary mt-5" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> {copy.addFirstChannel}</button>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -362,34 +364,34 @@ export default function Channels() {
                       </p>
                     )}
                     <p className="text-xs text-gray-400 capitalize leading-none">
-                      {ch.type.replace('_', ' ')}
+                      {copy.schemaLabelByType[ch.type]}
                       {ch.type === 'whatsapp_business' && (
-                        <> · <WebhookToggle channelId={ch.id} apiBase={apiBase} /></>
+                        <> · <WebhookToggle channelId={ch.id} apiBase={apiBase} webhookCopy={copy.webhook} /></>
                       )}
                     </p>
                   </div>
                 </div>
-                <span className={cn(STATUS_BADGE[ch.status])}>{ch.status}</span>
+                <span className={cn(STATUS_BADGE[ch.status])}>{copy.status[ch.status]}</span>
               </div>
               {isAdmin && (
                 <div className="flex items-center gap-2 mt-4">
                   {ch.status === 'connected' ? (
                     <button className="btn-secondary flex-1 text-xs" onClick={() => handleDisconnect(ch.id)} disabled={actionLoading === ch.id}>
-                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} Disconnect
+                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} {copy.disconnect}
                     </button>
                   ) : ch.status === 'pending' ? (
                     <button className="btn-primary flex-1 text-xs" onClick={() => setQrChannelId(ch.id)} disabled={ch.type !== 'whatsapp' && ch.type !== 'wechat_personal'}>
-                      {ch.type === 'whatsapp' || ch.type === 'wechat_personal' ? '📷 Show QR' : 'Connecting…'}
+                      {ch.type === 'whatsapp' || ch.type === 'wechat_personal' ? `📷 ${copy.showQr}` : copy.connecting}
                     </button>
                   ) : (
                     <button className="btn-primary flex-1 text-xs" onClick={() => handleConnect(ch)} disabled={actionLoading === ch.id}>
-                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />} Connect
+                      {actionLoading === ch.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlugZap className="h-3.5 w-3.5" />} {copy.connect}
                     </button>
                   )}
-                  <button className="text-gray-400 hover:text-gray-700 transition-colors p-1" onClick={() => openEditChannel(ch)} title="Settings">
+                  <button className="text-gray-400 hover:text-gray-700 transition-colors p-1" onClick={() => openEditChannel(ch)} title={copy.settingsTitle}>
                     <Settings className="h-4 w-4" />
                   </button>
-                  <button className="text-gray-400 hover:text-red-500 transition-colors p-1" onClick={() => handleDelete(ch.id)} title="Delete channel">
+                  <button className="text-gray-400 hover:text-red-500 transition-colors p-1" onClick={() => handleDelete(ch.id)} title={copy.deleteTitle}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -404,12 +406,20 @@ export default function Channels() {
 
 // ── WhatsApp Business webhook setup instructions ─────────────────────────────
 
-function WebhookToggle({ channelId, apiBase }: { channelId: string; apiBase: string }) {
+function WebhookToggle({
+  channelId,
+  apiBase,
+  webhookCopy,
+}: {
+  channelId: string;
+  apiBase: string;
+  webhookCopy: ReturnType<typeof getLocalizedChannelCopy>['webhook'];
+}) {
   const webhookUrl = `${apiBase}/gateway/whatsapp/${channelId}`;
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  function copy(text: string, key: string) {
+  function copyValue(text: string, key: string) {
     void navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
@@ -422,23 +432,23 @@ function WebhookToggle({ channelId, apiBase }: { channelId: string; apiBase: str
         className="text-blue-500 hover:text-blue-700 hover:underline"
         onClick={() => setOpen((o) => !o)}
       >
-        {open ? 'hide setup' : 'how to setup'}
+        {open ? webhookCopy.hideSetup : webhookCopy.showSetup}
       </button>
       {open && (
         <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-800 space-y-2">
-          <p>In the <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">Meta App Dashboard</a>, go to <strong>WhatsApp &rarr; Configuration</strong> and set:</p>
+          <p>{webhookCopy.intro}</p>
           <div className="space-y-1.5">
             <div>
-              <span className="text-blue-600 font-medium">Callback URL:</span>
+              <span className="text-blue-600 font-medium">{webhookCopy.callbackUrl}</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <code className="flex-1 bg-white rounded px-2 py-1 text-[11px] border border-blue-200 truncate select-all">{webhookUrl}</code>
-                <button type="button" onClick={() => copy(webhookUrl, 'url')} className="shrink-0 text-blue-500 hover:text-blue-700" title="Copy">
+                <button type="button" onClick={() => copyValue(webhookUrl, 'url')} className="shrink-0 text-blue-500 hover:text-blue-700" title={copied === 'url' ? webhookCopy.copiedTitle : webhookCopy.copyTitle}>
                   {copied === 'url' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
               </div>
             </div>
-            <p><span className="text-blue-600 font-medium">Verify token:</span> the token you entered when creating this channel.</p>
-            <p><span className="text-blue-600 font-medium">Webhook fields:</span> subscribe to <code className="bg-white rounded px-1 py-0.5 border border-blue-200">messages</code></p>
+            <p><span className="text-blue-600 font-medium">{webhookCopy.verifyToken}</span> {webhookCopy.verifyTokenValue}</p>
+            <p><span className="text-blue-600 font-medium">{webhookCopy.webhookFields}</span> {webhookCopy.webhookFieldsValue}</p>
           </div>
         </div>
       )}

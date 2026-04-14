@@ -4,11 +4,15 @@ import { Loader2, Save, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getUser, clearAuth } from '@/lib/auth';
-import type { ApiResponse, Tenant, TenantSettings } from '@clawscale/shared';
+import { useLocale } from '@/components/locale-provider';
+import { getDashboardCopy } from '@/lib/dashboard-copy';
+import type { ApiResponse } from '../../../../shared/src/types/api';
+import type { Tenant, TenantSettings } from '../../../../shared/src/types/tenant';
 
 export default function Settings() {
   const router = useRouter();
   const me = getUser();
+  const { locale } = useLocale();
   const isAdmin = me?.role === 'admin';
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +29,7 @@ export default function Settings() {
   const [clawscaleApiKey, setClawscaleApiKey] = useState('');
   const [apiKeySet, setApiKeySet] = useState(false);
   const [clawscaleMultimodal, setClawscaleMultimodal] = useState(false);
+  const copy = getDashboardCopy(locale);
 
   useEffect(() => {
     api.get<ApiResponse<Tenant>>('/api/tenant').then((res) => {
@@ -32,7 +37,7 @@ export default function Settings() {
         const t = res.data;
         setTenant(t); setName(t.name);
         const s = t.settings as TenantSettings;
-        setPersonaName(s.personaName ?? 'Assistant');
+        setPersonaName(s.personaName ?? copy.settings.persona.namePlaceholder);
         setPersonaPrompt(s.personaPrompt ?? '');
         setEndUserAccess(s.endUserAccess ?? 'anonymous');
         setClawscaleModel(s.clawscale?.llm?.model ?? 'openai:gpt-5.4-mini');
@@ -41,7 +46,7 @@ export default function Settings() {
       }
       setLoading(false);
     });
-  }, []);
+  }, [copy.settings.persona.namePlaceholder]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setError(''); setSuccess(false); setSaving(true);
@@ -59,7 +64,7 @@ export default function Settings() {
           },
         },
       });
-      if (!res.ok) { setError(res.error); return; }
+      if (!res.ok) { setError(copy.settings.genericError); return; }
       setTenant(res.data); setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } finally { setSaving(false); }
@@ -70,75 +75,75 @@ export default function Settings() {
   return (
     <div className="p-8 max-w-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1">Configure your workspace and AI persona.</p>
+        <h1 className="text-2xl font-semibold text-gray-900">{copy.settings.title}</h1>
+        <p className="text-gray-500 mt-1">{copy.settings.subtitle}</p>
       </div>
 
       {!isAdmin && (
         <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
-          Only admins can edit workspace settings.
+          {copy.settings.onlyAdmins}
         </div>
       )}
 
       <form onSubmit={handleSave} className="space-y-6">
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Workspace</h2>
+          <h2 className="font-semibold text-gray-900 mb-4">{copy.settings.workspace.title}</h2>
           <div className="space-y-4">
             <div>
-              <label className="label">Workspace name</label>
+              <label className="label">{copy.settings.workspace.name}</label>
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} disabled={!isAdmin} required />
             </div>
             <div>
-              <label className="label">Workspace slug</label>
+              <label className="label">{copy.settings.workspace.slug}</label>
               <input className="input bg-gray-50" value={tenant?.slug ?? ''} disabled />
-              <p className="text-xs text-gray-400 mt-1">Slug cannot be changed after creation.</p>
+              <p className="text-xs text-gray-400 mt-1">{copy.settings.workspace.slugHint}</p>
             </div>
           </div>
         </div>
 
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">AI Persona</h2>
-          <p className="text-sm text-gray-500 mb-4">How the bot presents itself to end-users.</p>
+          <h2 className="font-semibold text-gray-900 mb-1">{copy.settings.persona.title}</h2>
+          <p className="text-sm text-gray-500 mb-4">{copy.settings.persona.subtitle}</p>
           <div className="space-y-4">
             <div>
-              <label className="label">Persona name</label>
-              <input className="input" placeholder="Assistant" value={personaName} onChange={(e) => setPersonaName(e.target.value)} disabled={!isAdmin} />
+              <label className="label">{copy.settings.persona.name}</label>
+              <input className="input" placeholder={copy.settings.persona.namePlaceholder} value={personaName} onChange={(e) => setPersonaName(e.target.value)} disabled={!isAdmin} />
             </div>
             <div>
-              <label className="label">System prompt</label>
-              <textarea className="input min-h-[120px] resize-y font-mono text-xs" placeholder="You are a helpful assistant for Acme Corp..."
+              <label className="label">{copy.settings.persona.prompt}</label>
+              <textarea className="input min-h-[120px] resize-y font-mono text-xs" placeholder={copy.settings.persona.promptPlaceholder}
                 value={personaPrompt} onChange={(e) => setPersonaPrompt(e.target.value)} disabled={!isAdmin} />
             </div>
           </div>
         </div>
 
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">ClawScale Assistant</h2>
-          <p className="text-sm text-gray-500 mb-4">Configure the built-in AI assistant that helps end-users navigate your bot.</p>
+          <h2 className="font-semibold text-gray-900 mb-1">{copy.settings.assistant.title}</h2>
+          <p className="text-sm text-gray-500 mb-4">{copy.settings.assistant.subtitle}</p>
           <div className="space-y-4">
             <div>
-              <label className="label">Model</label>
-              <input className="input" placeholder="openai:gpt-5.4-mini" value={clawscaleModel} onChange={(e) => setClawscaleModel(e.target.value)} disabled={!isAdmin} />
-              <p className="text-xs text-gray-400 mt-1">LangChain format, e.g. &quot;openai:gpt-5.4-mini&quot;, &quot;anthropic:claude-haiku-4-5-20251001&quot;</p>
+              <label className="label">{copy.settings.assistant.model}</label>
+              <input className="input" placeholder={copy.settings.assistant.modelPlaceholder} value={clawscaleModel} onChange={(e) => setClawscaleModel(e.target.value)} disabled={!isAdmin} />
+              <p className="text-xs text-gray-400 mt-1">{copy.settings.assistant.modelHint}</p>
             </div>
             <div>
-              <label className="label">API key</label>
-              <input className="input font-mono text-xs" type="password" placeholder={apiKeySet ? '••••••••••••••••' : 'sk-...'} value={clawscaleApiKey} onChange={(e) => setClawscaleApiKey(e.target.value)} disabled={!isAdmin} />
-              {apiKeySet && !clawscaleApiKey && <p className="text-xs text-emerald-600 mt-1">API key is saved. Enter a new value to replace it.</p>}
+              <label className="label">{copy.settings.assistant.apiKey}</label>
+              <input className="input font-mono text-xs" type="password" placeholder={apiKeySet ? '••••••••••••••••' : copy.settings.assistant.apiKeyPlaceholder} value={clawscaleApiKey} onChange={(e) => setClawscaleApiKey(e.target.value)} disabled={!isAdmin} />
+              {apiKeySet && !clawscaleApiKey && <p className="text-xs text-emerald-600 mt-1">{copy.settings.assistant.apiKeySaved}</p>}
             </div>
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="checkbox" checked={clawscaleMultimodal} onChange={(e) => setClawscaleMultimodal(e.target.checked)} disabled={!isAdmin} className="mt-0.5" />
               <span>
-                <span className="text-sm font-medium text-gray-900">Enable multimodal input</span>
-                <span className="text-xs text-gray-500 block">Allow the assistant to process images, files, and audio sent by users. Requires a vision-capable model (e.g. GPT-4o, Claude Sonnet).</span>
+                <span className="text-sm font-medium text-gray-900">{copy.settings.assistant.enableMultimodal}</span>
+                <span className="text-xs text-gray-500 block">{copy.settings.assistant.multimodalHint}</span>
               </span>
             </label>
           </div>
         </div>
 
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">End-User Access</h2>
-          <p className="text-sm text-gray-500 mb-4">Control who can interact with your bot.</p>
+          <h2 className="font-semibold text-gray-900 mb-1">{copy.settings.endUserAccess.title}</h2>
+          <p className="text-sm text-gray-500 mb-4">{copy.settings.endUserAccess.subtitle}</p>
           <div className="space-y-2">
             {(['anonymous', 'whitelist', 'blacklist'] as const).map((opt) => (
               <label key={opt} className="flex items-start gap-3 cursor-pointer">
@@ -152,11 +157,11 @@ export default function Settings() {
                   className="mt-0.5"
                 />
                 <span>
-                  <span className="text-sm font-medium text-gray-900 capitalize">{opt}</span>
+                  <span className="text-sm font-medium text-gray-900">{copy.settings.endUserAccess[opt]}</span>
                   <span className="text-xs text-gray-500 block">
-                    {opt === 'anonymous' && 'Anyone who messages the bot can use it.'}
-                    {opt === 'whitelist' && 'Only users on the allow-list can interact.'}
-                    {opt === 'blacklist' && 'Everyone except users on the block-list can interact.'}
+                    {opt === 'anonymous' && copy.settings.endUserAccess.anonymousHint}
+                    {opt === 'whitelist' && copy.settings.endUserAccess.whitelistHint}
+                    {opt === 'blacklist' && copy.settings.endUserAccess.blacklistHint}
                   </span>
                 </span>
               </label>
@@ -167,9 +172,9 @@ export default function Settings() {
         {isAdmin && (
           <div className="flex items-center gap-4">
             <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save changes
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {copy.settings.saveChanges}
             </button>
-            {success && <p className="text-sm text-emerald-600 font-medium">Saved!</p>}
+            {success && <p className="text-sm text-emerald-600 font-medium">{copy.settings.saved}</p>}
             {error && <p className="text-sm text-red-600">{error}</p>}
           </div>
         )}
@@ -177,37 +182,37 @@ export default function Settings() {
 
       <div className="mt-10 border-t border-red-200 pt-8">
         <div className="card border-red-200 p-6">
-          <h2 className="font-semibold text-red-700 mb-1">Danger Zone</h2>
+          <h2 className="font-semibold text-red-700 mb-1">{copy.settings.dangerZone.title}</h2>
           <p className="text-sm text-gray-500 mb-4">
-            Permanently delete your account. This removes your member profile and logs you out. This action cannot be undone.
+            {copy.settings.dangerZone.description}
           </p>
           <div className="space-y-3">
             <div>
-              <label className="label text-red-700">Type &quot;delete my account&quot; to confirm</label>
+              <label className="label text-red-700">{copy.settings.dangerZone.confirmLabel}</label>
               <input
                 className="input border-red-300 focus:border-red-500 focus:ring-red-500"
-                placeholder="delete my account"
+                placeholder={copy.settings.dangerZone.confirmPlaceholder}
                 value={deleteConfirm}
                 onChange={(e) => setDeleteConfirm(e.target.value)}
               />
             </div>
             <button
               type="button"
-              disabled={deleteConfirm !== 'delete my account' || deleting}
+              disabled={deleteConfirm !== copy.settings.dangerZone.confirmValue || deleting}
               className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={async () => {
                 setDeleting(true);
                 setError('');
                 try {
                   const res = await api.delete<ApiResponse<null>>('/auth/account');
-                  if (!res.ok) { setError(res.error); return; }
+                  if (!res.ok) { setError(copy.settings.genericError); return; }
                   clearAuth();
                   router.push('/dashboard/login');
                 } finally { setDeleting(false); }
               }}
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete my account
+              {copy.settings.dangerZone.deleteAccount}
             </button>
             {error && <p className="text-sm text-red-600">{error}</p>}
           </div>

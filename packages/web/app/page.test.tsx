@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 
+import { LocaleProvider } from '../components/locale-provider';
+
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
     <a href={href} {...props}>
@@ -28,13 +30,35 @@ describe('HomePage', () => {
     container.remove();
   });
 
-  it('links public visitors to Coke registration and sign-in from the homepage', () => {
+  it('renders English homepage copy under LocaleProvider', () => {
     flushSync(() => {
-      root.render(<HomePage />);
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <HomePage />
+        </LocaleProvider>,
+      );
     });
 
     expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
     expect(container.querySelector('a[href="/coke/login"]')).toBeTruthy();
     expect(container.textContent).toContain('An AI Partner That Grows With You');
+    expect(container.textContent).toContain('Platforms');
+    expect(container.textContent).not.toContain('Register / 注册');
+  });
+
+  it('renders Chinese homepage copy under LocaleProvider', () => {
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="zh">
+          <HomePage />
+        </LocaleProvider>,
+      );
+    });
+
+    expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/coke/login"]')).toBeTruthy();
+    expect(container.textContent).toContain('与您共同成长的 AI 助手');
+    expect(container.textContent).toContain('平台');
+    expect(container.textContent).not.toContain('Register / 注册');
   });
 });

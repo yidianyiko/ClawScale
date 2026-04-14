@@ -3,8 +3,12 @@ import { useEffect, useState } from 'react';
 import { Loader2, Plus, Pencil, Trash2, X, Save, BotMessageSquare, Star, StarOff, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getUser } from '@/lib/auth';
-import type { AiBackendType, AiBackendProviderConfig, ApiResponse, Tenant, ClawScaleAgentSettings } from '@clawscale/shared';
-import { AI_PROVIDER_LABELS, AI_PROVIDER_TYPES, BACKEND_TYPE_DESCRIPTORS } from '@clawscale/shared';
+import { useLocale } from '@/components/locale-provider';
+import { getLocalizedAiBackendCopy } from '@/lib/dashboard-schema-copy';
+import { AI_PROVIDER_TYPES } from '../../../../shared/src/types/ai-backend';
+import type { ApiResponse } from '../../../../shared/src/types/api';
+import type { AiBackendType, AiBackendProviderConfig } from '../../../../shared/src/types/ai-backend';
+import type { Tenant, ClawScaleAgentSettings } from '../../../../shared/src/types/tenant';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +41,8 @@ const EMPTY_FORM: FormState = { name: '', type: 'llm', isActive: true, isDefault
 export default function AiBackendsPage() {
   const me = getUser();
   const isAdmin = me?.role === 'admin';
+  const { locale } = useLocale();
+  const copy = getLocalizedAiBackendCopy(locale);
 
   // AI Backends state
   const [backends, setBackends] = useState<BackendListItem[]>([]);
@@ -108,7 +114,7 @@ export default function AiBackendsPage() {
           isDefault: form.isDefault, config: form.config,
         });
       }
-      if (!res.ok) { setFormError(res.error); return; }
+      if (!res.ok) { setFormError(copy.genericError); return; }
       closeForm(); loadBackends();
     } finally { setSaving(false); }
   }
@@ -169,7 +175,7 @@ export default function AiBackendsPage() {
       const res = await api.patch<ApiResponse<Tenant>>('/api/tenant', {
         settings: { clawscale: payload },
       });
-      if (!res.ok) { setClawscaleError((res as { error: string }).error); return; }
+      if (!res.ok) { setClawscaleError(copy.clawscale.genericError); return; }
       const cfg = (res.data.settings as { clawscale?: ClawScaleAgentSettings }).clawscale ?? {};
       setClawscale(cfg); setClawscaleForm(cfg);
       setEditingClawscale(false);
@@ -181,22 +187,19 @@ export default function AiBackendsPage() {
   return (
     <div className="p-8 max-w-3xl space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">AI Backends</h1>
-        <p className="text-gray-500 mt-1">
-          ClawScale greets users and routes them to a backend. Configure the orchestrator below,
-          then add the AI backends users can choose from.
-        </p>
+        <h1 className="text-2xl font-semibold text-gray-900">{copy.pageTitle}</h1>
+        <p className="text-gray-500 mt-1">{copy.pageDescription}</p>
       </div>
 
       {!isAdmin && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700">
-          Only admins can manage AI backends.
+          {copy.adminOnly}
         </div>
       )}
 
       {/* ── ClawScale Orchestrator ───────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">ClawScale Orchestrator</h2>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{copy.clawscale.sectionTitle}</h2>
         <div className="card px-5 py-4">
           {!editingClawscale ? (
             <div className="flex items-start gap-4">
@@ -205,27 +208,27 @@ export default function AiBackendsPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-900">{clawscale.name || 'ClawScale Assistant'}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium">Built-in</span>
+                  <span className="font-medium text-gray-900">{clawscale.name || copy.clawscale.defaultName}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-medium">{copy.clawscale.builtIn}</span>
                   {clawscale.isActive === false && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Disabled</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{copy.clawscale.disabled}</span>
                   )}
                 </div>
                 <p className="text-sm text-gray-400 mt-0.5">
-                  Greets users, answers ClawScale questions, and routes to regular backends.
+                  {copy.clawscale.description}
                 </p>
                 <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
                   <Lock className="h-3 w-3" />
-                  <span>Selection prompt is locked — name, visibility, and answer style can be changed.</span>
+                  <span>{copy.clawscale.lockedNote}</span>
                 </div>
                 {clawscale.llm?.model ? (
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-xs text-gray-500 font-mono">Model: {clawscale.llm.model}</p>
+                      <p className="text-xs text-gray-500 font-mono">{copy.clawscale.modelLabel}: {clawscale.llm.model}</p>
                       {isAdmin && (
                         <button
                           className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                          title="Clear model"
+                          title={copy.clawscale.clearModelTitle}
                           onClick={clearModel}
                         >
                           <X className="h-3 w-3" />
@@ -233,12 +236,12 @@ export default function AiBackendsPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500">
-                      API key: {clawscale.llm.apiKey ? <span className="text-emerald-600">configured</span> : <span className="text-amber-600">not set</span>}
+                      {copy.clawscale.apiKeyLabel}: {clawscale.llm.apiKey ? <span className="text-emerald-600">{copy.clawscale.apiKeyConfigured}</span> : <span className="text-amber-600">{copy.clawscale.apiKeyMissing}</span>}
                     </p>
                   </div>
                 ) : (
                   <div className="mt-2">
-                    <p className="text-xs text-amber-600 mb-1.5">No LLM configured — agent will not respond to messages.</p>
+                    <p className="text-xs text-amber-600 mb-1.5">{copy.clawscale.noLlmConfigured}</p>
                     {isAdmin && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -253,7 +256,7 @@ export default function AiBackendsPage() {
                           <input
                             className="input font-mono text-xs py-1 px-2 flex-1 max-w-xs"
                             type="password"
-                            placeholder="API key (sk-...)"
+                            placeholder={copy.clawscale.inlineApiKeyPlaceholder}
                             value={inlineApiKey}
                             onChange={(e) => setInlineApiKey(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveInlineModel(); } }}
@@ -263,7 +266,7 @@ export default function AiBackendsPage() {
                             disabled={!inlineModel.trim() || savingInlineModel}
                             onClick={saveInlineModel}
                           >
-                            {savingInlineModel ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Set'}
+                            {savingInlineModel ? <Loader2 className="h-3 w-3 animate-spin" /> : copy.clawscale.inlineSet}
                           </button>
                         </div>
                       </div>
@@ -271,13 +274,13 @@ export default function AiBackendsPage() {
                   </div>
                 )}
                 {clawscale.answerStyle && (
-                  <p className="mt-2 text-xs text-gray-500 italic">Style: {clawscale.answerStyle}</p>
+                  <p className="mt-2 text-xs text-gray-500 italic">{copy.clawscale.answerStyleLabel}: {clawscale.answerStyle}</p>
                 )}
               </div>
               {isAdmin && (
                 <button
                   className="text-gray-400 hover:text-gray-700 transition-colors p-1 shrink-0"
-                  title="Edit ClawScale settings"
+                  title={copy.clawscale.editSettingsTitle}
                   onClick={() => { setClawscaleForm(clawscale); setEditingClawscale(true); setClawscaleError(''); }}
                 >
                   <Pencil className="h-4 w-4" />
@@ -287,39 +290,39 @@ export default function AiBackendsPage() {
           ) : (
             <form onSubmit={saveClawscale} className="space-y-4">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="font-semibold text-gray-900">Edit ClawScale Orchestrator</h3>
+                <h3 className="font-semibold text-gray-900">{copy.clawscale.editTitle}</h3>
                 <button type="button" onClick={() => setEditingClawscale(false)} className="text-gray-400 hover:text-gray-600">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               <div>
-                <label className="label">Display name</label>
-                <input className="input" placeholder="ClawScale Assistant" value={clawscaleForm.name ?? ''}
+                <label className="label">{copy.clawscale.displayNameLabel}</label>
+                <input className="input" placeholder={copy.clawscale.defaultName} value={clawscaleForm.name ?? ''}
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, name: e.target.value }))} />
               </div>
 
               <div>
                 <label className="label">
-                  Answer style
-                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                  {copy.clawscale.answerStyleFieldLabel}
+                  <span className="text-gray-400 font-normal ml-1">{copy.optional}</span>
                 </label>
                 <textarea
                   className="input min-h-[80px] resize-y text-sm"
-                  placeholder={`e.g. "Always be concise. End with 'Have a great day!'"`}
+                  placeholder={copy.clawscale.answerStylePlaceholder}
                   value={clawscaleForm.answerStyle ?? ''}
                   maxLength={500}
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, answerStyle: e.target.value }))}
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Appended to knowledge-base and off-topic replies. The backend-selection menu is always shown as-is.
+                  {copy.clawscale.answerStyleHint}
                 </p>
               </div>
 
               <div>
                 <label className="label">
-                  LLM Model
-                  <span className="text-gray-400 font-normal ml-1">(required for conversational agent)</span>
+                  {copy.clawscale.llmModelLabel}
+                  <span className="text-gray-400 font-normal ml-1">{copy.clawscale.llmModelRequired}</span>
                 </label>
                 <input
                   className="input font-mono text-xs"
@@ -331,14 +334,14 @@ export default function AiBackendsPage() {
                   }))}
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  LangChain model string. Examples: openai:gpt-5.4-mini, anthropic:claude-haiku-4-5-20251001, openrouter:openai/gpt-4o
+                  {copy.clawscale.llmModelHint}
                 </p>
               </div>
 
               <div>
                 <label className="label">
-                  API Key
-                  <span className="text-gray-400 font-normal ml-1">(required)</span>
+                  {copy.clawscale.apiKeyFieldLabel}
+                  <span className="text-gray-400 font-normal ml-1">{copy.clawscale.apiKeyRequired}</span>
                 </label>
                 <input
                   className="input font-mono text-xs"
@@ -350,14 +353,14 @@ export default function AiBackendsPage() {
                     llm: { ...f.llm, model: f.llm?.model ?? 'openai:gpt-5.4-mini', apiKey: e.target.value || undefined },
                   }))}
                 />
-                {clawscale.llm?.apiKey && <p className="text-xs text-emerald-600 mt-1">API key is saved. Enter a new value to replace it.</p>}
+                {clawscale.llm?.apiKey && <p className="text-xs text-emerald-600 mt-1">{copy.clawscale.apiKeySaved}</p>}
               </div>
 
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                 <input type="checkbox" checked={clawscaleForm.isActive !== false}
                   onChange={(e) => setClawscaleForm((f) => ({ ...f, isActive: e.target.checked }))}
                   className="h-4 w-4 rounded border-gray-300 text-teal-500" />
-                Active (responds to users before a backend is selected)
+                {copy.clawscale.activeCheckbox}
               </label>
 
               {clawscaleError && <p className="text-sm text-red-600">{clawscaleError}</p>}
@@ -365,9 +368,9 @@ export default function AiBackendsPage() {
               <div className="flex gap-3">
                 <button type="submit" className="btn-primary" disabled={savingClawscale}>
                   {savingClawscale ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save
+                  {copy.clawscale.save}
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setEditingClawscale(false)}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={() => setEditingClawscale(false)}>{copy.cancel}</button>
               </div>
             </form>
           )}
@@ -377,10 +380,10 @@ export default function AiBackendsPage() {
       {/* ── AI Backends ──────────────────────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">AI Backends</h2>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{copy.pageTitle}</h2>
           {isAdmin && (
             <button className="btn-primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add backend
+              <Plus className="h-4 w-4" /> {copy.addBackendButton}
             </button>
           )}
         </div>
@@ -388,19 +391,19 @@ export default function AiBackendsPage() {
         {showForm && (
           <div className="card p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">{editingId ? 'Edit backend' : 'New backend'}</h3>
+              <h3 className="font-semibold text-gray-900">{editingId ? copy.editBackendTitle : copy.newBackendTitle}</h3>
               <button onClick={closeForm} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Name</label>
-                  <input className="input" placeholder="e.g. GPT-4o" value={form.name}
+                  <label className="label">{copy.nameLabel}</label>
+                  <input className="input" placeholder={copy.namePlaceholder} value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
                 </div>
                 <div>
-                  <label className="label">Upstream type</label>
+                  <label className="label">{copy.upstreamTypeLabel}</label>
                   <select className="input" value={form.type}
                     onChange={(e) => {
                       const newType = e.target.value as AiBackendType;
@@ -410,25 +413,25 @@ export default function AiBackendsPage() {
                       setForm((f) => ({ ...f, type: newType, config }));
                     }}>
                     {AI_PROVIDER_TYPES.map((t) => (
-                      <option key={t} value={t}>{AI_PROVIDER_LABELS[t]}</option>
+                      <option key={t} value={t}>{copy.providerLabels[t]}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <ProviderFields type={form.type} config={form.config}
+              <ProviderFields type={form.type} config={form.config} copy={copy}
                 onChange={(patch) => setForm((f) => ({ ...f, config: { ...f.config, ...patch } }))} />
 
               <div>
                 <label className="label">
-                  Command alias
-                  <span className="text-gray-400 font-normal ml-1">(optional)</span>
+                  {copy.commandAliasLabel}
+                  <span className="text-gray-400 font-normal ml-1">{copy.optional}</span>
                 </label>
-                <input className="input font-mono text-xs" placeholder="e.g. gpt" maxLength={30}
+                <input className="input font-mono text-xs" placeholder={copy.commandAliasPlaceholder} maxLength={30}
                   value={(form.config.commandAlias as string) ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, config: { ...f.config, commandAlias: e.target.value.replace(/\s/g, '') } }))} />
                 <p className="text-xs text-gray-400 mt-1">
-                  Short name for slash commands. Users can type <code>/{form.config.commandAlias || 'alias'} hello</code> to message this backend directly.
+                  {copy.commandAliasHint.replace('{alias}', form.config.commandAlias || 'alias')}
                 </p>
               </div>
 
@@ -437,13 +440,13 @@ export default function AiBackendsPage() {
                   <input type="checkbox" checked={form.isActive}
                     onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
                     className="h-4 w-4 rounded border-gray-300 text-teal-500" />
-                  Active (visible to end-users)
+                  {copy.activeLabel}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input type="checkbox" checked={form.isDefault}
                     onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))}
                     className="h-4 w-4 rounded border-gray-300 text-teal-500" />
-                  Set as default (auto-selected for new users, skips the menu)
+                  {copy.defaultLabel}
                 </label>
               </div>
 
@@ -451,9 +454,9 @@ export default function AiBackendsPage() {
               <div className="flex gap-3">
                 <button type="submit" className="btn-primary" disabled={saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {editingId ? 'Save changes' : 'Create backend'}
+                  {editingId ? copy.saveChanges : copy.createBackend}
                 </button>
-                <button type="button" className="btn-secondary" onClick={closeForm}>Cancel</button>
+                <button type="button" className="btn-secondary" onClick={closeForm}>{copy.cancel}</button>
               </div>
             </form>
           </div>
@@ -466,13 +469,11 @@ export default function AiBackendsPage() {
         ) : backends.length === 0 ? (
           <div className="card p-10 flex flex-col items-center text-center">
             <BotMessageSquare className="h-9 w-9 text-gray-300 mb-3" />
-            <p className="text-gray-500 font-medium">No AI backends yet</p>
-            <p className="text-sm text-gray-400 mt-1">
-              Without a backend, ClawScale will present a menu — but there's nothing to choose from.
-            </p>
+            <p className="text-gray-500 font-medium">{copy.emptyTitle}</p>
+            <p className="text-sm text-gray-400 mt-1">{copy.emptyDescription}</p>
             {isAdmin && (
               <button className="btn-primary mt-4" onClick={openCreate}>
-                <Plus className="h-4 w-4" /> Add your first backend
+                <Plus className="h-4 w-4" /> {copy.addFirstBackend}
               </button>
             )}
           </div>
@@ -485,32 +486,32 @@ export default function AiBackendsPage() {
                     <span className="font-medium text-gray-900">{b.name}</span>
                     {b.isDefault && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
-                        Default
+                        {copy.defaultBadge}
                       </span>
                     )}
                     {!b.isActive && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Inactive</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{copy.inactiveBadge}</span>
                     )}
                   </div>
                   <p className="text-sm text-gray-400 mt-0.5">
-                    {AI_PROVIDER_LABELS[b.type as AiBackendType] ?? b.type}
+                    {copy.providerLabels[b.type as AiBackendType] ?? b.type}
                   </p>
                 </div>
                 {isAdmin && (
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       className={`p-1.5 rounded transition-colors ${b.isDefault ? 'text-amber-500 hover:text-amber-700' : 'text-gray-300 hover:text-amber-400'}`}
-                      title={b.isDefault ? 'Remove as default' : 'Set as default'}
+                      title={b.isDefault ? copy.removeDefaultTitle : copy.setDefaultTitle}
                       onClick={() => toggleDefault(b)}
                     >
                       {b.isDefault ? <Star className="h-4 w-4 fill-current" /> : <StarOff className="h-4 w-4" />}
                     </button>
-                    <button className="text-gray-400 hover:text-gray-700 transition-colors p-1.5" title="Edit" onClick={() => openEdit(b.id)}>
+                    <button className="text-gray-400 hover:text-gray-700 transition-colors p-1.5" title={copy.editTitle} onClick={() => openEdit(b.id)}>
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       className="text-gray-400 hover:text-red-500 transition-colors p-1.5"
-                      title="Delete" disabled={deletingId === b.id}
+                      title={copy.deleteTitle} disabled={deletingId === b.id}
                       onClick={() => handleDelete(b.id)}
                     >
                       {deletingId === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -528,12 +529,13 @@ export default function AiBackendsPage() {
 
 // ── Provider config fields ────────────────────────────────────────────────────
 
-function ProviderFields({ type, config, onChange }: {
+function ProviderFields({ type, config, copy, onChange }: {
   type: AiBackendType;
   config: AiBackendProviderConfig;
+  copy: ReturnType<typeof getLocalizedAiBackendCopy>;
   onChange: (patch: Partial<AiBackendProviderConfig>) => void;
 }) {
-  const descriptor = BACKEND_TYPE_DESCRIPTORS[type];
+  const descriptor = copy.descriptors[type];
   if (!descriptor) return null;
 
   // CLI bridge: show token + setup instructions instead of config fields
@@ -542,17 +544,17 @@ function ProviderFields({ type, config, onChange }: {
       <div className="space-y-3">
         {config.bridgeToken ? (
           <div>
-            <label className="label">Bridge Token</label>
+            <label className="label">{copy.providerFields.bridgeTokenLabel}</label>
             <div className="flex items-center gap-2">
               <code className="input font-mono text-xs flex-1 bg-gray-50">{config.bridgeToken}</code>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Use this token when connecting the local bridge.</p>
+            <p className="text-xs text-gray-400 mt-1">{copy.providerFields.bridgeTokenHint}</p>
           </div>
         ) : (
-          <p className="text-xs text-gray-500">A bridge token will be generated when you create this backend.</p>
+          <p className="text-xs text-gray-500">{copy.providerFields.bridgeTokenPending}</p>
         )}
         <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-xs text-gray-600 space-y-1">
-          <p className="font-medium text-gray-700">Setup instructions:</p>
+          <p className="font-medium text-gray-700">{copy.providerFields.setupInstructions}</p>
           <p><code>npx @clawscale/cli-bridge --server wss://your-server/bridge --token {'<token>'} --agent claude-code</code></p>
         </div>
       </div>
@@ -580,11 +582,11 @@ function ProviderFields({ type, config, onChange }: {
             <div key={field.key}>
               <label className="label">
                 {field.label}
-                {!field.required && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+                {!field.required && <span className="text-gray-400 font-normal ml-1">{copy.optional}</span>}
               </label>
               <textarea
                 className="input min-h-[80px] resize-y text-sm"
-                placeholder="You are a helpful assistant."
+                placeholder={copy.providerFields.textareaPlaceholder}
                 value={(config[field.key] as string) ?? ''}
                 maxLength={2000}
                 onChange={(e) => onChange({ [field.key]: e.target.value })}
@@ -613,7 +615,7 @@ function ProviderFields({ type, config, onChange }: {
           <div key={field.key}>
             <label className="label">
               {field.label}
-              {!field.required && <span className="text-gray-400 font-normal ml-1">(optional)</span>}
+              {!field.required && <span className="text-gray-400 font-normal ml-1">{copy.optional}</span>}
             </label>
             <input className="input font-mono text-xs"
               type={field.inputType === 'password' ? 'password' : 'text'}
