@@ -416,7 +416,7 @@ describe('clawscale-user helpers', () => {
     });
   });
 
-  it('ensureClawscaleUserForCokeAccount fails when identity email shadow write collides', async () => {
+  it('ensureClawscaleUserForCokeAccount keeps legacy provisioning usable when identity email shadow write collides', async () => {
     const existingAccount = {
       id: 'acct_existing',
       email: 'Existing@Example.com',
@@ -456,11 +456,38 @@ describe('clawscale-user helpers', () => {
       ensureClawscaleUserForCokeAccount({
         cokeAccountId: 'acct_existing',
       }),
-    ).rejects.toMatchObject({ code: 'platformization_shadow_graph_conflict' });
+    ).resolves.toEqual({
+      tenantId: 'tnt_existing',
+      clawscaleUserId: 'csu_existing',
+      created: false,
+      ready: true,
+    });
 
-    expect(db.customer.upsert).not.toHaveBeenCalled();
+    expect(db.customer.upsert).toHaveBeenCalledWith({
+      where: { id: existingAccount.id },
+      create: expect.objectContaining({
+        id: existingAccount.id,
+        kind: 'personal',
+      }),
+      update: expect.objectContaining({
+        kind: 'personal',
+        updatedAt: existingAccount.updatedAt,
+      }),
+    });
     expect(db.membership.upsert).not.toHaveBeenCalled();
-    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: existingAccount.id },
+      create: buildLegacyAgentBindingSeed({
+        customerId: existingAccount.id,
+        agentId: DEFAULT_COKE_AGENT_ID,
+      }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
+    });
     expect(warnSpy).toHaveBeenCalledWith(
       '[clawscale-user] compatibility Identity shadow write skipped due to email collision',
       expect.objectContaining({

@@ -158,10 +158,6 @@ function respondLifecycleError(c: Context, err: unknown) {
     return c.json({ ok: false, error: code }, 409);
   }
 
-  if (code === 'platformization_shadow_graph_conflict') {
-    return c.json({ ok: false, error: code }, 409);
-  }
-
   if (code === 'invalid_personal_channel_row') {
     return c.json({ ok: false, error: code }, 500);
   }
