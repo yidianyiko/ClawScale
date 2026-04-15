@@ -4,11 +4,29 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const schemaPath = resolve(process.cwd(), 'prisma/schema.prisma');
+const migrationPath = resolve(
+  process.cwd(),
+  'prisma/migrations/20260416010000_platformization_identity_schema/migration.sql',
+);
+
+function getModelBlock(schema: string, modelName: string) {
+  const match = schema.match(new RegExp(`model ${modelName} \\{[\\s\\S]*?\\n\\}`, 'm'));
+  expect(match, `expected to find model ${modelName}`).toBeTruthy();
+  return match?.[0].replace(/[ \t]+/g, ' ') ?? '';
+}
 
 describe('platformization schema guard', () => {
   it('includes the dormant identity graph and shared-channel ownership fields', () => {
     const schema = readFileSync(schemaPath, 'utf8');
     const compactSchema = schema.replace(/[ \t]+/g, ' ');
+    const identityModel = getModelBlock(schema, 'Identity');
+    const customerModel = getModelBlock(schema, 'Customer');
+    const membershipModel = getModelBlock(schema, 'Membership');
+    const agentModel = getModelBlock(schema, 'Agent');
+    const agentBindingModel = getModelBlock(schema, 'AgentBinding');
+    const adminAccountModel = getModelBlock(schema, 'AdminAccount');
+    const externalIdentityModel = getModelBlock(schema, 'ExternalIdentity');
+    const channelModel = getModelBlock(schema, 'Channel');
 
     expect(compactSchema).toContain('enum IdentityClaimStatus');
     expect(compactSchema).toContain('enum CustomerKind');
@@ -16,51 +34,97 @@ describe('platformization schema guard', () => {
     expect(compactSchema).toContain('enum AgentBindingProvisionStatus');
     expect(compactSchema).toContain('enum ChannelOwnershipKind');
 
-    expect(compactSchema).toContain('model Identity');
-    expect(compactSchema).toContain('id String @id @default(uuid())');
-    expect(compactSchema).toContain('email String? @unique');
-    expect(compactSchema).toContain('phone String?');
-    expect(compactSchema).toContain('passwordHash String? @map("password_hash")');
-    expect(compactSchema).toContain('claimStatus IdentityClaimStatus @default(active) @map("claim_status")');
+    expect(identityModel).toContain('id String @id @default(uuid())');
+    expect(identityModel).toContain('email String? @unique');
+    expect(identityModel).toContain('phone String?');
+    expect(identityModel).toContain('passwordHash String? @map("password_hash")');
+    expect(identityModel).toContain('claimStatus IdentityClaimStatus @default(active) @map("claim_status")');
+    expect(identityModel).toContain('memberships Membership[]');
+    expect(identityModel).not.toContain('externalIdentities');
 
-    expect(compactSchema).toContain('model Customer');
-    expect(compactSchema).toContain('externalIdentities ExternalIdentity[]');
+    expect(customerModel).toContain('memberships Membership[]');
+    expect(customerModel).toContain('channels Channel[]');
+    expect(customerModel).toContain('agentBindings AgentBinding[]');
+    expect(customerModel).toContain('externalIdentities ExternalIdentity[]');
 
-    expect(compactSchema).toContain('model Membership');
-    expect(compactSchema).toContain('id String @id @default(uuid())');
-    expect(compactSchema).toContain('role MembershipRole @default(owner)');
-    expect(compactSchema).toContain('@@unique([identityId, customerId])');
-    expect(compactSchema).toContain('@@index([customerId])');
+    expect(membershipModel).toContain('id String @id @default(uuid())');
+    expect(membershipModel).toContain('role MembershipRole @default(owner)');
+    expect(membershipModel).toContain('@@unique([identityId, customerId])');
+    expect(membershipModel).toContain('@@index([identityId])');
+    expect(membershipModel).toContain('@@index([customerId])');
 
-    expect(compactSchema).toContain('model Agent');
-    expect(compactSchema).toContain('sharedChannels Channel[]');
+    expect(agentModel).toContain('id String @id @default(uuid())');
+    expect(agentModel).toContain('sharedChannels Channel[]');
 
-    expect(compactSchema).toContain('model AgentBinding');
-    expect(compactSchema).toContain('id String @id @default(uuid())');
-    expect(compactSchema).toContain('provisionUpdatedAt DateTime @default(now()) @map("provision_updated_at")');
-    expect(compactSchema).toContain('@@unique([customerId])');
-    expect(compactSchema).toContain('@@index([agentId])');
-    expect(compactSchema).toContain('agent Agent @relation(fields: [agentId], references: [id], onDelete: Restrict)');
+    expect(agentBindingModel).toContain('id String @id @default(uuid())');
+    expect(agentBindingModel).toContain('provisionUpdatedAt DateTime @default(now()) @map("provision_updated_at")');
+    expect(agentBindingModel).toContain('@@unique([customerId])');
+    expect(agentBindingModel).toContain('@@index([agentId])');
+    expect(agentBindingModel).toContain(
+      'agent Agent @relation(fields: [agentId], references: [id], onDelete: Restrict)',
+    );
 
-    expect(compactSchema).toContain('model AdminAccount');
-    expect(compactSchema).toContain('id String @id @default(uuid())');
-    expect(compactSchema).toContain('mfaSecret String? @map("mfa_secret")');
+    expect(adminAccountModel).toContain('id String @id @default(uuid())');
+    expect(adminAccountModel).toContain('email String @unique');
+    expect(adminAccountModel).toContain('passwordHash String @map("password_hash")');
+    expect(adminAccountModel).toContain('mfaSecret String? @map("mfa_secret")');
+    expect(adminAccountModel).not.toContain('name String');
 
-    expect(compactSchema).toContain('model ExternalIdentity');
-    expect(compactSchema).toContain('identityType String @map("identity_type")');
-    expect(compactSchema).toContain('identityValue String @map("identity_value")');
-    expect(compactSchema).toContain('customerId String @map("customer_id")');
-    expect(compactSchema).toContain('firstSeenChannelId String @map("first_seen_channel_id")');
-    expect(compactSchema).toContain('firstSeenAt DateTime @default(now()) @map("first_seen_at")');
-    expect(compactSchema).toContain('lastSeenAt DateTime @default(now()) @map("last_seen_at")');
-    expect(compactSchema).toContain('customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)');
-    expect(compactSchema).toContain('firstSeenChannel Channel @relation(fields: [firstSeenChannelId], references: [id], onDelete: Restrict)');
-    expect(compactSchema).toContain('@@unique([provider, identityType, identityValue])');
-    expect(compactSchema).toContain('@@index([customerId])');
+    expect(externalIdentityModel).toContain('identityType String @map("identity_type")');
+    expect(externalIdentityModel).toContain('identityValue String @map("identity_value")');
+    expect(externalIdentityModel).toContain('customerId String @map("customer_id")');
+    expect(externalIdentityModel).toContain(
+      'firstSeenChannelId String @map("first_seen_channel_id")',
+    );
+    expect(externalIdentityModel).toContain(
+      'firstSeenAt DateTime @default(now()) @map("first_seen_at")',
+    );
+    expect(externalIdentityModel).toContain(
+      'lastSeenAt DateTime @default(now()) @map("last_seen_at")',
+    );
+    expect(externalIdentityModel).toContain(
+      'customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)',
+    );
+    expect(externalIdentityModel).toContain(
+      'firstSeenChannel Channel @relation(fields: [firstSeenChannelId], references: [id], onDelete: Restrict)',
+    );
+    expect(externalIdentityModel).toContain('@@unique([provider, identityType, identityValue])');
+    expect(externalIdentityModel).toContain('@@index([customerId])');
 
-    expect(compactSchema).toContain('ownershipKind ChannelOwnershipKind @default(customer) @map("ownership_kind")');
-    expect(compactSchema).toContain('customerId String? @map("customer_id")');
-    expect(compactSchema).toContain('agentId String? @map("agent_id")');
-    expect(compactSchema).toContain('sharedAgent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)');
+    expect(channelModel).toContain(
+      'ownershipKind ChannelOwnershipKind @default(customer) @map("ownership_kind")',
+    );
+    expect(channelModel).toContain('customerId String? @map("customer_id")');
+    expect(channelModel).toContain('agentId String? @map("agent_id")');
+    expect(channelModel).toContain(
+      'customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)',
+    );
+    expect(channelModel).toContain(
+      'sharedAgent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)',
+    );
+  });
+});
+
+describe('platformization migration guard', () => {
+  it('includes the required safety backfill and dormant platform indexes/constraints', () => {
+    const migration = readFileSync(migrationPath, 'utf8');
+    const compactMigration = migration.replace(/[ \t]+/g, ' ');
+
+    expect(compactMigration).toContain('agents_is_default_true_key');
+    expect(compactMigration).toContain('channels_ownership_kind_check');
+    expect(compactMigration).toContain('channels_customer_kind_active_key');
+    expect(compactMigration).toContain('memberships_identity_id_idx');
+    expect(compactMigration).toContain('UPDATE "channels"');
+    expect(compactMigration).toContain('SET "customer_id" = "clawscale_users"."coke_account_id"');
+    expect(compactMigration).toContain('FROM "clawscale_users"');
+    expect(compactMigration).toContain(
+      'WHERE "channels"."owner_clawscale_user_id" = "clawscale_users"."id"',
+    );
+    expect(compactMigration).toContain(
+      '("ownership_kind" = \'customer\'::"ChannelOwnershipKind" AND "customer_id" IS NOT NULL)',
+    );
+    expect(compactMigration).toContain(
+      '("ownership_kind" = \'shared\'::"ChannelOwnershipKind" AND "customer_id" IS NULL AND "agent_id" IS NOT NULL)',
+    );
   });
 });

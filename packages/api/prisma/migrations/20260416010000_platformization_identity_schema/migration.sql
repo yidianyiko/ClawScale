@@ -97,6 +97,12 @@ ALTER TABLE "channels"
     ADD COLUMN "customer_id" TEXT,
     ADD COLUMN "agent_id" TEXT;
 
+UPDATE "channels"
+SET "customer_id" = "clawscale_users"."coke_account_id"
+FROM "clawscale_users"
+WHERE "channels"."owner_clawscale_user_id" = "clawscale_users"."id"
+  AND "channels"."customer_id" IS NULL;
+
 ALTER TABLE "channels"
     ADD CONSTRAINT "channels_ownership_kind_check"
     CHECK (
@@ -114,6 +120,7 @@ CREATE UNIQUE INDEX "external_identities_provider_identity_type_identity_value_k
 CREATE UNIQUE INDEX "agents_is_default_true_key" ON "agents" ("is_default") WHERE "is_default" = true;
 CREATE UNIQUE INDEX "channels_customer_kind_active_key" ON "channels" ("customer_id", "type") WHERE "customer_id" IS NOT NULL AND "status" <> 'archived'::"ChannelStatus";
 
+CREATE INDEX "memberships_identity_id_idx" ON "memberships"("identity_id");
 CREATE INDEX "memberships_customer_id_idx" ON "memberships"("customer_id");
 CREATE INDEX "agent_bindings_agent_id_idx" ON "agent_bindings"("agent_id");
 CREATE INDEX "external_identities_customer_id_idx" ON "external_identities"("customer_id");
