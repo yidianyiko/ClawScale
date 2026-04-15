@@ -73,6 +73,34 @@ enum VerifyTokenType {
   password_reset
 }
 
+enum IdentityClaimStatus {
+  active
+  unclaimed
+  pending
+}
+
+enum CustomerKind {
+  personal
+  organization
+}
+
+enum MembershipRole {
+  owner
+  member
+  viewer
+}
+
+enum AgentBindingProvisionStatus {
+  pending
+  ready
+  error
+}
+
+enum ChannelOwnershipKind {
+  customer
+  shared
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model Tenant {
@@ -118,6 +146,19 @@ model Member {
   @@map("members")
 }
 
+model AdminAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  mfaSecret    String?  @map("mfa_secret")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("admin_accounts")
+}
+
 model Session {
   id        String   @id
   memberId  String   @map("member_id")
@@ -139,6 +180,9 @@ model Channel {
   tenantId             String        @map("tenant_id")
   type                 ChannelType
   scope                ChannelScope   @default(tenant_shared)
+  ownershipKind        ChannelOwnershipKind @default(customer) @map("ownership_kind")
+  customerId           String?       @map("customer_id")
+  agentId              String?       @map("agent_id")
   ownerClawscaleUserId String?       @map("owner_clawscale_user_id")
   activeLifecycleKey   String?       @unique @map("active_lifecycle_key")
   name                 String
@@ -147,13 +191,18 @@ model Channel {
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
-  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  agent              Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
+  externalIdentities ExternalIdentity[]
   conversations     Conversation[]
   endUsers          EndUser[]
   deliveryRoutes    DeliveryRoute[]
 
   @@index([tenantId])
+  @@index([customerId])
+  @@index([agentId])
   @@index([ownerClawscaleUserId])
   @@map("channels")
 }
@@ -228,6 +277,104 @@ model CokeAccount {
   verifyTokens   VerifyToken[]
 
   @@map("coke_accounts")
+}
+
+model Identity {
+  id                 String              @id
+  email              String              @unique
+  displayName        String              @map("display_name")
+  claimStatus        IdentityClaimStatus @default(unclaimed) @map("claim_status")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  memberships        Membership[]
+  externalIdentities ExternalIdentity[]
+
+  @@map("identities")
+}
+
+model Customer {
+  id           String       @id
+  kind         CustomerKind @default(personal)
+  displayName  String       @map("display_name")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  memberships  Membership[]
+  channels     Channel[]
+  agentBindings AgentBinding[]
+
+  @@map("customers")
+}
+
+model Membership {
+  id         String         @id
+  identityId String         @map("identity_id")
+  customerId String         @map("customer_id")
+  role       MembershipRole @default(member)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([identityId, customerId])
+  @@index([identityId])
+  @@index([customerId])
+  @@map("memberships")
+}
+
+model Agent {
+  id         String   @id
+  slug       String   @unique
+  name       String
+  endpoint   String
+  authToken  String   @map("auth_token")
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  bindings AgentBinding[]
+  channels Channel[]
+
+  @@map("agents")
+}
+
+model AgentBinding {
+  id                 String                       @id @default(cuid())
+  customerId         String                       @map("customer_id")
+  agentId            String                       @map("agent_id")
+  provisionStatus    AgentBindingProvisionStatus  @default(pending) @map("provision_status")
+  provisionAttempts  Int                          @default(0) @map("provision_attempts")
+  provisionLastError String?                      @map("provision_last_error")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  updatedAt          DateTime                     @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, agentId])
+  @@index([customerId])
+  @@index([agentId])
+  @@map("agent_bindings")
+}
+
+model ExternalIdentity {
+  id         String   @id
+  identityId String   @map("identity_id")
+  channelId  String?  @map("channel_id")
+  provider   String
+  externalId String   @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  channel  Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalId])
+  @@index([identityId])
+  @@index([channelId])
+  @@map("external_identities")
 }
 
 model Subscription {
