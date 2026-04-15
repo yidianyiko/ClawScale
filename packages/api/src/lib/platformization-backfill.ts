@@ -108,8 +108,8 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
     };
   }
 
-  await db.$transaction(async (tx) => {
-    for (const legacyAccount of legacyAccounts) {
+  for (const legacyAccount of legacyAccounts) {
+    await db.$transaction(async (tx) => {
       const graph = buildLegacyCustomerGraph({
         cokeAccountId: legacyAccount.id,
         email: legacyAccount.email,
@@ -164,8 +164,8 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
         create: agentBindingSeed,
         update: {},
       });
-    }
-  });
+    });
+  }
 
   return {
     backfilled: legacyAccounts.length,

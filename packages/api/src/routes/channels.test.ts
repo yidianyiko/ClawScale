@@ -376,6 +376,35 @@ describe('channels router', () => {
     expect(mocks.stopWeixinBot).toHaveBeenCalledWith('ch_2');
   });
 
+  it('does not disconnect archived wechat personal channels', async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_archived',
+      tenantId: 'tnt_1',
+      type: 'wechat_personal',
+      status: 'archived',
+      config: {},
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_archived/disconnect', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'archived_channel',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.stopWeixinBot).not.toHaveBeenCalled();
+  });
+
   it('archives legacy wechat personal channels instead of hard deleting them', async () => {
     mocks.findFirst.mockResolvedValue({
       id: 'ch_legacy',

@@ -162,8 +162,6 @@ export const channelsRouter = new Hono()
       stopDiscordBot(id).catch(() => {});
     } else if (existing.type === 'wechat_work') {
       stopWeChatBot(id).catch(() => {});
-    } else if (existing.type === 'wechat_personal') {
-      stopWeixinBot(id).catch(() => {});
     } else if (existing.type === 'whatsapp') {
       stopWhatsAppBot(id).catch(() => {});
     } else if (existing.type === 'whatsapp_business') {
@@ -321,6 +319,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.status === 'archived') {
+      return c.json({ ok: false, error: 'archived_channel' }, 409);
+    }
 
     await db.channel.update({ where: { id }, data: { status: 'disconnected' } });
     await audit({ tenantId, memberId: userId, action: 'disconnect_channel', resource: 'channel', resourceId: id });

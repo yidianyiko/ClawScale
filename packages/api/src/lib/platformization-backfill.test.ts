@@ -216,7 +216,7 @@ describe('platformization backfill orchestration', () => {
       updatedAt,
     });
 
-    expect(db.client.$transaction).toHaveBeenCalledOnce();
+    expect(db.client.$transaction).toHaveBeenCalledTimes(2);
     expect(db.tx.identity.upsert).toHaveBeenCalledTimes(2);
     expect(db.tx.customer.upsert).toHaveBeenCalledTimes(2);
     expect(db.tx.membership.upsert).toHaveBeenCalledTimes(2);
