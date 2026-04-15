@@ -4,9 +4,11 @@ import { Hono } from 'hono';
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   findMany: vi.fn(),
+  agentFindFirst: vi.fn(),
   create: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
+  generateId: vi.fn(() => 'ch_new'),
   startWeixinQR: vi.fn(),
   stopWeixinBot: vi.fn(),
   getWeixinQR: vi.fn(),
@@ -15,6 +17,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/index.js', () => ({
   db: {
+    agent: {
+      findFirst: mocks.agentFindFirst,
+    },
     channel: {
       findFirst: mocks.findFirst,
       findMany: mocks.findMany,
@@ -23,6 +28,10 @@ vi.mock('../db/index.js', () => ({
       update: mocks.update,
     },
   },
+}));
+
+vi.mock('../lib/id.js', () => ({
+  generateId: mocks.generateId,
 }));
 
 vi.mock('../middleware/auth.js', () => ({
@@ -169,6 +178,97 @@ describe('channels router', () => {
     expect(body).toMatchObject({
       ok: false,
       error: 'wechat_personal channels can only be managed through existing legacy rows',
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('creates generic admin channels as shared channels owned by the default agent', async () => {
+    mocks.agentFindFirst.mockResolvedValueOnce({ id: 'agent_default' });
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'whatsapp',
+      name: 'Shared WhatsApp',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp',
+      name: 'Shared WhatsApp',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'whatsapp',
+        name: 'Shared WhatsApp',
+        config: { phoneNumber: '+15551234567' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        type: 'whatsapp',
+        name: 'Shared WhatsApp',
+        status: 'disconnected',
+      },
+    });
+    expect(mocks.agentFindFirst).toHaveBeenCalledWith({
+      where: { isDefault: true },
+      select: { id: true },
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'whatsapp',
+        name: 'Shared WhatsApp',
+        config: { phoneNumber: '+15551234567' },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: 'agent_default',
+        customerId: null,
+      }),
+    });
+  });
+
+  it('returns a controlled error when no default agent exists for shared channel creation', async () => {
+    mocks.agentFindFirst.mockResolvedValueOnce(null);
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'telegram',
+        name: 'Shared Telegram',
+        config: { botToken: 'token' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'default_agent_not_found',
     });
     expect(mocks.create).not.toHaveBeenCalled();
   });

@@ -63,7 +63,14 @@ describe('createOrReusePersonalWeChatChannel', () => {
         ownerClawscaleUserId: 'csu_1',
         activeLifecycleKey: 'ten_1:csu_1:wechat_personal',
         status: 'disconnected',
+        ownershipKind: 'customer',
+        customerId: 'acc_1',
+        agentId: null,
       }),
+    });
+    expect(db.clawscaleUser.findUnique).toHaveBeenCalledWith({
+      where: { id: 'csu_1' },
+      select: { id: true, tenantId: true, cokeAccountId: true },
     });
     expect(result.status).toBe('disconnected');
   });

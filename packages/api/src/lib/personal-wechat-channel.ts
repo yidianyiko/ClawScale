@@ -26,7 +26,7 @@ function activeLifecycleKey(input: PersonalWeChatChannelInput): string {
 async function resolveClawscaleUser(input: PersonalWeChatChannelInput) {
   const user = await db.clawscaleUser.findUnique({
     where: { id: input.clawscaleUserId },
-    select: { id: true, tenantId: true },
+    select: { id: true, tenantId: true, cokeAccountId: true },
   });
 
   if (!user || user.tenantId !== input.tenantId) {
@@ -153,7 +153,7 @@ async function findActivePersonalWeChatChannel(input: PersonalWeChatChannelInput
 export async function createOrReusePersonalWeChatChannel(
   input: PersonalWeChatChannelInput,
 ) {
-  await resolveClawscaleUser(input);
+  const user = await resolveClawscaleUser(input);
 
   const existing = await findActivePersonalWeChatChannel(input);
   if (existing) {
@@ -172,6 +172,9 @@ export async function createOrReusePersonalWeChatChannel(
         name: 'My WeChat',
         status: 'disconnected',
         config: {},
+        ownershipKind: 'customer',
+        customerId: user.cokeAccountId,
+        agentId: null,
       },
     });
   } catch (error) {

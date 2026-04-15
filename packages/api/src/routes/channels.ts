@@ -68,6 +68,15 @@ export const channelsRouter = new Hono()
       return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
     }
 
+    const defaultAgent = await db.agent.findFirst({
+      where: { isDefault: true },
+      select: { id: true },
+    });
+
+    if (!defaultAgent) {
+      return c.json({ ok: false, error: 'default_agent_not_found' }, 500);
+    }
+
     const id = generateId('ch');
     await db.channel.create({
       data: {
@@ -77,6 +86,9 @@ export const channelsRouter = new Hono()
         name: body.name,
         config: body.config as any,
         status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: defaultAgent.id,
+        customerId: null,
       },
     });
 
