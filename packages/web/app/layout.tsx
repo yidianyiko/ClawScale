@@ -6,7 +6,7 @@ import { getLocaleBootstrapScript } from "../lib/i18n";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Coke AI | An AI Partner That Grows With You",
+  title: "coke | An AI Partner That Grows With You",
   description: "Coke AI public homepage, user sign-in, registration, and personal channel setup.",
   icons: { icon: "/logo.png" },
 };
