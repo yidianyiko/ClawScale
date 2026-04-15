@@ -92,6 +92,22 @@ CREATE TABLE "external_identities" (
     CONSTRAINT "external_identities_pkey" PRIMARY KEY ("id")
 );
 
+INSERT INTO "customers" (
+    "id",
+    "kind",
+    "display_name",
+    "created_at",
+    "updated_at"
+)
+SELECT
+    "coke_accounts"."id",
+    'personal'::"CustomerKind",
+    "coke_accounts"."display_name",
+    "coke_accounts"."created_at",
+    "coke_accounts"."updated_at"
+FROM "coke_accounts"
+ON CONFLICT ("id") DO NOTHING;
+
 ALTER TABLE "channels"
     ADD COLUMN "ownership_kind" "ChannelOwnershipKind" NOT NULL DEFAULT 'customer',
     ADD COLUMN "customer_id" TEXT,

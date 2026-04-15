@@ -108,12 +108,21 @@ describe('platformization schema guard', () => {
 describe('platformization migration guard', () => {
   it('includes the required safety backfill and dormant platform indexes/constraints', () => {
     const migration = readFileSync(migrationPath, 'utf8');
-    const compactMigration = migration.replace(/[ \t]+/g, ' ');
+    const compactMigration = migration.replace(/\s+/g, ' ');
 
     expect(compactMigration).toContain('agents_is_default_true_key');
     expect(compactMigration).toContain('channels_ownership_kind_check');
     expect(compactMigration).toContain('channels_customer_kind_active_key');
     expect(compactMigration).toContain('memberships_identity_id_idx');
+    expect(compactMigration).toContain('INSERT INTO "customers"');
+    expect(compactMigration).toContain(
+      'SELECT "coke_accounts"."id", \'personal\'::"CustomerKind", "coke_accounts"."display_name"',
+    );
+    expect(compactMigration).toContain(
+      '"coke_accounts"."created_at", "coke_accounts"."updated_at"',
+    );
+    expect(compactMigration).toContain('FROM "coke_accounts"');
+    expect(compactMigration).toContain('ON CONFLICT ("id") DO NOTHING');
     expect(compactMigration).toContain('UPDATE "channels"');
     expect(compactMigration).toContain('SET "customer_id" = "clawscale_users"."coke_account_id"');
     expect(compactMigration).toContain('FROM "clawscale_users"');
