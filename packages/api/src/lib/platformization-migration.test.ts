@@ -130,4 +130,24 @@ describe('summarizeLegacyBaseline', () => {
       mongoAccountIds: 2,
     });
   });
+
+  it('reports case-insensitive email collisions across legacy accounts', () => {
+    const summary = summarizeLegacyBaseline({
+      cokeAccounts: [
+        { cokeAccountId: 'ck_1', email: 'Alice@Example.com' },
+        { cokeAccountId: 'ck_2', email: 'alice@example.com' },
+        { cokeAccountId: 'ck_3', email: 'other@example.com' },
+      ],
+      clawscaleUsers: [
+        { cokeAccountId: 'ck_1', tenantId: 'tnt_1' },
+        { cokeAccountId: 'ck_2', tenantId: 'tnt_2' },
+        { cokeAccountId: 'ck_3', tenantId: 'tnt_3' },
+      ],
+      mongoAccountIds: ['ck_1', 'ck_2', 'ck_3'],
+    });
+
+    expect(summary.errors).toEqual([
+      'case_insensitive_email_collision:alice@example.com:accounts=ck_1,ck_2',
+    ]);
+  });
 });

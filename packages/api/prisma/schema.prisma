@@ -191,8 +191,8 @@ model Channel {
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
   tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sharedAgent        Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sharedAgent        Agent?          @relation(fields: [agentId], references: [id], onDelete: Restrict)
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
   externalIdentities ExternalIdentity[]
   conversations     Conversation[]

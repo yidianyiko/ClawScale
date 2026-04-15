@@ -151,6 +151,32 @@ describe('platformization backfill orchestration', () => {
     });
   });
 
+  it('auditLegacyBaseline reports case-insensitive email collisions as blockers', async () => {
+    db.client.cokeAccount.findMany.mockResolvedValue([
+      { id: 'acct_1', email: 'Alice@Example.com' },
+      { id: 'acct_2', email: 'alice@example.com' },
+    ]);
+    db.client.clawscaleUser.findMany.mockResolvedValue([
+      { cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
+      { cokeAccountId: 'acct_2', tenantId: 'tenant_2' },
+    ]);
+
+    await expect(
+      auditLegacyBaseline({
+        mongoAccountIds: ['acct_1', 'acct_2'],
+      }),
+    ).resolves.toEqual({
+      counts: {
+        cokeAccounts: 2,
+        clawscaleUsers: 2,
+        mongoAccountIds: 2,
+      },
+      errors: [
+        'case_insensitive_email_collision:alice@example.com:accounts=acct_1,acct_2',
+      ],
+    });
+  });
+
   it('backfillLegacyCustomers upserts the new graph for each legacy CokeAccount', async () => {
     const createdAt = new Date('2026-04-01T00:00:00.000Z');
     const updatedAt = new Date('2026-04-02T00:00:00.000Z');

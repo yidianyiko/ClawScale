@@ -99,10 +99,10 @@ describe('platformization schema guard', () => {
     expect(channelModel).toContain('customerId String? @map("customer_id")');
     expect(channelModel).toContain('agentId String? @map("agent_id")');
     expect(channelModel).toContain(
-      'customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)',
+      'customer Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)',
     );
     expect(channelModel).toContain(
-      'sharedAgent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)',
+      'sharedAgent Agent? @relation(fields: [agentId], references: [id], onDelete: Restrict)',
     );
   });
 });
@@ -117,6 +117,9 @@ describe('platformization migration guard', () => {
     expect(compactMigration).toContain('channels_customer_kind_active_key');
     expect(compactMigration).toContain('memberships_identity_id_idx');
     expect(compactMigration).toContain('INSERT INTO "customers"');
+    expect(compactMigration).toContain('WITH "duplicate_customer_channels" AS');
+    expect(compactMigration).toContain('ROW_NUMBER() OVER ( PARTITION BY "customer_id", "type"');
+    expect(compactMigration).toContain('SET "status" = \'archived\'::"ChannelStatus"');
     expect(compactMigration).toContain(
       'SELECT "coke_accounts"."id", \'personal\'::"CustomerKind", "coke_accounts"."display_name"',
     );
@@ -144,6 +147,12 @@ describe('platformization migration guard', () => {
     );
     expect(compactMigration).toContain(
       '("ownership_kind" = \'shared\'::"ChannelOwnershipKind" AND "customer_id" IS NULL AND "agent_id" IS NOT NULL)',
+    );
+    expect(compactMigration).toContain(
+      'FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE RESTRICT ON UPDATE CASCADE',
+    );
+    expect(compactMigration).toContain(
+      'FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE RESTRICT ON UPDATE CASCADE',
     );
   });
 });

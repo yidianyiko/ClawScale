@@ -205,20 +205,36 @@ async function ensurePlatformizationShadowGraph(
     agentId: DEFAULT_COKE_AGENT_ID,
   });
 
-  await client.identity.upsert({
-    where: { id: graph.identity.id },
-    create: {
-      ...graph.identity,
-      passwordHash: account.passwordHash ?? null,
-    },
-    update: {
-      email: graph.identity.email,
-      displayName: graph.identity.displayName,
-      passwordHash: account.passwordHash ?? null,
-      claimStatus: graph.identity.claimStatus,
-      updatedAt: account.updatedAt,
-    },
-  });
+  try {
+    await client.identity.upsert({
+      where: { id: graph.identity.id },
+      create: {
+        ...graph.identity,
+        passwordHash: account.passwordHash ?? null,
+      },
+      update: {
+        email: graph.identity.email,
+        displayName: graph.identity.displayName,
+        passwordHash: account.passwordHash ?? null,
+        claimStatus: graph.identity.claimStatus,
+        updatedAt: account.updatedAt,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraint(error, 'email')) {
+      throw error;
+    }
+
+    console.warn(
+      '[clawscale-user] compatibility Identity shadow write skipped due to email collision',
+      {
+        cokeAccountId: account.id,
+        email: graph.identity.email,
+        error,
+      },
+    );
+    return;
+  }
 
   await client.customer.upsert({
     where: { id: graph.customer.id },

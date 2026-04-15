@@ -28,6 +28,10 @@ export function deriveCustomerIdFromLegacyAccount(legacyAccountId: string): stri
   return legacyAccountId;
 }
 
+function normalizeLegacyIdentityEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export function deriveDeterministicPlatformId(
   scope: string,
   legacyAccountId: string,
@@ -54,7 +58,7 @@ export function buildLegacyCustomerGraph(input: LegacyCokeAccountSeedInput) {
   const customerId = deriveCustomerIdFromLegacyAccount(input.cokeAccountId);
   const identityId = deriveDeterministicPlatformId('identity', input.cokeAccountId);
   const membershipId = deriveDeterministicPlatformId('membership', input.cokeAccountId);
-  const email = input.email.trim().toLowerCase();
+  const email = normalizeLegacyIdentityEmail(input.email);
   const displayName = input.displayName?.trim() || email;
 
   return {
@@ -115,18 +119,38 @@ export function buildDefaultAgentSeed(input: {
 export function summarizeLegacyBaseline(input: LegacyBaselineSummaryInput) {
   const clawscaleAccountIds = new Set(input.clawscaleUsers.map((row) => row.cokeAccountId));
   const cokeAccountIds = new Set(input.cokeAccounts.map((row) => row.cokeAccountId));
+  const normalizedEmailToAccountIds = new Map<string, string[]>();
   const errors: string[] = [];
 
   for (const account of input.cokeAccounts) {
     if (!clawscaleAccountIds.has(account.cokeAccountId)) {
       errors.push(`missing_clawscale_user:${account.cokeAccountId}`);
     }
+
+    const normalizedEmail = normalizeLegacyIdentityEmail(account.email);
+    const accountIds = normalizedEmailToAccountIds.get(normalizedEmail) ?? [];
+    accountIds.push(account.cokeAccountId);
+    normalizedEmailToAccountIds.set(normalizedEmail, accountIds);
   }
 
   for (const accountId of input.mongoAccountIds) {
     if (!cokeAccountIds.has(accountId)) {
       errors.push(`orphan_mongo_account_id:${accountId}`);
     }
+  }
+
+  for (const [normalizedEmail, accountIds] of [...normalizedEmailToAccountIds.entries()].sort(
+    ([leftEmail], [rightEmail]) => leftEmail.localeCompare(rightEmail),
+  )) {
+    if (accountIds.length < 2) {
+      continue;
+    }
+
+    errors.push(
+      `case_insensitive_email_collision:${normalizedEmail}:accounts=${[...accountIds]
+        .sort((left, right) => left.localeCompare(right))
+        .join(',')}`,
+    );
   }
 
   return {

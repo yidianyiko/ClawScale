@@ -504,6 +504,67 @@ describe('clawscale-user helpers', () => {
     warnSpy.mockRestore();
   });
 
+  it('ensureClawscaleUserForCokeAccount keeps existing mappings usable when identity email shadow write collides', async () => {
+    const existingAccount = {
+      id: 'acct_existing',
+      email: 'Existing@Example.com',
+      displayName: 'Existing User',
+      createdAt: new Date('2026-04-03T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    };
+    const identityCollisionError = {
+      code: 'P2002',
+      meta: {
+        target: ['email'],
+      },
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    db.cokeAccount.findUnique.mockResolvedValueOnce(existingAccount);
+    db.clawscaleUser.findUnique.mockResolvedValueOnce({
+      id: 'csu_existing',
+      tenantId: 'tnt_existing',
+    });
+    db.identity.upsert.mockRejectedValueOnce(identityCollisionError);
+    db.aiBackend.findFirst.mockResolvedValueOnce({
+      id: 'aib_existing',
+      tenantId: 'tnt_existing',
+      type: 'custom',
+      isActive: true,
+      isDefault: true,
+      config: {
+        baseUrl: 'http://127.0.0.1:8090/bridge/inbound',
+        transport: 'http',
+        responseFormat: 'json-auto',
+        authHeader: 'Bearer dev-bridge-key',
+      },
+    });
+
+    await expect(
+      ensureClawscaleUserForCokeAccount({
+        cokeAccountId: 'acct_existing',
+      }),
+    ).resolves.toEqual({
+      tenantId: 'tnt_existing',
+      clawscaleUserId: 'csu_existing',
+      created: false,
+      ready: true,
+    });
+
+    expect(db.customer.upsert).not.toHaveBeenCalled();
+    expect(db.membership.upsert).not.toHaveBeenCalled();
+    expect(db.agentBinding.create).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[clawscale-user] compatibility Identity shadow write skipped due to email collision',
+      expect.objectContaining({
+        cokeAccountId: existingAccount.id,
+        email: 'existing@example.com',
+        error: identityCollisionError,
+      }),
+    );
+    warnSpy.mockRestore();
+  });
+
   it('ensureClawscaleUserForCokeAccount recovers when cokeAccountId create races and still shadow-writes the compatibility graph', async () => {
     const racedAccount = {
       id: 'acct_race',
