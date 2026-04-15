@@ -3,9 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
-import { DEFAULT_COKE_AGENT_ID } from '../lib/platformization-migration.js';
 import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wecom.js';
 import { startWeixinBot, startWeixinQR, stopWeixinBot, getWeixinQR, getWeixinStatus } from '../adapters/wechat.js';
@@ -45,6 +43,12 @@ const channelListSelect = {
   // config intentionally omitted (contains secrets)
 } as const;
 
+const sharedChannelsDeferredError = 'shared_channels_deferred_until_phase15';
+
+function isDeferredSharedChannel(channel: { ownershipKind?: string | null }) {
+  return channel.ownershipKind === 'shared';
+}
+
 export const channelsRouter = new Hono()
   .use('*', requireAuth)
 
@@ -53,7 +57,10 @@ export const channelsRouter = new Hono()
     const { tenantId } = c.get('auth');
 
     const rows = await db.channel.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ownershipKind: 'customer',
+      },
       select: channelListSelect,
     });
 
@@ -68,27 +75,14 @@ export const channelsRouter = new Hono()
     if (body.type === 'wechat_personal') {
       return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
     }
-
-    const id = generateId('ch');
-    await db.channel.create({
-      data: {
-        id,
-        tenantId,
-        type: body.type,
-        name: body.name,
-        config: body.config as any,
-        status: 'disconnected',
-        // Phase 1 only persists dormant ownership metadata for legacy admin-managed channels.
-        ownershipKind: 'shared',
-        agentId: DEFAULT_COKE_AGENT_ID,
-        customerId: null,
-      },
+    await audit({
+      tenantId,
+      memberId: userId,
+      action: 'defer_shared_channel_creation',
+      resource: 'channel',
+      resourceId: body.type,
     });
-
-    await audit({ tenantId, memberId: userId, action: 'create_channel', resource: 'channel', resourceId: id });
-
-    const created = await db.channel.findUnique({ where: { id }, select: channelListSelect });
-    return c.json({ ok: true, data: created }, 201);
+    return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
   })
 
   // ── GET /api/channels/:id ────────────────────────────────────────────────────
@@ -100,6 +94,9 @@ export const channelsRouter = new Hono()
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(channel)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
     return c.json({ ok: true, data: channel });
   })
 
@@ -111,10 +108,13 @@ export const channelsRouter = new Hono()
 
     const existing = await db.channel.findFirst({
       where: { id, tenantId },
-      select: { id: true },
+      select: { id: true, ownershipKind: true },
     });
 
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(existing)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
 
     await db.channel.update({ where: { id }, data: body as any });
     await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
@@ -138,6 +138,9 @@ export const channelsRouter = new Hono()
 
     const existing = await db.channel.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(existing)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
 
     if (existing.type === 'wechat_personal') {
       const liveStatus = getWeixinStatus(id);
@@ -202,6 +205,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(channel)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
     if (channel.status === 'archived') {
       return c.json({ ok: false, error: 'archived_channel' }, 409);
     }
@@ -312,6 +318,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(channel)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
     if (channel.status === 'archived') {
       return c.json({ ok: false, error: 'archived_channel' }, 409);
     }
@@ -377,9 +386,12 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({
       where: { id, tenantId },
-      select: { id: true, type: true, status: true },
+      select: { id: true, type: true, status: true, ownershipKind: true },
     });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (isDeferredSharedChannel(channel)) {
+      return c.json({ ok: false, error: sharedChannelsDeferredError }, 409);
+    }
     if (channel.type !== 'whatsapp' && channel.type !== 'wechat_personal') {
       return c.json({ ok: false, error: 'Channel does not support QR login' }, 400);
     }
