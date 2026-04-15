@@ -27,6 +27,7 @@ export interface BackfillLegacyCustomersInput {
 
 export interface VerifyPlatformizationMigrationInput {
   cokeAccountIds?: string[];
+  expectedAgentId?: string;
 }
 
 function buildLegacyAccountWhere(ids?: string[]) {
@@ -330,6 +331,11 @@ export async function verifyPlatformizationMigration(
   }
 
   for (const agentBinding of agentBindings) {
+    if (input.expectedAgentId && agentBinding.agentId !== input.expectedAgentId) {
+      errors.push(
+        `agent_binding_agent_mismatch:${agentBinding.customerId}:expected=${input.expectedAgentId}:actual=${agentBinding.agentId}`,
+      );
+    }
     if (agentBinding.provisionStatus !== 'ready') {
       errors.push(
         `agent_binding_provision_status_mismatch:${agentBinding.customerId}:expected=ready:actual=${agentBinding.provisionStatus}`,

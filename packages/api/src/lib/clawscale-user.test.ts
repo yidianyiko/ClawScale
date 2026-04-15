@@ -424,6 +424,13 @@ describe('clawscale-user helpers', () => {
       createdAt: new Date('2026-04-03T00:00:00.000Z'),
       updatedAt: new Date('2026-04-04T00:00:00.000Z'),
     };
+    const graph = buildLegacyCustomerGraph({
+      cokeAccountId: existingAccount.id,
+      email: existingAccount.email,
+      displayName: existingAccount.displayName,
+      createdAt: existingAccount.createdAt,
+      updatedAt: existingAccount.updatedAt,
+    });
     const identityCollisionError = {
       code: 'P2002',
       meta: {
@@ -474,7 +481,31 @@ describe('clawscale-user helpers', () => {
         updatedAt: existingAccount.updatedAt,
       }),
     });
-    expect(db.membership.upsert).not.toHaveBeenCalled();
+    expect(db.identity.upsert).toHaveBeenNthCalledWith(2, {
+      where: { id: graph.identity.id },
+      create: {
+        ...graph.identity,
+        email: 'platformization-conflict+acct_existing@invalid.local',
+        passwordHash: null,
+      },
+      update: {
+        email: 'platformization-conflict+acct_existing@invalid.local',
+        displayName: graph.identity.displayName,
+        passwordHash: null,
+        claimStatus: graph.identity.claimStatus,
+        updatedAt: existingAccount.updatedAt,
+      },
+    });
+    expect(db.membership.upsert).toHaveBeenCalledWith({
+      where: { id: graph.membership.id },
+      create: graph.membership,
+      update: {
+        identityId: graph.membership.identityId,
+        customerId: graph.membership.customerId,
+        role: graph.membership.role,
+        updatedAt: existingAccount.updatedAt,
+      },
+    });
     expect(db.agentBinding.upsert).toHaveBeenCalledWith({
       where: { customerId: existingAccount.id },
       create: buildLegacyAgentBindingSeed({
@@ -493,6 +524,7 @@ describe('clawscale-user helpers', () => {
       expect.objectContaining({
         cokeAccountId: existingAccount.id,
         email: 'existing@example.com',
+        fallbackEmail: 'platformization-conflict+acct_existing@invalid.local',
         error: identityCollisionError,
       }),
     );

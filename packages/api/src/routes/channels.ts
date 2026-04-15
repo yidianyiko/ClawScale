@@ -50,16 +50,10 @@ export const channelsRouter = new Hono()
 
   // ── GET /api/channels ────────────────────────────────────────────────────────
   .get('/', async (c) => {
-    const { tenantId, role } = c.get('auth');
+    const { tenantId } = c.get('auth');
 
     const rows = await db.channel.findMany({
-      where:
-        role === 'admin'
-          ? { tenantId }
-          : {
-              tenantId,
-              ownershipKind: 'customer',
-            },
+      where: { tenantId },
       select: channelListSelect,
     });
 

@@ -39,11 +39,7 @@ vi.mock('../lib/id.js', () => ({
 
 vi.mock('../middleware/auth.js', () => ({
   requireAuth: async (c: any, next: any) => {
-    c.set('auth', {
-      userId: 'usr_1',
-      tenantId: 'tnt_1',
-      role: c.req.header('x-role') === 'user' ? 'user' : 'admin',
-    });
+    c.set('auth', { userId: 'usr_1', tenantId: 'tnt_1', role: 'admin' });
     await next();
   },
   requireAdmin: async (_c: any, next: any) => {
@@ -164,30 +160,6 @@ describe('channels router', () => {
     expect(mocks.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tnt_1',
-      },
-      select: expect.any(Object),
-    });
-  });
-
-  it('hides shared channels from non-admin channel listings', async () => {
-    mocks.findMany.mockResolvedValue([]);
-
-    const app = new Hono();
-    app.route('/api/channels', channelsRouter);
-
-    const res = await app.request('/api/channels', {
-      method: 'GET',
-      headers: {
-        authorization: 'Bearer test-token',
-        'x-role': 'user',
-      },
-    });
-
-    expect(res.status).toBe(200);
-    expect(mocks.findMany).toHaveBeenCalledWith({
-      where: {
-        tenantId: 'tnt_1',
-        ownershipKind: 'customer',
       },
       select: expect.any(Object),
     });

@@ -417,6 +417,7 @@ describe('platformization backfill orchestration', () => {
     await expect(
       verifyPlatformizationMigration({
         cokeAccountIds: legacyAccountIds,
+        expectedAgentId: DEFAULT_COKE_AGENT_ID,
       }),
     ).resolves.toEqual({
       counts: {
@@ -527,6 +528,7 @@ describe('platformization backfill orchestration', () => {
     await expect(
       verifyPlatformizationMigration({
         cokeAccountIds: ['acct_1'],
+        expectedAgentId: DEFAULT_COKE_AGENT_ID,
       }),
     ).resolves.toEqual({
       counts: {
@@ -543,6 +545,7 @@ describe('platformization backfill orchestration', () => {
         invalidOwnershipChannels: 2,
       },
       errors: [
+        `agent_binding_agent_mismatch:acct_1:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
         'agent_binding_provision_status_mismatch:acct_1:expected=ready:actual=error',
         'invalid_channel_ownership:chan_broken_customer:ownershipKind=customer:customerId=null:agentId=null',
         'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=acct_1:agentId=agent_other',
@@ -641,6 +644,7 @@ describe('platformization backfill orchestration', () => {
 
     expect(verifyPlatformizationMigrationMock).toHaveBeenCalledWith({
       cokeAccountIds: ['acct_1', 'acct_2'],
+      expectedAgentId: DEFAULT_COKE_AGENT_ID,
     });
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify(

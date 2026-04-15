@@ -1,3 +1,4 @@
+import { DEFAULT_COKE_AGENT_ID } from '../lib/platformization-migration.js';
 import { verifyPlatformizationMigration } from '../lib/platformization-backfill.js';
 
 function parseMongoAccountIds() {
@@ -11,6 +12,7 @@ async function main() {
   const mongoAccountIds = parseMongoAccountIds();
   const summary = await verifyPlatformizationMigration({
     cokeAccountIds: mongoAccountIds,
+    expectedAgentId: DEFAULT_COKE_AGENT_ID,
   });
 
   console.log(

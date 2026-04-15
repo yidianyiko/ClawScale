@@ -86,6 +86,10 @@ function buildPersonalTenantName(displayName?: string | null): string {
   return trimmed ? `${trimmed}'s Workspace` : 'Personal Workspace';
 }
 
+function buildPlatformizationConflictEmail(cokeAccountId: string): string {
+  return `platformization-conflict+${cokeAccountId.toLowerCase()}@invalid.local`;
+}
+
 function resolvePersonalCokeBridgeBackendConfig() {
   const baseUrl = process.env['COKE_BRIDGE_INBOUND_URL']?.trim() || 'http://127.0.0.1:8090/bridge/inbound';
   const apiKey = process.env['COKE_BRIDGE_API_KEY']?.trim() ?? '';
@@ -230,29 +234,25 @@ async function ensurePlatformizationShadowGraph(
       {
         cokeAccountId: account.id,
         email: graph.identity.email,
+        fallbackEmail: buildPlatformizationConflictEmail(account.id),
         error,
       },
     );
-    await client.customer.upsert({
-      where: { id: graph.customer.id },
-      create: graph.customer,
+    await client.identity.upsert({
+      where: { id: graph.identity.id },
+      create: {
+        ...graph.identity,
+        email: buildPlatformizationConflictEmail(account.id),
+        passwordHash: account.passwordHash ?? null,
+      },
       update: {
-        kind: graph.customer.kind,
-        displayName: graph.customer.displayName,
+        email: buildPlatformizationConflictEmail(account.id),
+        displayName: graph.identity.displayName,
+        passwordHash: account.passwordHash ?? null,
+        claimStatus: graph.identity.claimStatus,
         updatedAt: account.updatedAt,
       },
     });
-    await client.agentBinding.upsert({
-      where: { customerId: graph.customer.id },
-      create: agentBindingSeed,
-      update: {
-        agentId: agentBindingSeed.agentId,
-        provisionStatus: agentBindingSeed.provisionStatus,
-        provisionAttempts: agentBindingSeed.provisionAttempts,
-        provisionLastError: agentBindingSeed.provisionLastError,
-      },
-    });
-    return;
   }
 
   await client.customer.upsert({
