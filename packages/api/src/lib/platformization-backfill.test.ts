@@ -204,6 +204,7 @@ describe('platformization backfill orchestration', () => {
       backfillLegacyCustomers({
         agentId: 'agent_default_1',
         dryRun: false,
+        cokeAccountIds: ['acct_1', 'acct_2'],
       }),
     ).resolves.toEqual({
       backfilled: 2,
@@ -218,6 +219,22 @@ describe('platformization backfill orchestration', () => {
     });
 
     expect(db.client.$transaction).toHaveBeenCalledTimes(2);
+    expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['acct_1', 'acct_2'],
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        passwordHash: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { id: 'asc' },
+    });
     expect(db.tx.identity.upsert).toHaveBeenCalledTimes(2);
     expect(db.tx.customer.upsert).toHaveBeenCalledTimes(2);
     expect(db.tx.membership.upsert).toHaveBeenCalledTimes(2);
@@ -290,6 +307,7 @@ describe('platformization backfill orchestration', () => {
       backfillLegacyCustomers({
         agentId: 'agent_unused_for_dry_run',
         dryRun: true,
+        cokeAccountIds: ['acct_1', 'acct_2'],
       }),
     ).resolves.toEqual({
       wouldBackfill: 2,
@@ -495,6 +513,7 @@ describe('platformization backfill orchestration', () => {
     expect(backfillLegacyCustomersMock).toHaveBeenCalledWith({
       agentId: 'dry-run',
       dryRun: true,
+      cokeAccountIds: [],
     });
 
     logSpy.mockRestore();

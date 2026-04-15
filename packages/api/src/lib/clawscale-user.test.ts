@@ -305,13 +305,19 @@ describe('clawscale-user helpers', () => {
         updatedAt: defaultCokeAccount.updatedAt,
       },
     });
-    expect(db.agentBinding.create).toHaveBeenCalledWith({
-      data: buildLegacyAgentBindingSeed({
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: graph.customer.id },
+      create: buildLegacyAgentBindingSeed({
         customerId: graph.customer.id,
         agentId: DEFAULT_COKE_AGENT_ID,
       }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
     });
-    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
   });
 
   it('ensureClawscaleUserForCokeAccount reuses an existing mapping', async () => {
@@ -395,113 +401,19 @@ describe('clawscale-user helpers', () => {
         updatedAt: existingAccount.updatedAt,
       },
     });
-    expect(db.agentBinding.create).toHaveBeenCalledWith({
-      data: buildLegacyAgentBindingSeed({
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: graph.customer.id },
+      create: buildLegacyAgentBindingSeed({
         customerId: graph.customer.id,
         agentId: DEFAULT_COKE_AGENT_ID,
       }),
-    });
-    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
-  });
-
-  it('ensureClawscaleUserForCokeAccount keeps existing mappings usable when compatibility AgentBinding write fails', async () => {
-    const existingAccount = {
-      id: 'acct_existing',
-      email: 'Existing@Example.com',
-      displayName: 'Existing User',
-      createdAt: new Date('2026-04-03T00:00:00.000Z'),
-      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
-    };
-    const graph = buildLegacyCustomerGraph({
-      cokeAccountId: existingAccount.id,
-      email: existingAccount.email,
-      displayName: existingAccount.displayName,
-      createdAt: existingAccount.createdAt,
-      updatedAt: existingAccount.updatedAt,
-    });
-    const compatibilityError = new Error('default agent binding is unavailable');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    db.cokeAccount.findUnique.mockResolvedValueOnce(existingAccount);
-    db.clawscaleUser.findUnique.mockResolvedValueOnce({
-      id: 'csu_existing',
-      tenantId: 'tnt_existing',
-    });
-    db.agentBinding.create.mockRejectedValueOnce(compatibilityError);
-    db.agentBinding.upsert.mockRejectedValueOnce(compatibilityError);
-    db.aiBackend.findFirst.mockResolvedValueOnce({
-      id: 'aib_existing',
-      tenantId: 'tnt_existing',
-      type: 'custom',
-      isActive: true,
-      isDefault: true,
-      config: {
-        baseUrl: 'http://127.0.0.1:8090/bridge/inbound',
-        transport: 'http',
-        responseFormat: 'json-auto',
-        authHeader: 'Bearer dev-bridge-key',
-      },
-    });
-
-    await expect(
-      ensureClawscaleUserForCokeAccount({
-        cokeAccountId: 'acct_existing',
-      }),
-    ).resolves.toEqual({
-      tenantId: 'tnt_existing',
-      clawscaleUserId: 'csu_existing',
-      created: false,
-      ready: true,
-    });
-
-    expect(db.identity.upsert).toHaveBeenCalledWith({
-      where: { id: graph.identity.id },
-      create: {
-        ...graph.identity,
-        passwordHash: null,
-      },
       update: {
-        email: graph.identity.email,
-        displayName: graph.identity.displayName,
-        passwordHash: null,
-        claimStatus: graph.identity.claimStatus,
-        updatedAt: existingAccount.updatedAt,
-      },
-    });
-    expect(db.customer.upsert).toHaveBeenCalledWith({
-      where: { id: graph.customer.id },
-      create: graph.customer,
-      update: {
-        kind: graph.customer.kind,
-        displayName: graph.customer.displayName,
-        updatedAt: existingAccount.updatedAt,
-      },
-    });
-    expect(db.membership.upsert).toHaveBeenCalledWith({
-      where: { id: graph.membership.id },
-      create: graph.membership,
-      update: {
-        identityId: graph.membership.identityId,
-        customerId: graph.membership.customerId,
-        role: graph.membership.role,
-        updatedAt: existingAccount.updatedAt,
-      },
-    });
-    expect(db.agentBinding.create).toHaveBeenCalledWith({
-      data: buildLegacyAgentBindingSeed({
-        customerId: graph.customer.id,
         agentId: DEFAULT_COKE_AGENT_ID,
-      }),
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
     });
-    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[clawscale-user] compatibility AgentBinding shadow write skipped',
-      expect.objectContaining({
-        cokeAccountId: existingAccount.id,
-        error: compatibilityError,
-      }),
-    );
-    warnSpy.mockRestore();
   });
 
   it('ensureClawscaleUserForCokeAccount keeps existing mappings usable when identity email shadow write collides', async () => {
@@ -551,19 +463,9 @@ describe('clawscale-user helpers', () => {
       ready: true,
     });
 
-    expect(db.customer.upsert).toHaveBeenCalledWith({
-      where: { id: existingAccount.id },
-      create: expect.objectContaining({
-        id: existingAccount.id,
-        kind: 'personal',
-      }),
-      update: expect.objectContaining({
-        kind: 'personal',
-        updatedAt: existingAccount.updatedAt,
-      }),
-    });
+    expect(db.customer.upsert).not.toHaveBeenCalled();
     expect(db.membership.upsert).not.toHaveBeenCalled();
-    expect(db.agentBinding.create).not.toHaveBeenCalled();
+    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
       '[clawscale-user] compatibility Identity shadow write skipped due to email collision',
       expect.objectContaining({
@@ -573,6 +475,30 @@ describe('clawscale-user helpers', () => {
       }),
     );
     warnSpy.mockRestore();
+  });
+
+  it('ensureClawscaleUserForCokeAccount fails when the compatibility AgentBinding write fails', async () => {
+    const existingAccount = {
+      id: 'acct_existing',
+      email: 'Existing@Example.com',
+      displayName: 'Existing User',
+      createdAt: new Date('2026-04-03T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    };
+    const bindingError = new Error('default agent binding unavailable');
+
+    db.cokeAccount.findUnique.mockResolvedValueOnce(existingAccount);
+    db.clawscaleUser.findUnique.mockResolvedValueOnce({
+      id: 'csu_existing',
+      tenantId: 'tnt_existing',
+    });
+    db.agentBinding.upsert.mockRejectedValueOnce(bindingError);
+
+    await expect(
+      ensureClawscaleUserForCokeAccount({
+        cokeAccountId: 'acct_existing',
+      }),
+    ).rejects.toThrow(bindingError);
   });
 
   it('ensureClawscaleUserForCokeAccount recovers when cokeAccountId create races and still shadow-writes the compatibility graph', async () => {
@@ -650,13 +576,19 @@ describe('clawscale-user helpers', () => {
         updatedAt: racedAccount.updatedAt,
       },
     });
-    expect(db.agentBinding.create).toHaveBeenCalledWith({
-      data: buildLegacyAgentBindingSeed({
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: graph.customer.id },
+      create: buildLegacyAgentBindingSeed({
         customerId: graph.customer.id,
         agentId: DEFAULT_COKE_AGENT_ID,
       }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
     });
-    expect(db.agentBinding.upsert).not.toHaveBeenCalled();
   });
 
   it('ensureClawscaleUserForCokeAccount backfills the default Coke Bridge backend for an existing personal tenant', async () => {

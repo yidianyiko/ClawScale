@@ -55,7 +55,11 @@ async function main() {
     agentId = await ensureDefaultAgent({ endpoint, authToken });
   }
 
-  const summary = await backfillLegacyCustomers({ agentId, dryRun });
+  const summary = await backfillLegacyCustomers({
+    agentId,
+    dryRun,
+    cokeAccountIds: mongoAccountIds,
+  });
 
   console.log(
     JSON.stringify(

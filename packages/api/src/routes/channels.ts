@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { generateId } from '../lib/id.js';
 import { audit } from '../lib/audit.js';
+import { DEFAULT_COKE_AGENT_ID } from '../lib/platformization-migration.js';
 import { startDiscordBot, stopDiscordBot } from '../adapters/discord.js';
 import { startWeChatBot, stopWeChatBot } from '../adapters/wecom.js';
 import { startWeixinBot, startWeixinQR, stopWeixinBot, getWeixinQR, getWeixinStatus } from '../adapters/wechat.js';
@@ -68,15 +69,6 @@ export const channelsRouter = new Hono()
       return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
     }
 
-    const defaultAgent = await db.agent.findFirst({
-      where: { isDefault: true },
-      select: { id: true },
-    });
-
-    if (!defaultAgent) {
-      return c.json({ ok: false, error: 'default_agent_not_found' }, 500);
-    }
-
     const id = generateId('ch');
     await db.channel.create({
       data: {
@@ -86,8 +78,9 @@ export const channelsRouter = new Hono()
         name: body.name,
         config: body.config as any,
         status: 'disconnected',
+        // Phase 1 only persists dormant ownership metadata for legacy admin-managed channels.
         ownershipKind: 'shared',
-        agentId: defaultAgent.id,
+        agentId: DEFAULT_COKE_AGENT_ID,
         customerId: null,
       },
     });

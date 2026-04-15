@@ -22,6 +22,7 @@ export interface AuditLegacyBaselineInput {
 export interface BackfillLegacyCustomersInput {
   agentId: string;
   dryRun: boolean;
+  cokeAccountIds?: string[];
 }
 
 function buildLegacyAccountWhere(ids?: string[]) {
@@ -91,6 +92,7 @@ export async function auditLegacyBaseline(input: AuditLegacyBaselineInput) {
 
 export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInput) {
   const legacyAccounts = await db.cokeAccount.findMany({
+    where: buildLegacyAccountWhere(input.cokeAccountIds),
     select: {
       id: true,
       email: true,
