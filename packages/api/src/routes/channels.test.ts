@@ -417,6 +417,37 @@ describe('channels router', () => {
     expect(mocks.delete).not.toHaveBeenCalled();
   });
 
+  it('refuses to archive live legacy wechat personal channels from the admin route', async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_live',
+      tenantId: 'tnt_1',
+      type: 'wechat_personal',
+      status: 'connected',
+      config: {},
+    });
+    mocks.getWeixinStatus.mockReturnValue('connected');
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_live', {
+      method: 'DELETE',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'disconnect_before_archive',
+    });
+    expect(mocks.stopWeixinBot).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
+  });
+
   it('restarts pending wechat personal qr flow when in-memory state is missing', async () => {
     mocks.findFirst.mockResolvedValue({
       id: 'ch_1',

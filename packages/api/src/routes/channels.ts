@@ -146,6 +146,18 @@ export const channelsRouter = new Hono()
     const existing = await db.channel.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
+    if (existing.type === 'wechat_personal') {
+      const liveStatus = getWeixinStatus(id);
+      if (
+        existing.status === 'pending' ||
+        existing.status === 'connected' ||
+        liveStatus === 'qr_pending' ||
+        liveStatus === 'connected'
+      ) {
+        return c.json({ ok: false, error: 'disconnect_before_archive' }, 409);
+      }
+    }
+
     if (existing.type === 'discord') {
       stopDiscordBot(id).catch(() => {});
     } else if (existing.type === 'wechat_work') {
@@ -171,6 +183,7 @@ export const channelsRouter = new Hono()
     }
 
     if (existing.type === 'wechat_personal') {
+      await stopWeixinBot(id);
       await db.channel.update({
         where: { id },
         data: {

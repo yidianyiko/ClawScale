@@ -1,4 +1,5 @@
 import {
+  auditLegacyBaseline,
   backfillLegacyCustomers,
   ensureDefaultAgent,
 } from '../lib/platformization-backfill.js';
@@ -19,6 +20,25 @@ function requireEnv(name: string) {
 async function main() {
   const dryRun = hasDryRunFlag();
   let agentId = 'dry-run';
+
+  if (!dryRun) {
+    const auditSummary = await auditLegacyBaseline({ mongoAccountIds: [] });
+    if (auditSummary.errors.length > 0) {
+      console.log(
+        JSON.stringify(
+          {
+            dryRun,
+            blocked: true,
+            reason: 'platformization_audit_blocked',
+            ...auditSummary,
+          },
+          null,
+          2,
+        ),
+      );
+      throw new Error('platformization_audit_blocked');
+    }
+  }
 
   if (!dryRun) {
     const endpoint = requireEnv('COKE_AGENT_ENDPOINT');

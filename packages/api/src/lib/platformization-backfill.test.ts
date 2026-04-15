@@ -464,4 +464,43 @@ describe('platformization backfill orchestration', () => {
     process.argv = originalArgv;
     vi.doUnmock('../lib/platformization-backfill.js');
   });
+
+  it('backfill CLI refuses to write when the legacy audit reports blockers', async () => {
+    vi.resetModules();
+    vi.stubEnv('COKE_AGENT_ENDPOINT', 'https://coke.example.com/agent');
+    vi.stubEnv('COKE_AGENT_AUTH_TOKEN', 'secret-token');
+
+    const auditLegacyBaselineMock = vi.fn().mockResolvedValue({
+      counts: {
+        cokeAccounts: 2,
+        clawscaleUsers: 2,
+        mongoAccountIds: 0,
+      },
+      errors: ['case_insensitive_email_collision:alice@example.com:accounts=acct_1,acct_2'],
+    });
+    const ensureDefaultAgentMock = vi.fn();
+    const backfillLegacyCustomersMock = vi.fn();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const originalArgv = process.argv;
+
+    process.argv = ['node', 'script'];
+
+    vi.doMock('../lib/platformization-backfill.js', () => ({
+      auditLegacyBaseline: auditLegacyBaselineMock,
+      ensureDefaultAgent: ensureDefaultAgentMock,
+      backfillLegacyCustomers: backfillLegacyCustomersMock,
+    }));
+
+    await expect(import('../scripts/backfill-platformization-identity.ts')).rejects.toThrow(
+      'platformization_audit_blocked',
+    );
+
+    expect(auditLegacyBaselineMock).toHaveBeenCalledWith({ mongoAccountIds: [] });
+    expect(ensureDefaultAgentMock).not.toHaveBeenCalled();
+    expect(backfillLegacyCustomersMock).not.toHaveBeenCalled();
+
+    logSpy.mockRestore();
+    process.argv = originalArgv;
+    vi.doUnmock('../lib/platformization-backfill.js');
+  });
 });
