@@ -1,0 +1,222 @@
+import { db } from '../db/index.js';
+import {
+  buildDefaultAgentSeed,
+  buildLegacyAgentBindingSeed,
+  buildLegacyCustomerGraph,
+  summarizeLegacyBaseline,
+} from './platformization-migration.js';
+
+export interface EnsureDefaultAgentInput {
+  endpoint: string;
+  authToken: string;
+}
+
+export interface AuditLegacyBaselineInput {
+  mongoAccountIds: string[];
+}
+
+export interface BackfillLegacyCustomersInput {
+  agentId: string;
+  dryRun: boolean;
+}
+
+function buildLegacyAccountWhere(ids?: string[]) {
+  if (!ids || ids.length === 0) {
+    return undefined;
+  }
+
+  return {
+    id: {
+      in: ids,
+    },
+  };
+}
+
+export async function ensureDefaultAgent(input: EnsureDefaultAgentInput) {
+  const existingDefaultAgent = await db.agent.findFirst({
+    where: { isDefault: true },
+    select: { id: true },
+  });
+
+  if (existingDefaultAgent) {
+    return existingDefaultAgent.id;
+  }
+
+  const createdAgent = await db.agent.create({
+    data: buildDefaultAgentSeed(input),
+  });
+
+  return createdAgent.id;
+}
+
+export async function auditLegacyBaseline(input: AuditLegacyBaselineInput) {
+  const where = buildLegacyAccountWhere(input.mongoAccountIds);
+  const [cokeAccounts, clawscaleUsers] = await Promise.all([
+    db.cokeAccount.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+      },
+      orderBy: { id: 'asc' },
+    }),
+    db.clawscaleUser.findMany({
+      where: input.mongoAccountIds.length
+        ? {
+            cokeAccountId: {
+              in: input.mongoAccountIds,
+            },
+          }
+        : undefined,
+      select: {
+        cokeAccountId: true,
+        tenantId: true,
+      },
+      orderBy: { cokeAccountId: 'asc' },
+    }),
+  ]);
+
+  return summarizeLegacyBaseline({
+    cokeAccounts: cokeAccounts.map((account) => ({
+      cokeAccountId: account.id,
+      email: account.email,
+    })),
+    clawscaleUsers,
+    mongoAccountIds: input.mongoAccountIds,
+  });
+}
+
+export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInput) {
+  const legacyAccounts = await db.cokeAccount.findMany({
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      passwordHash: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  if (input.dryRun) {
+    return {
+      wouldBackfill: legacyAccounts.length,
+    };
+  }
+
+  await db.$transaction(async (tx) => {
+    for (const legacyAccount of legacyAccounts) {
+      const graph = buildLegacyCustomerGraph({
+        cokeAccountId: legacyAccount.id,
+        email: legacyAccount.email,
+        displayName: legacyAccount.displayName,
+        createdAt: legacyAccount.createdAt,
+        updatedAt: legacyAccount.updatedAt,
+      });
+
+      await tx.identity.upsert({
+        where: { id: graph.identity.id },
+        create: {
+          ...graph.identity,
+          passwordHash: legacyAccount.passwordHash,
+        },
+        update: {
+          email: graph.identity.email,
+          displayName: graph.identity.displayName,
+          passwordHash: legacyAccount.passwordHash,
+          claimStatus: graph.identity.claimStatus,
+          createdAt: legacyAccount.createdAt,
+          updatedAt: legacyAccount.updatedAt,
+        },
+      });
+
+      await tx.customer.upsert({
+        where: { id: graph.customer.id },
+        create: graph.customer,
+        update: {
+          kind: graph.customer.kind,
+          displayName: graph.customer.displayName,
+          createdAt: legacyAccount.createdAt,
+          updatedAt: legacyAccount.updatedAt,
+        },
+      });
+
+      await tx.membership.upsert({
+        where: { id: graph.membership.id },
+        create: graph.membership,
+        update: {
+          identityId: graph.membership.identityId,
+          customerId: graph.membership.customerId,
+          role: graph.membership.role,
+          createdAt: legacyAccount.createdAt,
+          updatedAt: legacyAccount.updatedAt,
+        },
+      });
+
+      const agentBindingSeed = buildLegacyAgentBindingSeed({
+        customerId: graph.customer.id,
+        agentId: input.agentId,
+      });
+
+      await tx.agentBinding.upsert({
+        where: { customerId: graph.customer.id },
+        create: agentBindingSeed,
+        update: {
+          agentId: agentBindingSeed.agentId,
+          provisionStatus: agentBindingSeed.provisionStatus,
+          provisionAttempts: agentBindingSeed.provisionAttempts,
+          provisionLastError: agentBindingSeed.provisionLastError,
+        },
+      });
+    }
+  });
+
+  return {
+    backfilled: legacyAccounts.length,
+  };
+}
+
+export async function verifyPlatformizationMigration() {
+  const counts = {
+    cokeAccounts: await db.cokeAccount.count(),
+    identities: await db.identity.count(),
+    customers: await db.customer.count(),
+    memberships: await db.membership.count(),
+    agentBindings: await db.agentBinding.count(),
+    defaultAgents: await db.agent.count({
+      where: { isDefault: true },
+    }),
+  };
+
+  const errors: string[] = [];
+
+  if (counts.identities !== counts.cokeAccounts) {
+    errors.push(
+      `identity_count_mismatch:expected=${counts.cokeAccounts}:actual=${counts.identities}`,
+    );
+  }
+  if (counts.customers !== counts.cokeAccounts) {
+    errors.push(
+      `customer_count_mismatch:expected=${counts.cokeAccounts}:actual=${counts.customers}`,
+    );
+  }
+  if (counts.memberships !== counts.cokeAccounts) {
+    errors.push(
+      `membership_count_mismatch:expected=${counts.cokeAccounts}:actual=${counts.memberships}`,
+    );
+  }
+  if (counts.agentBindings !== counts.cokeAccounts) {
+    errors.push(
+      `agent_binding_count_mismatch:expected=${counts.cokeAccounts}:actual=${counts.agentBindings}`,
+    );
+  }
+  if (counts.defaultAgents !== 1) {
+    errors.push(`default_agent_count_mismatch:expected=1:actual=${counts.defaultAgents}`);
+  }
+
+  return {
+    counts,
+    errors,
+  };
+}
