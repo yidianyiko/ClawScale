@@ -1,4 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const randomUUIDMock = vi.hoisted(() => vi.fn());
+
+vi.mock('node:crypto', async () => {
+  const actual = await vi.importActual<typeof import('node:crypto')>('node:crypto');
+  return {
+    ...actual,
+    randomUUID: randomUUIDMock,
+  };
+});
 
 import {
   buildDefaultAgentSeed,
@@ -8,6 +18,10 @@ import {
   deriveDeterministicPlatformId,
   summarizeLegacyBaseline,
 } from './platformization-migration.js';
+
+beforeEach(() => {
+  randomUUIDMock.mockReset();
+});
 
 describe('deriveCustomerIdFromLegacyAccount', () => {
   it('reuses the legacy CokeAccount id byte-for-byte', () => {
@@ -19,8 +33,12 @@ describe('deriveDeterministicPlatformId', () => {
   it('returns a stable UUID-like id for the same scope and legacy account id', () => {
     const first = deriveDeterministicPlatformId('identity', 'ck_legacy_123');
     const second = deriveDeterministicPlatformId('identity', 'ck_legacy_123');
+    const differentScope = deriveDeterministicPlatformId('membership', 'ck_legacy_123');
+    const differentLegacyAccountId = deriveDeterministicPlatformId('identity', 'ck_legacy_456');
 
     expect(first).toBe(second);
+    expect(first).not.toBe(differentScope);
+    expect(first).not.toBe(differentLegacyAccountId);
     expect(first).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
@@ -50,6 +68,7 @@ describe('buildLegacyCustomerGraph', () => {
       id: deriveDeterministicPlatformId('membership', 'ck_legacy_123'),
       customerId: 'ck_legacy_123',
     });
+    expect(graph.identity.id).not.toBe(graph.membership.id);
   });
 });
 
@@ -85,6 +104,25 @@ describe('buildDefaultAgentSeed', () => {
       endpoint: 'https://coke.example.com/agent',
       authToken: 'secret-token',
     });
+  });
+
+  it('falls back to randomUUID when no id is provided', () => {
+    randomUUIDMock.mockReturnValue('55555555-5555-5555-5555-555555555555');
+
+    expect(
+      buildDefaultAgentSeed({
+        endpoint: 'https://coke.example.com/agent',
+        authToken: 'secret-token',
+      }),
+    ).toMatchObject({
+      id: '55555555-5555-5555-5555-555555555555',
+      slug: 'coke',
+      isDefault: true,
+      endpoint: 'https://coke.example.com/agent',
+      authToken: 'secret-token',
+    });
+
+    expect(randomUUIDMock).toHaveBeenCalledTimes(1);
   });
 });
 
