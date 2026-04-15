@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { DEFAULT_COKE_AGENT_ID } from '../lib/platformization-migration.js';
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -159,7 +160,6 @@ describe('channels router', () => {
     expect(mocks.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tnt_1',
-        ownershipKind: 'customer',
       },
       select: expect.any(Object),
     });
@@ -191,7 +191,22 @@ describe('channels router', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it('defers generic admin-managed shared channel creation until phase 1.5', async () => {
+  it('creates generic admin channels with dormant shared ownership metadata', async () => {
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'whatsapp',
+      name: 'Shared WhatsApp',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp',
+      name: 'Shared WhatsApp',
+      status: 'disconnected',
+    });
+
     const app = new Hono();
     app.route('/api/channels', channelsRouter);
 
@@ -209,12 +224,29 @@ describe('channels router', () => {
     });
     const body = await res.json();
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(201);
     expect(body).toMatchObject({
-      ok: false,
-      error: 'shared_channels_deferred_until_phase15',
+      ok: true,
+      data: {
+        id: 'ch_1',
+        type: 'whatsapp',
+        name: 'Shared WhatsApp',
+        status: 'disconnected',
+      },
     });
-    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'whatsapp',
+        name: 'Shared WhatsApp',
+        config: { phoneNumber: '+15551234567' },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        customerId: null,
+      }),
+    });
   });
 
   it('connects an existing legacy wechat personal channel', async () => {
@@ -254,35 +286,6 @@ describe('channels router', () => {
       data: { status: 'pending' },
     });
     expect(mocks.startWeixinQR).toHaveBeenCalledWith('ch_1');
-  });
-
-  it('does not activate deferred shared channels', async () => {
-    mocks.findFirst.mockResolvedValue({
-      id: 'ch_shared',
-      tenantId: 'tnt_1',
-      type: 'whatsapp',
-      status: 'disconnected',
-      ownershipKind: 'shared',
-      config: {},
-    });
-
-    const app = new Hono();
-    app.route('/api/channels', channelsRouter);
-
-    const res = await app.request('/api/channels/ch_shared/connect', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer test-token',
-      },
-    });
-    const body = await res.json();
-
-    expect(res.status).toBe(409);
-    expect(body).toMatchObject({
-      ok: false,
-      error: 'shared_channels_deferred_until_phase15',
-    });
-    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it('does not reconnect archived wechat personal channels', async () => {
