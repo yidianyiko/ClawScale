@@ -170,6 +170,19 @@ export const channelsRouter = new Hono()
       stopTeamsBot(id).catch(() => {});
     }
 
+    if (existing.type === 'wechat_personal') {
+      await db.channel.update({
+        where: { id },
+        data: {
+          status: 'archived',
+          config: {},
+          activeLifecycleKey: null,
+        },
+      });
+      await audit({ tenantId, memberId: userId, action: 'archive_channel', resource: 'channel', resourceId: id });
+      return c.json({ ok: true, data: null });
+    }
+
     await db.channel.delete({ where: { id } });
     await audit({ tenantId, memberId: userId, action: 'delete_channel', resource: 'channel', resourceId: id });
 

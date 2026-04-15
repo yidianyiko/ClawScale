@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   agentFindFirst: vi.fn(),
   create: vi.fn(),
+  delete: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
   generateId: vi.fn(() => 'ch_new'),
@@ -24,6 +25,7 @@ vi.mock('../db/index.js', () => ({
       findFirst: mocks.findFirst,
       findMany: mocks.findMany,
       create: mocks.create,
+      delete: mocks.delete,
       findUnique: mocks.findUnique,
       update: mocks.update,
     },
@@ -343,6 +345,47 @@ describe('channels router', () => {
       data: { status: 'disconnected' },
     });
     expect(mocks.stopWeixinBot).toHaveBeenCalledWith('ch_2');
+  });
+
+  it('archives legacy wechat personal channels instead of hard deleting them', async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_legacy',
+      tenantId: 'tnt_1',
+      type: 'wechat_personal',
+      status: 'disconnected',
+      config: { token: 'legacy' },
+    });
+    mocks.update.mockResolvedValue({
+      id: 'ch_legacy',
+      status: 'archived',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_legacy', {
+      method: 'DELETE',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      data: null,
+    });
+    expect(mocks.stopWeixinBot).toHaveBeenCalledWith('ch_legacy');
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 'ch_legacy' },
+      data: {
+        status: 'archived',
+        config: {},
+        activeLifecycleKey: null,
+      },
+    });
+    expect(mocks.delete).not.toHaveBeenCalled();
   });
 
   it('restarts pending wechat personal qr flow when in-memory state is missing', async () => {
