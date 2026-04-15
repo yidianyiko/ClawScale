@@ -241,16 +241,14 @@ async function ensurePlatformizationShadowGraph(
     },
   });
 
-  await client.agentBinding.upsert({
-    where: { customerId: graph.customer.id },
-    create: agentBindingSeed,
-    update: {
-      agentId: agentBindingSeed.agentId,
-      provisionStatus: agentBindingSeed.provisionStatus,
-      provisionAttempts: agentBindingSeed.provisionAttempts,
-      provisionLastError: agentBindingSeed.provisionLastError,
-    },
-  });
+  // This compatibility row must never reset an existing binding or block legacy ensure flows.
+  try {
+    await client.agentBinding.create({
+      data: agentBindingSeed,
+    });
+  } catch {
+    return;
+  }
 }
 
 export async function ensureClawscaleUserForCokeAccount(
