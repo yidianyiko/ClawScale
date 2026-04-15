@@ -147,10 +147,9 @@ model Member {
 }
 
 model AdminAccount {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String   @map("password_hash")
-  name         String
   mfaSecret    String?  @map("mfa_secret")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -179,7 +178,7 @@ model Channel {
   id                   String        @id
   tenantId             String        @map("tenant_id")
   type                 ChannelType
-  scope                ChannelScope   @default(tenant_shared)
+  scope                ChannelScope  @default(tenant_shared)
   ownershipKind        ChannelOwnershipKind @default(customer) @map("ownership_kind")
   customerId           String?       @map("customer_id")
   agentId              String?       @map("agent_id")
@@ -193,7 +192,7 @@ model Channel {
 
   tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  agent              Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  sharedAgent        Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
   externalIdentities ExternalIdentity[]
   conversations     Conversation[]
@@ -280,15 +279,16 @@ model CokeAccount {
 }
 
 model Identity {
-  id                 String              @id
-  email              String              @unique
-  displayName        String              @map("display_name")
-  claimStatus        IdentityClaimStatus @default(unclaimed) @map("claim_status")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
+  id           String              @id @default(uuid())
+  email        String?             @unique
+  phone        String?
+  displayName  String              @map("display_name")
+  passwordHash String?             @map("password_hash")
+  claimStatus  IdentityClaimStatus @default(active) @map("claim_status")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
 
-  memberships        Membership[]
-  externalIdentities ExternalIdentity[]
+  memberships Membership[]
 
   @@map("identities")
 }
@@ -300,18 +300,19 @@ model Customer {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  memberships  Membership[]
-  channels     Channel[]
-  agentBindings AgentBinding[]
+  memberships        Membership[]
+  channels           Channel[]
+  agentBindings      AgentBinding[]
+  externalIdentities ExternalIdentity[]
 
   @@map("customers")
 }
 
 model Membership {
-  id         String         @id
+  id         String         @id @default(uuid())
   identityId String         @map("identity_id")
   customerId String         @map("customer_id")
-  role       MembershipRole @default(member)
+  role       MembershipRole @default(owner)
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
 
@@ -325,7 +326,7 @@ model Membership {
 }
 
 model Agent {
-  id         String   @id
+  id         String   @id @default(uuid())
   slug       String   @unique
   name       String
   endpoint   String
@@ -334,46 +335,48 @@ model Agent {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  bindings AgentBinding[]
-  channels Channel[]
+  bindings       AgentBinding[]
+  sharedChannels Channel[]
 
   @@map("agents")
 }
 
 model AgentBinding {
-  id                 String                       @id @default(cuid())
+  id                 String                       @id @default(uuid())
   customerId         String                       @map("customer_id")
   agentId            String                       @map("agent_id")
-  provisionStatus    AgentBindingProvisionStatus  @default(pending) @map("provision_status")
-  provisionAttempts  Int                          @default(0) @map("provision_attempts")
+  provisionStatus    AgentBindingProvisionStatus @default(pending) @map("provision_status")
+  provisionAttempts  Int                         @default(0) @map("provision_attempts")
   provisionLastError String?                      @map("provision_last_error")
+  provisionUpdatedAt DateTime                     @default(now()) @map("provision_updated_at")
   createdAt          DateTime                     @default(now()) @map("created_at")
   updatedAt          DateTime                     @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Restrict)
 
-  @@unique([customerId, agentId])
-  @@index([customerId])
+  @@unique([customerId])
   @@index([agentId])
   @@map("agent_bindings")
 }
 
 model ExternalIdentity {
-  id         String   @id
-  identityId String   @map("identity_id")
-  channelId  String?  @map("channel_id")
-  provider   String
-  externalId String   @map("external_id")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  provider           String
+  identityType       String   @map("identity_type")
+  identityValue      String   @map("identity_value")
+  customerId         String   @map("customer_id")
+  firstSeenChannelId String   @map("first_seen_channel_id")
+  firstSeenAt        DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt         DateTime @default(now()) @map("last_seen_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
-  channel  Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  customer         Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  firstSeenChannel Channel  @relation(fields: [firstSeenChannelId], references: [id], onDelete: Restrict)
 
-  @@unique([provider, externalId])
-  @@index([identityId])
-  @@index([channelId])
+  @@unique([provider, identityType, identityValue])
+  @@index([customerId])
   @@map("external_identities")
 }
 

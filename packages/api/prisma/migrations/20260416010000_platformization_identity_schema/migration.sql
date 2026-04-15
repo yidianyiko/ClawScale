@@ -8,7 +8,6 @@ CREATE TABLE "admin_accounts" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password_hash" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
     "mfa_secret" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -19,9 +18,11 @@ CREATE TABLE "admin_accounts" (
 
 CREATE TABLE "identities" (
     "id" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
+    "email" TEXT,
+    "phone" TEXT,
     "display_name" TEXT NOT NULL,
-    "claim_status" "IdentityClaimStatus" NOT NULL DEFAULT 'unclaimed',
+    "password_hash" TEXT,
+    "claim_status" "IdentityClaimStatus" NOT NULL DEFAULT 'active',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -42,7 +43,7 @@ CREATE TABLE "memberships" (
     "id" TEXT NOT NULL,
     "identity_id" TEXT NOT NULL,
     "customer_id" TEXT NOT NULL,
-    "role" "MembershipRole" NOT NULL DEFAULT 'member',
+    "role" "MembershipRole" NOT NULL DEFAULT 'owner',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -69,6 +70,7 @@ CREATE TABLE "agent_bindings" (
     "provision_status" "AgentBindingProvisionStatus" NOT NULL DEFAULT 'pending',
     "provision_attempts" INTEGER NOT NULL DEFAULT 0,
     "provision_last_error" TEXT,
+    "provision_updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -77,10 +79,13 @@ CREATE TABLE "agent_bindings" (
 
 CREATE TABLE "external_identities" (
     "id" TEXT NOT NULL,
-    "identity_id" TEXT NOT NULL,
-    "channel_id" TEXT,
     "provider" TEXT NOT NULL,
-    "external_id" TEXT NOT NULL,
+    "identity_type" TEXT NOT NULL,
+    "identity_value" TEXT NOT NULL,
+    "customer_id" TEXT NOT NULL,
+    "first_seen_channel_id" TEXT NOT NULL,
+    "first_seen_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "last_seen_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -104,17 +109,14 @@ CREATE UNIQUE INDEX "admin_accounts_email_key" ON "admin_accounts"("email");
 CREATE UNIQUE INDEX "identities_email_key" ON "identities"("email");
 CREATE UNIQUE INDEX "memberships_identity_id_customer_id_key" ON "memberships"("identity_id", "customer_id");
 CREATE UNIQUE INDEX "agents_slug_key" ON "agents"("slug");
-CREATE UNIQUE INDEX "agent_bindings_customer_id_agent_id_key" ON "agent_bindings"("customer_id", "agent_id");
-CREATE UNIQUE INDEX "external_identities_provider_external_id_key" ON "external_identities"("provider", "external_id");
+CREATE UNIQUE INDEX "agent_bindings_customer_id_key" ON "agent_bindings"("customer_id");
+CREATE UNIQUE INDEX "external_identities_provider_identity_type_identity_value_key" ON "external_identities"("provider", "identity_type", "identity_value");
 CREATE UNIQUE INDEX "agents_is_default_true_key" ON "agents" ("is_default") WHERE "is_default" = true;
 CREATE UNIQUE INDEX "channels_customer_kind_active_key" ON "channels" ("customer_id", "type") WHERE "customer_id" IS NOT NULL AND "status" <> 'archived'::"ChannelStatus";
 
-CREATE INDEX "memberships_identity_id_idx" ON "memberships"("identity_id");
 CREATE INDEX "memberships_customer_id_idx" ON "memberships"("customer_id");
-CREATE INDEX "agent_bindings_customer_id_idx" ON "agent_bindings"("customer_id");
 CREATE INDEX "agent_bindings_agent_id_idx" ON "agent_bindings"("agent_id");
-CREATE INDEX "external_identities_identity_id_idx" ON "external_identities"("identity_id");
-CREATE INDEX "external_identities_channel_id_idx" ON "external_identities"("channel_id");
+CREATE INDEX "external_identities_customer_id_idx" ON "external_identities"("customer_id");
 CREATE INDEX "channels_customer_id_idx" ON "channels"("customer_id");
 CREATE INDEX "channels_agent_id_idx" ON "channels"("agent_id");
 
@@ -132,15 +134,15 @@ ALTER TABLE "agent_bindings"
 
 ALTER TABLE "agent_bindings"
     ADD CONSTRAINT "agent_bindings_agent_id_fkey"
-    FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "external_identities"
-    ADD CONSTRAINT "external_identities_identity_id_fkey"
-    FOREIGN KEY ("identity_id") REFERENCES "identities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    ADD CONSTRAINT "external_identities_customer_id_fkey"
+    FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "external_identities"
-    ADD CONSTRAINT "external_identities_channel_id_fkey"
-    FOREIGN KEY ("channel_id") REFERENCES "channels"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    ADD CONSTRAINT "external_identities_first_seen_channel_id_fkey"
+    FOREIGN KEY ("first_seen_channel_id") REFERENCES "channels"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "channels"
     ADD CONSTRAINT "channels_customer_id_fkey"
