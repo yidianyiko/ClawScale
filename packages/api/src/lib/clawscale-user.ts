@@ -1,5 +1,10 @@
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
+import {
+  DEFAULT_COKE_AGENT_ID,
+  buildLegacyAgentBindingSeed,
+  buildLegacyCustomerGraph,
+} from './platformization-migration.js';
 
 export type ClawscaleUserBindingErrorCode =
   | 'end_user_not_found'
@@ -56,6 +61,21 @@ export interface UnifiedConversationIdsInput {
   clawscaleUserId: string | null;
   linkedTo: string | null;
 }
+
+type CokeAccountProvisioningRecord = {
+  id: string;
+  email: string;
+  displayName: string;
+  passwordHash: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type CokeAccountLookupClient = Pick<typeof db, 'cokeAccount'>;
+type PlatformizationGraphClient = Pick<
+  typeof db,
+  'agentBinding' | 'customer' | 'identity' | 'membership'
+>;
 
 function buildPersonalTenantSlug(cokeAccountId: string): string {
   return `personal-${cokeAccountId.toLowerCase()}`;
@@ -143,10 +163,20 @@ function isUniqueConstraint(error: unknown, fieldName: string): boolean {
   return target === fieldName;
 }
 
-async function ensureCokeAccountExists(cokeAccountId: string) {
-  const account = await db.cokeAccount.findUnique({
+async function getCokeAccountForProvisioning(
+  client: CokeAccountLookupClient,
+  cokeAccountId: string,
+): Promise<CokeAccountProvisioningRecord> {
+  const account = await client.cokeAccount.findUnique({
     where: { id: cokeAccountId },
-    select: { id: true },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      passwordHash: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   if (!account) {
@@ -155,12 +185,78 @@ async function ensureCokeAccountExists(cokeAccountId: string) {
       'Coke account not found',
     );
   }
+
+  return account;
+}
+
+async function ensurePlatformizationShadowGraph(
+  client: PlatformizationGraphClient,
+  account: CokeAccountProvisioningRecord,
+) {
+  const graph = buildLegacyCustomerGraph({
+    cokeAccountId: account.id,
+    email: account.email,
+    displayName: account.displayName,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+  });
+  const agentBindingSeed = buildLegacyAgentBindingSeed({
+    customerId: graph.customer.id,
+    agentId: DEFAULT_COKE_AGENT_ID,
+  });
+
+  await client.identity.upsert({
+    where: { id: graph.identity.id },
+    create: {
+      ...graph.identity,
+      passwordHash: account.passwordHash ?? null,
+    },
+    update: {
+      email: graph.identity.email,
+      displayName: graph.identity.displayName,
+      passwordHash: account.passwordHash ?? null,
+      claimStatus: graph.identity.claimStatus,
+      updatedAt: account.updatedAt,
+    },
+  });
+
+  await client.customer.upsert({
+    where: { id: graph.customer.id },
+    create: graph.customer,
+    update: {
+      kind: graph.customer.kind,
+      displayName: graph.customer.displayName,
+      updatedAt: account.updatedAt,
+    },
+  });
+
+  await client.membership.upsert({
+    where: { id: graph.membership.id },
+    create: graph.membership,
+    update: {
+      identityId: graph.membership.identityId,
+      customerId: graph.membership.customerId,
+      role: graph.membership.role,
+      updatedAt: account.updatedAt,
+    },
+  });
+
+  await client.agentBinding.upsert({
+    where: { customerId: graph.customer.id },
+    create: agentBindingSeed,
+    update: {
+      agentId: agentBindingSeed.agentId,
+      provisionStatus: agentBindingSeed.provisionStatus,
+      provisionAttempts: agentBindingSeed.provisionAttempts,
+      provisionLastError: agentBindingSeed.provisionLastError,
+    },
+  });
 }
 
 export async function ensureClawscaleUserForCokeAccount(
   input: EnsureClawscaleUserForCokeAccountInput,
 ): Promise<EnsureClawscaleUserForCokeAccountResult> {
-  await ensureCokeAccountExists(input.cokeAccountId);
+  const account = await getCokeAccountForProvisioning(db, input.cokeAccountId);
 
   const existing = await db.clawscaleUser.findUnique({
     where: { cokeAccountId: input.cokeAccountId },
@@ -168,6 +264,9 @@ export async function ensureClawscaleUserForCokeAccount(
   });
 
   if (existing) {
+    await db.$transaction(async (tx) => {
+      await ensurePlatformizationShadowGraph(tx, account);
+    });
     await ensurePersonalCokeBridgeBackend(existing.tenantId);
     return {
       tenantId: existing.tenantId,
@@ -179,7 +278,7 @@ export async function ensureClawscaleUserForCokeAccount(
 
   try {
     return await db.$transaction(async (tx) => {
-      await ensureCokeAccountExists(input.cokeAccountId);
+      const cokeAccount = await getCokeAccountForProvisioning(tx, input.cokeAccountId);
 
       const raced = await tx.clawscaleUser.findUnique({
         where: { cokeAccountId: input.cokeAccountId },
@@ -187,6 +286,7 @@ export async function ensureClawscaleUserForCokeAccount(
       });
 
       if (raced) {
+        await ensurePlatformizationShadowGraph(tx, cokeAccount);
         await ensurePersonalCokeBridgeBackend(raced.tenantId);
         return {
           tenantId: raced.tenantId,
@@ -233,6 +333,8 @@ export async function ensureClawscaleUserForCokeAccount(
         },
       });
 
+      await ensurePlatformizationShadowGraph(tx, cokeAccount);
+
       return {
         tenantId,
         clawscaleUserId,
@@ -253,6 +355,9 @@ export async function ensureClawscaleUserForCokeAccount(
       throw error;
     }
 
+    await db.$transaction(async (tx) => {
+      await ensurePlatformizationShadowGraph(tx, account);
+    });
     await ensurePersonalCokeBridgeBackend(raced.tenantId);
 
     return {

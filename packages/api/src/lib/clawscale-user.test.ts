@@ -2,6 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => {
   const client = {
+    identity: {
+      upsert: vi.fn(),
+    },
+    customer: {
+      upsert: vi.fn(),
+    },
+    membership: {
+      upsert: vi.fn(),
+    },
+    agentBinding: {
+      upsert: vi.fn(),
+    },
     tenant: {
       create: vi.fn(),
     },
@@ -39,13 +51,26 @@ import {
   ensureClawscaleUserForCokeAccount,
   getUnifiedConversationIds,
 } from './clawscale-user.js';
+import {
+  DEFAULT_COKE_AGENT_ID,
+  buildLegacyAgentBindingSeed,
+  buildLegacyCustomerGraph,
+} from './platformization-migration.js';
+
+const defaultCokeAccount = {
+  id: 'acct_1',
+  email: 'Alice@Example.com',
+  displayName: 'Alice',
+  createdAt: new Date('2026-04-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+};
 
 describe('clawscale-user helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.COKE_BRIDGE_INBOUND_URL = 'http://127.0.0.1:8090/bridge/inbound';
     process.env.COKE_BRIDGE_API_KEY = 'dev-bridge-key';
-    db.cokeAccount.findUnique.mockResolvedValue({ id: 'acct_1' });
+    db.cokeAccount.findUnique.mockResolvedValue(defaultCokeAccount);
   });
 
   it('bindEndUserToCokeAccount upserts a tenant-scoped ClawscaleUser and attaches an EndUser', async () => {
@@ -197,6 +222,13 @@ describe('clawscale-user helpers', () => {
     db.tenant.create.mockResolvedValue({ id: 'tnt_new' });
     db.clawscaleUser.create.mockResolvedValue({ id: 'csu_new', tenantId: 'tnt_new' });
     db.aiBackend.create.mockResolvedValue({ id: 'aib_bridge' });
+    const graph = buildLegacyCustomerGraph({
+      cokeAccountId: defaultCokeAccount.id,
+      email: defaultCokeAccount.email,
+      displayName: defaultCokeAccount.displayName,
+      createdAt: defaultCokeAccount.createdAt,
+      updatedAt: defaultCokeAccount.updatedAt,
+    });
 
     await expect(
       ensureClawscaleUserForCokeAccount({
@@ -239,9 +271,70 @@ describe('clawscale-user helpers', () => {
         },
       },
     });
+    expect(db.identity.upsert).toHaveBeenCalledWith({
+      where: { id: graph.identity.id },
+      create: {
+        ...graph.identity,
+        passwordHash: null,
+      },
+      update: {
+        email: graph.identity.email,
+        displayName: graph.identity.displayName,
+        passwordHash: null,
+        claimStatus: graph.identity.claimStatus,
+        updatedAt: defaultCokeAccount.updatedAt,
+      },
+    });
+    expect(db.customer.upsert).toHaveBeenCalledWith({
+      where: { id: graph.customer.id },
+      create: graph.customer,
+      update: {
+        kind: graph.customer.kind,
+        displayName: graph.customer.displayName,
+        updatedAt: defaultCokeAccount.updatedAt,
+      },
+    });
+    expect(db.membership.upsert).toHaveBeenCalledWith({
+      where: { id: graph.membership.id },
+      create: graph.membership,
+      update: {
+        identityId: graph.membership.identityId,
+        customerId: graph.membership.customerId,
+        role: graph.membership.role,
+        updatedAt: defaultCokeAccount.updatedAt,
+      },
+    });
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: graph.customer.id },
+      create: buildLegacyAgentBindingSeed({
+        customerId: graph.customer.id,
+        agentId: DEFAULT_COKE_AGENT_ID,
+      }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
+    });
   });
 
   it('ensureClawscaleUserForCokeAccount reuses an existing mapping', async () => {
+    const existingAccount = {
+      id: 'acct_existing',
+      email: 'Existing@Example.com',
+      displayName: 'Existing User',
+      createdAt: new Date('2026-04-03T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    };
+    const graph = buildLegacyCustomerGraph({
+      cokeAccountId: existingAccount.id,
+      email: existingAccount.email,
+      displayName: existingAccount.displayName,
+      createdAt: existingAccount.createdAt,
+      updatedAt: existingAccount.updatedAt,
+    });
+    db.cokeAccount.findUnique.mockResolvedValueOnce(existingAccount);
     db.clawscaleUser.findUnique.mockResolvedValueOnce({
       id: 'csu_existing',
       tenantId: 'tnt_existing',
@@ -274,6 +367,52 @@ describe('clawscale-user helpers', () => {
     expect(db.tenant.create).not.toHaveBeenCalled();
     expect(db.clawscaleUser.create).not.toHaveBeenCalled();
     expect(db.aiBackend.create).not.toHaveBeenCalled();
+    expect(db.identity.upsert).toHaveBeenCalledWith({
+      where: { id: graph.identity.id },
+      create: {
+        ...graph.identity,
+        passwordHash: null,
+      },
+      update: {
+        email: graph.identity.email,
+        displayName: graph.identity.displayName,
+        passwordHash: null,
+        claimStatus: graph.identity.claimStatus,
+        updatedAt: existingAccount.updatedAt,
+      },
+    });
+    expect(db.customer.upsert).toHaveBeenCalledWith({
+      where: { id: graph.customer.id },
+      create: graph.customer,
+      update: {
+        kind: graph.customer.kind,
+        displayName: graph.customer.displayName,
+        updatedAt: existingAccount.updatedAt,
+      },
+    });
+    expect(db.membership.upsert).toHaveBeenCalledWith({
+      where: { id: graph.membership.id },
+      create: graph.membership,
+      update: {
+        identityId: graph.membership.identityId,
+        customerId: graph.membership.customerId,
+        role: graph.membership.role,
+        updatedAt: existingAccount.updatedAt,
+      },
+    });
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: graph.customer.id },
+      create: buildLegacyAgentBindingSeed({
+        customerId: graph.customer.id,
+        agentId: DEFAULT_COKE_AGENT_ID,
+      }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
+    });
   });
 
   it('ensureClawscaleUserForCokeAccount recovers when cokeAccountId create races', async () => {
