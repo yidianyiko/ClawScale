@@ -129,6 +129,33 @@ describe('userWechatChannelRouter', () => {
     });
   });
 
+  it('returns 409 when bridge api-key callers hit a platformization shadow graph conflict', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockRejectedValueOnce({
+      code: 'platformization_shadow_graph_conflict',
+      message: 'Platformization shadow graph could not be provisioned',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request('/api/internal/user/wechat-channel', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ account_id: 'acct_1' }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'platformization_shadow_graph_conflict',
+    });
+  });
+
   it('creates or reuses the authenticated user channel', async () => {
     mocks.createOrReusePersonalWeChatChannel.mockResolvedValueOnce({
       id: 'ch_1',

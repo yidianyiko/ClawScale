@@ -116,7 +116,8 @@ describe('summarizeLegacyBaseline', () => {
         { cokeAccountId: 'ck_1', email: 'one@example.com' },
         { cokeAccountId: 'ck_2', email: 'two@example.com' },
       ],
-      clawscaleUsers: [{ cokeAccountId: 'ck_1', tenantId: 'tnt_1' }],
+      clawscaleUsers: [{ id: 'csu_1', cokeAccountId: 'ck_1', tenantId: 'tnt_1' }],
+      activeCustomerChannels: [],
       mongoAccountIds: ['ck_1', 'ck_orphan'],
     });
 
@@ -139,15 +140,32 @@ describe('summarizeLegacyBaseline', () => {
         { cokeAccountId: 'ck_3', email: 'other@example.com' },
       ],
       clawscaleUsers: [
-        { cokeAccountId: 'ck_1', tenantId: 'tnt_1' },
-        { cokeAccountId: 'ck_2', tenantId: 'tnt_2' },
-        { cokeAccountId: 'ck_3', tenantId: 'tnt_3' },
+        { id: 'csu_1', cokeAccountId: 'ck_1', tenantId: 'tnt_1' },
+        { id: 'csu_2', cokeAccountId: 'ck_2', tenantId: 'tnt_2' },
+        { id: 'csu_3', cokeAccountId: 'ck_3', tenantId: 'tnt_3' },
       ],
+      activeCustomerChannels: [],
       mongoAccountIds: ['ck_1', 'ck_2', 'ck_3'],
     });
 
     expect(summary.errors).toEqual([
       'case_insensitive_email_collision:alice@example.com:accounts=ck_1,ck_2',
+    ]);
+  });
+
+  it('reports duplicate active customer-owned channels per account and type', () => {
+    const summary = summarizeLegacyBaseline({
+      cokeAccounts: [{ cokeAccountId: 'ck_1', email: 'one@example.com' }],
+      clawscaleUsers: [{ id: 'csu_1', cokeAccountId: 'ck_1', tenantId: 'tnt_1' }],
+      activeCustomerChannels: [
+        { cokeAccountId: 'ck_1', type: 'wechat_personal' },
+        { cokeAccountId: 'ck_1', type: 'wechat_personal' },
+      ],
+      mongoAccountIds: ['ck_1'],
+    });
+
+    expect(summary.errors).toEqual([
+      'duplicate_active_customer_channel:ck_1:wechat_personal:count=2',
     ]);
   });
 });

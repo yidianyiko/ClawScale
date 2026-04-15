@@ -107,8 +107,9 @@ describe('platformization backfill orchestration', () => {
       { id: 'acct_2', email: 'two@example.com' },
     ]);
     db.client.clawscaleUser.findMany.mockResolvedValue([
-      { cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
+      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
     ]);
+    db.client.channel.findMany.mockResolvedValue([]);
 
     await expect(
       auditLegacyBaseline({
@@ -145,10 +146,26 @@ describe('platformization backfill orchestration', () => {
         },
       },
       select: {
+        id: true,
         cokeAccountId: true,
         tenantId: true,
       },
       orderBy: { cokeAccountId: 'asc' },
+    });
+    expect(db.client.channel.findMany).toHaveBeenCalledWith({
+      where: {
+        ownerClawscaleUserId: {
+          in: ['csu_1'],
+        },
+        status: {
+          not: 'archived',
+        },
+      },
+      select: {
+        ownerClawscaleUserId: true,
+        type: true,
+      },
+      orderBy: [{ ownerClawscaleUserId: 'asc' }, { type: 'asc' }, { id: 'asc' }],
     });
   });
 
@@ -158,9 +175,10 @@ describe('platformization backfill orchestration', () => {
       { id: 'acct_2', email: 'alice@example.com' },
     ]);
     db.client.clawscaleUser.findMany.mockResolvedValue([
-      { cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
-      { cokeAccountId: 'acct_2', tenantId: 'tenant_2' },
+      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
+      { id: 'csu_2', cokeAccountId: 'acct_2', tenantId: 'tenant_2' },
     ]);
+    db.client.channel.findMany.mockResolvedValue([]);
 
     await expect(
       auditLegacyBaseline({
@@ -175,6 +193,32 @@ describe('platformization backfill orchestration', () => {
       errors: [
         'case_insensitive_email_collision:alice@example.com:accounts=acct_1,acct_2',
       ],
+    });
+  });
+
+  it('auditLegacyBaseline reports duplicate active customer-owned channels as blockers', async () => {
+    db.client.cokeAccount.findMany.mockResolvedValue([
+      { id: 'acct_1', email: 'one@example.com' },
+    ]);
+    db.client.clawscaleUser.findMany.mockResolvedValue([
+      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
+    ]);
+    db.client.channel.findMany.mockResolvedValue([
+      { ownerClawscaleUserId: 'csu_1', type: 'wechat_personal' },
+      { ownerClawscaleUserId: 'csu_1', type: 'wechat_personal' },
+    ]);
+
+    await expect(
+      auditLegacyBaseline({
+        mongoAccountIds: ['acct_1'],
+      }),
+    ).resolves.toEqual({
+      counts: {
+        cokeAccounts: 1,
+        clawscaleUsers: 1,
+        mongoAccountIds: 1,
+      },
+      errors: ['duplicate_active_customer_channel:acct_1:wechat_personal:count=2'],
     });
   });
 

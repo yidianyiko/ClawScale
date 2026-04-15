@@ -58,6 +58,9 @@ cokeUserProvisionRouter.post('/', async (c) => {
     if (code === 'coke_account_not_found') {
       return c.json({ ok: false, error: code }, 404);
     }
+    if (code === 'platformization_shadow_graph_conflict') {
+      return c.json({ ok: false, error: code }, 409);
+    }
 
     throw err;
   }

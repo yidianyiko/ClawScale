@@ -98,6 +98,33 @@ describe('coke-user-provision router', () => {
     });
   });
 
+  it('returns 409 when the platformization shadow graph cannot be provisioned', async () => {
+    vi.mocked(ensureClawscaleUserForCokeAccount).mockRejectedValueOnce({
+      code: 'platformization_shadow_graph_conflict',
+      message: 'Platformization shadow graph could not be provisioned',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
+
+    const res = await app.request('/api/internal/coke-users/provision', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret',
+      },
+      body: JSON.stringify({
+        coke_account_id: 'acct_1',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'platformization_shadow_graph_conflict',
+    });
+  });
+
   it('returns 400 for malformed request bodies and does not call the helper', async () => {
     const app = new Hono();
     app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);

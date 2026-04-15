@@ -18,8 +18,13 @@ export interface LegacyBaselineSummaryInput {
     email: string;
   }>;
   clawscaleUsers: Array<{
+    id: string;
     cokeAccountId: string;
     tenantId: string;
+  }>;
+  activeCustomerChannels: Array<{
+    cokeAccountId: string;
+    type: string;
   }>;
   mongoAccountIds: string[];
 }
@@ -120,6 +125,7 @@ export function summarizeLegacyBaseline(input: LegacyBaselineSummaryInput) {
   const clawscaleAccountIds = new Set(input.clawscaleUsers.map((row) => row.cokeAccountId));
   const cokeAccountIds = new Set(input.cokeAccounts.map((row) => row.cokeAccountId));
   const normalizedEmailToAccountIds = new Map<string, string[]>();
+  const activeCustomerChannelCounts = new Map<string, number>();
   const errors: string[] = [];
 
   for (const account of input.cokeAccounts) {
@@ -139,6 +145,11 @@ export function summarizeLegacyBaseline(input: LegacyBaselineSummaryInput) {
     }
   }
 
+  for (const channel of input.activeCustomerChannels) {
+    const key = `${channel.cokeAccountId}:${channel.type}`;
+    activeCustomerChannelCounts.set(key, (activeCustomerChannelCounts.get(key) ?? 0) + 1);
+  }
+
   for (const [normalizedEmail, accountIds] of [...normalizedEmailToAccountIds.entries()].sort(
     ([leftEmail], [rightEmail]) => leftEmail.localeCompare(rightEmail),
   )) {
@@ -150,6 +161,19 @@ export function summarizeLegacyBaseline(input: LegacyBaselineSummaryInput) {
       `case_insensitive_email_collision:${normalizedEmail}:accounts=${[...accountIds]
         .sort((left, right) => left.localeCompare(right))
         .join(',')}`,
+    );
+  }
+
+  for (const [key, count] of [...activeCustomerChannelCounts.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (count < 2) {
+      continue;
+    }
+
+    const [cokeAccountId, type] = key.split(':', 2);
+    errors.push(
+      `duplicate_active_customer_channel:${cokeAccountId}:${type}:count=${count}`,
     );
   }
 

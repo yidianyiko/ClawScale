@@ -117,9 +117,6 @@ describe('platformization migration guard', () => {
     expect(compactMigration).toContain('channels_customer_kind_active_key');
     expect(compactMigration).toContain('memberships_identity_id_idx');
     expect(compactMigration).toContain('INSERT INTO "customers"');
-    expect(compactMigration).toContain('WITH "duplicate_customer_channels" AS');
-    expect(compactMigration).toContain('ROW_NUMBER() OVER ( PARTITION BY "customer_id", "type"');
-    expect(compactMigration).toContain('SET "status" = \'archived\'::"ChannelStatus"');
     expect(compactMigration).toContain(
       'SELECT "coke_accounts"."id", \'personal\'::"CustomerKind", "coke_accounts"."display_name"',
     );

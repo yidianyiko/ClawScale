@@ -77,6 +77,7 @@ export async function auditLegacyBaseline(input: AuditLegacyBaselineInput) {
           }
         : undefined,
       select: {
+        id: true,
         cokeAccountId: true,
         tenantId: true,
       },
@@ -84,12 +85,51 @@ export async function auditLegacyBaseline(input: AuditLegacyBaselineInput) {
     }),
   ]);
 
+  const ownerClawscaleUserIds = clawscaleUsers.map((row) => row.id);
+  const activeCustomerChannels = ownerClawscaleUserIds.length
+    ? await db.channel.findMany({
+        where: {
+          ownerClawscaleUserId: {
+            in: ownerClawscaleUserIds,
+          },
+          status: {
+            not: 'archived',
+          },
+        },
+        select: {
+          ownerClawscaleUserId: true,
+          type: true,
+        },
+        orderBy: [{ ownerClawscaleUserId: 'asc' }, { type: 'asc' }, { id: 'asc' }],
+      })
+    : [];
+  const ownerToCokeAccountId = new Map(
+    clawscaleUsers.map((row) => [row.id, row.cokeAccountId] as const),
+  );
+
   return summarizeLegacyBaseline({
     cokeAccounts: cokeAccounts.map((account) => ({
       cokeAccountId: account.id,
       email: account.email,
     })),
     clawscaleUsers,
+    activeCustomerChannels: activeCustomerChannels.flatMap((channel) => {
+      if (!channel.ownerClawscaleUserId) {
+        return [];
+      }
+
+      const cokeAccountId = ownerToCokeAccountId.get(channel.ownerClawscaleUserId);
+      if (!cokeAccountId) {
+        return [];
+      }
+
+      return [
+        {
+          cokeAccountId,
+          type: channel.type,
+        },
+      ];
+    }),
     mongoAccountIds: input.mongoAccountIds,
   });
 }

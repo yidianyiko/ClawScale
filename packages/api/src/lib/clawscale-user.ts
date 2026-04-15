@@ -10,7 +10,8 @@ export type ClawscaleUserBindingErrorCode =
   | 'end_user_not_found'
   | 'end_user_already_bound'
   | 'coke_account_not_found'
-  | 'coke_account_tenant_mismatch';
+  | 'coke_account_tenant_mismatch'
+  | 'platformization_shadow_graph_conflict';
 
 const defaultPersonalTenantSettings = {
   personaName: 'Assistant',
@@ -233,7 +234,10 @@ async function ensurePlatformizationShadowGraph(
         error,
       },
     );
-    return;
+    throw new ClawscaleUserBindingError(
+      'platformization_shadow_graph_conflict',
+      'Platformization shadow graph could not be provisioned',
+    );
   }
 
   await client.customer.upsert({

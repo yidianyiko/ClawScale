@@ -155,27 +155,6 @@ ALTER TABLE "channels"
         ("ownership_kind" = 'shared'::"ChannelOwnershipKind" AND "customer_id" IS NULL AND "agent_id" IS NOT NULL)
     );
 
-WITH "duplicate_customer_channels" AS (
-    SELECT
-        "id",
-        ROW_NUMBER() OVER (
-            PARTITION BY "customer_id", "type"
-            ORDER BY "updated_at" DESC, "created_at" DESC, "id" ASC
-        ) AS "keep_rank"
-    FROM "channels"
-    WHERE "customer_id" IS NOT NULL
-      AND "status" <> 'archived'::"ChannelStatus"
-)
-UPDATE "channels"
-SET
-    "status" = 'archived'::"ChannelStatus",
-    "updated_at" = GREATEST("channels"."updated_at", CURRENT_TIMESTAMP)
-WHERE "channels"."id" IN (
-    SELECT "id"
-    FROM "duplicate_customer_channels"
-    WHERE "keep_rank" > 1
-);
-
 CREATE UNIQUE INDEX "admin_accounts_email_key" ON "admin_accounts"("email");
 CREATE UNIQUE INDEX "identities_email_key" ON "identities"("email");
 CREATE UNIQUE INDEX "memberships_identity_id_customer_id_key" ON "memberships"("identity_id", "customer_id");

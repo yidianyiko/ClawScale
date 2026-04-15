@@ -416,7 +416,7 @@ describe('clawscale-user helpers', () => {
     });
   });
 
-  it('ensureClawscaleUserForCokeAccount keeps existing mappings usable when identity email shadow write collides', async () => {
+  it('ensureClawscaleUserForCokeAccount fails when identity email shadow write collides', async () => {
     const existingAccount = {
       id: 'acct_existing',
       email: 'Existing@Example.com',
@@ -456,12 +456,7 @@ describe('clawscale-user helpers', () => {
       ensureClawscaleUserForCokeAccount({
         cokeAccountId: 'acct_existing',
       }),
-    ).resolves.toEqual({
-      tenantId: 'tnt_existing',
-      clawscaleUserId: 'csu_existing',
-      created: false,
-      ready: true,
-    });
+    ).rejects.toMatchObject({ code: 'platformization_shadow_graph_conflict' });
 
     expect(db.customer.upsert).not.toHaveBeenCalled();
     expect(db.membership.upsert).not.toHaveBeenCalled();
