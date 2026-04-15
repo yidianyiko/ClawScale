@@ -1,16 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const randomUUIDMock = vi.hoisted(() => vi.fn());
-
-vi.mock('node:crypto', async () => {
-  const actual = await vi.importActual<typeof import('node:crypto')>('node:crypto');
-  return {
-    ...actual,
-    randomUUID: randomUUIDMock,
-  };
-});
+import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_COKE_AGENT_ID,
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
   buildLegacyCustomerGraph,
@@ -18,10 +9,6 @@ import {
   deriveDeterministicPlatformId,
   summarizeLegacyBaseline,
 } from './platformization-migration.js';
-
-beforeEach(() => {
-  randomUUIDMock.mockReset();
-});
 
 describe('deriveCustomerIdFromLegacyAccount', () => {
   it('reuses the legacy CokeAccount id byte-for-byte', () => {
@@ -106,23 +93,19 @@ describe('buildDefaultAgentSeed', () => {
     });
   });
 
-  it('falls back to randomUUID when no id is provided', () => {
-    randomUUIDMock.mockReturnValue('55555555-5555-5555-5555-555555555555');
-
+  it('uses the deterministic default Coke agent id when no id is provided', () => {
     expect(
       buildDefaultAgentSeed({
         endpoint: 'https://coke.example.com/agent',
         authToken: 'secret-token',
       }),
     ).toMatchObject({
-      id: '55555555-5555-5555-5555-555555555555',
+      id: DEFAULT_COKE_AGENT_ID,
       slug: 'coke',
       isDefault: true,
       endpoint: 'https://coke.example.com/agent',
       authToken: 'secret-token',
     });
-
-    expect(randomUUIDMock).toHaveBeenCalledTimes(1);
   });
 });
 

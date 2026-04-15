@@ -108,6 +108,28 @@ SELECT
 FROM "coke_accounts"
 ON CONFLICT ("id") DO NOTHING;
 
+INSERT INTO "agents" (
+    "id",
+    "slug",
+    "name",
+    "endpoint",
+    "auth_token",
+    "is_default",
+    "created_at",
+    "updated_at"
+)
+VALUES (
+    'aff8aa23-e892-4bae-9859-2b274cc9f8ae',
+    'coke',
+    'Coke',
+    'https://platformization-migration.invalid/default-agent',
+    'platformization-migration-placeholder',
+    true,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+)
+ON CONFLICT ("id") DO NOTHING;
+
 ALTER TABLE "channels"
     ADD COLUMN "ownership_kind" "ChannelOwnershipKind" NOT NULL DEFAULT 'customer',
     ADD COLUMN "customer_id" TEXT,
@@ -118,6 +140,12 @@ SET "customer_id" = "clawscale_users"."coke_account_id"
 FROM "clawscale_users"
 WHERE "channels"."owner_clawscale_user_id" = "clawscale_users"."id"
   AND "channels"."customer_id" IS NULL;
+
+UPDATE "channels"
+SET
+    "ownership_kind" = 'shared'::"ChannelOwnershipKind",
+    "agent_id" = 'aff8aa23-e892-4bae-9859-2b274cc9f8ae'
+WHERE "channels"."customer_id" IS NULL;
 
 ALTER TABLE "channels"
     ADD CONSTRAINT "channels_ownership_kind_check"

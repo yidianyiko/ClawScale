@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_COKE_AGENT_ID } from './platformization-migration.js';
+
 const schemaPath = resolve(process.cwd(), 'prisma/schema.prisma');
 const migrationPath = resolve(
   process.cwd(),
@@ -123,12 +125,20 @@ describe('platformization migration guard', () => {
     );
     expect(compactMigration).toContain('FROM "coke_accounts"');
     expect(compactMigration).toContain('ON CONFLICT ("id") DO NOTHING');
+    expect(compactMigration).toContain('INSERT INTO "agents"');
+    expect(compactMigration).toContain(`'${DEFAULT_COKE_AGENT_ID}'`);
+    expect(compactMigration).toContain('\'coke\'');
+    expect(compactMigration).toContain('true');
     expect(compactMigration).toContain('UPDATE "channels"');
     expect(compactMigration).toContain('SET "customer_id" = "clawscale_users"."coke_account_id"');
     expect(compactMigration).toContain('FROM "clawscale_users"');
     expect(compactMigration).toContain(
       'WHERE "channels"."owner_clawscale_user_id" = "clawscale_users"."id"',
     );
+    expect(compactMigration).toContain(
+      `SET "ownership_kind" = 'shared'::"ChannelOwnershipKind", "agent_id" = '${DEFAULT_COKE_AGENT_ID}'`,
+    );
+    expect(compactMigration).toContain('WHERE "channels"."customer_id" IS NULL');
     expect(compactMigration).toContain(
       '("ownership_kind" = \'customer\'::"ChannelOwnershipKind" AND "customer_id" IS NOT NULL)',
     );

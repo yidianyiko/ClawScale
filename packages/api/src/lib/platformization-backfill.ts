@@ -1,5 +1,8 @@
 import { db } from '../db/index.js';
 import {
+  DEFAULT_COKE_AGENT_ID,
+  DEFAULT_COKE_AGENT_NAME,
+  DEFAULT_COKE_AGENT_SLUG,
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
   buildLegacyCustomerGraph,
@@ -34,20 +37,19 @@ function buildLegacyAccountWhere(ids?: string[]) {
 }
 
 export async function ensureDefaultAgent(input: EnsureDefaultAgentInput) {
-  const existingDefaultAgent = await db.agent.findFirst({
-    where: { isDefault: true },
-    select: { id: true },
+  const defaultAgent = await db.agent.upsert({
+    where: { id: DEFAULT_COKE_AGENT_ID },
+    create: buildDefaultAgentSeed(input),
+    update: {
+      slug: DEFAULT_COKE_AGENT_SLUG,
+      name: DEFAULT_COKE_AGENT_NAME,
+      endpoint: input.endpoint,
+      authToken: input.authToken,
+      isDefault: true,
+    },
   });
 
-  if (existingDefaultAgent) {
-    return existingDefaultAgent.id;
-  }
-
-  const createdAgent = await db.agent.create({
-    data: buildDefaultAgentSeed(input),
-  });
-
-  return createdAgent.id;
+  return defaultAgent.id;
 }
 
 export async function auditLegacyBaseline(input: AuditLegacyBaselineInput) {
@@ -189,6 +191,16 @@ export async function verifyPlatformizationMigration() {
     deriveDeterministicPlatformId('membership', accountId),
   );
 
+  const channels = await db.channel.findMany({
+    select: {
+      id: true,
+      ownershipKind: true,
+      customerId: true,
+      agentId: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
   const counts = {
     cokeAccounts: legacyAccountIds.length,
     identities: await db.identity.count({
@@ -222,6 +234,10 @@ export async function verifyPlatformizationMigration() {
     defaultAgents: await db.agent.count({
       where: { isDefault: true },
     }),
+    channels: channels.length,
+    customerOwnedChannels: channels.filter((channel) => channel.ownershipKind === 'customer').length,
+    sharedOwnedChannels: channels.filter((channel) => channel.ownershipKind === 'shared').length,
+    invalidOwnershipChannels: 0,
   };
 
   const errors: string[] = [];
@@ -248,6 +264,31 @@ export async function verifyPlatformizationMigration() {
   }
   if (counts.defaultAgents !== 1) {
     errors.push(`default_agent_count_mismatch:expected=1:actual=${counts.defaultAgents}`);
+  }
+
+  for (const channel of channels) {
+    const isCustomerOwned =
+      channel.ownershipKind === 'customer' &&
+      channel.customerId !== null &&
+      channel.agentId === null;
+    const isSharedOwned =
+      channel.ownershipKind === 'shared' &&
+      channel.customerId === null &&
+      channel.agentId !== null;
+
+    if (!isCustomerOwned && !isSharedOwned) {
+      counts.invalidOwnershipChannels += 1;
+      errors.push(
+        `invalid_channel_ownership:${channel.id}:ownershipKind=${channel.ownershipKind}:customerId=${channel.customerId ?? 'null'}:agentId=${channel.agentId ?? 'null'}`,
+      );
+      continue;
+    }
+
+    if (channel.ownershipKind === 'shared' && channel.agentId !== DEFAULT_COKE_AGENT_ID) {
+      errors.push(
+        `shared_channel_default_agent_mismatch:${channel.id}:expected=${DEFAULT_COKE_AGENT_ID}:actual=${channel.agentId}`,
+      );
+    }
   }
 
   return {

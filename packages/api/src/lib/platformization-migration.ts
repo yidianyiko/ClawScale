@@ -1,4 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+
+export const DEFAULT_COKE_AGENT_ID = 'aff8aa23-e892-4bae-9859-2b274cc9f8ae';
+export const DEFAULT_COKE_AGENT_SLUG = 'coke';
+export const DEFAULT_COKE_AGENT_NAME = 'Coke';
 
 export interface LegacyCokeAccountSeedInput {
   cokeAccountId: string;
@@ -99,9 +103,9 @@ export function buildDefaultAgentSeed(input: {
   authToken: string;
 }) {
   return {
-    id: input.id ?? randomUUID(),
-    slug: 'coke',
-    name: 'Coke',
+    id: input.id ?? DEFAULT_COKE_AGENT_ID,
+    slug: DEFAULT_COKE_AGENT_SLUG,
+    name: DEFAULT_COKE_AGENT_NAME,
     endpoint: input.endpoint,
     authToken: input.authToken,
     isDefault: true,

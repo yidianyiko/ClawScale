@@ -18,9 +18,11 @@ const db = vi.hoisted(() => {
 
   const client = {
     agent: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
+      upsert: vi.fn(),
       count: vi.fn(),
+    },
+    channel: {
+      findMany: vi.fn(),
     },
     cokeAccount: {
       findMany: vi.fn(),
@@ -57,6 +59,7 @@ import {
   verifyPlatformizationMigration,
 } from './platformization-backfill.js';
 import {
+  DEFAULT_COKE_AGENT_ID,
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
   buildLegacyCustomerGraph,
@@ -69,29 +72,31 @@ describe('platformization backfill orchestration', () => {
     vi.unstubAllEnvs();
   });
 
-  it('ensureDefaultAgent creates the default Coke agent when one does not exist', async () => {
-    db.client.agent.findFirst.mockResolvedValue(null);
-    db.client.agent.create.mockResolvedValue({ id: 'agent_default_1' });
+  it('ensureDefaultAgent upserts the deterministic default Coke agent and refreshes its config', async () => {
+    db.client.agent.upsert.mockResolvedValue({ id: DEFAULT_COKE_AGENT_ID });
 
     await expect(
       ensureDefaultAgent({
         endpoint: 'https://coke.example.com/agent',
         authToken: 'secret-token',
       }),
-    ).resolves.toBe('agent_default_1');
+    ).resolves.toBe(DEFAULT_COKE_AGENT_ID);
 
-    expect(db.client.agent.findFirst).toHaveBeenCalledWith({
-      where: { isDefault: true },
-      select: { id: true },
-    });
-    expect(db.client.agent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    expect(db.client.agent.upsert).toHaveBeenCalledWith({
+      where: { id: DEFAULT_COKE_AGENT_ID },
+      create: expect.objectContaining({
         ...buildDefaultAgentSeed({
-          id: expect.any(String) as unknown as string,
           endpoint: 'https://coke.example.com/agent',
           authToken: 'secret-token',
         }),
       }),
+      update: {
+        slug: 'coke',
+        name: 'Coke',
+        endpoint: 'https://coke.example.com/agent',
+        authToken: 'secret-token',
+        isDefault: true,
+      },
     });
   });
 
@@ -287,6 +292,26 @@ describe('platformization backfill orchestration', () => {
     db.client.membership.count.mockResolvedValue(2);
     db.client.agentBinding.count.mockResolvedValue(2);
     db.client.agent.count.mockResolvedValue(1);
+    db.client.channel.findMany.mockResolvedValue([
+      {
+        id: 'chan_customer_1',
+        ownershipKind: 'customer',
+        customerId: 'acct_1',
+        agentId: null,
+      },
+      {
+        id: 'chan_customer_2',
+        ownershipKind: 'customer',
+        customerId: 'acct_2',
+        agentId: null,
+      },
+      {
+        id: 'chan_shared_1',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: DEFAULT_COKE_AGENT_ID,
+      },
+    ]);
 
     await expect(verifyPlatformizationMigration()).resolves.toEqual({
       counts: {
@@ -296,6 +321,10 @@ describe('platformization backfill orchestration', () => {
         memberships: 2,
         agentBindings: 2,
         defaultAgents: 1,
+        channels: 3,
+        customerOwnedChannels: 2,
+        sharedOwnedChannels: 1,
+        invalidOwnershipChannels: 0,
       },
       errors: [],
     });
@@ -324,6 +353,64 @@ describe('platformization backfill orchestration', () => {
           in: legacyAccountIds,
         },
       },
+    });
+    expect(db.client.channel.findMany).toHaveBeenCalledWith({
+      select: {
+        id: true,
+        ownershipKind: true,
+        customerId: true,
+        agentId: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  });
+
+  it('verifyPlatformizationMigration surfaces invalid channel ownership rows and shared rows bound to the wrong agent', async () => {
+    db.client.cokeAccount.findMany.mockResolvedValue([{ id: 'acct_1' }]);
+    db.client.identity.count.mockResolvedValue(1);
+    db.client.customer.count.mockResolvedValue(1);
+    db.client.membership.count.mockResolvedValue(1);
+    db.client.agentBinding.count.mockResolvedValue(1);
+    db.client.agent.count.mockResolvedValue(1);
+    db.client.channel.findMany.mockResolvedValue([
+      {
+        id: 'chan_broken_customer',
+        ownershipKind: 'customer',
+        customerId: null,
+        agentId: null,
+      },
+      {
+        id: 'chan_wrong_shared_agent',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_other',
+      },
+      {
+        id: 'chan_customer_with_agent',
+        ownershipKind: 'customer',
+        customerId: 'acct_1',
+        agentId: 'agent_other',
+      },
+    ]);
+
+    await expect(verifyPlatformizationMigration()).resolves.toEqual({
+      counts: {
+        cokeAccounts: 1,
+        identities: 1,
+        customers: 1,
+        memberships: 1,
+        agentBindings: 1,
+        defaultAgents: 1,
+        channels: 3,
+        customerOwnedChannels: 2,
+        sharedOwnedChannels: 1,
+        invalidOwnershipChannels: 2,
+      },
+      errors: [
+        'invalid_channel_ownership:chan_broken_customer:ownershipKind=customer:customerId=null:agentId=null',
+        `shared_channel_default_agent_mismatch:chan_wrong_shared_agent:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
+        'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=acct_1:agentId=agent_other',
+      ],
     });
   });
 
