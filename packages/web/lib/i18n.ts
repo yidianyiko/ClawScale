@@ -142,6 +142,13 @@ export type LocaleMessages = {
       subscriptionRenewalRequired: string;
       success: string;
       genericError: string;
+      verificationRecoveryTitle: string;
+      verificationRecoveryDescription: string;
+      verificationRetryDescription: string;
+      resendVerificationEmail: string;
+      resendingVerificationEmail: string;
+      resendVerificationSuccess: string;
+      resendVerificationError: string;
     };
     register: {
       eyebrow: string;
@@ -193,20 +200,7 @@ export type LocaleMessages = {
     verifyEmail: {
       title: string;
       description: string;
-      emailLabel: string;
-      emailPlaceholder: string;
-      tokenLabel: string;
-      tokenPlaceholder: string;
-      submit: string;
-      submitting: string;
-      resend: string;
-      resending: string;
-      backToSignInPrompt: string;
-      backToSignInLink: string;
-      verifiedMessage: string;
-      resendSuccessMessage: string;
-      genericError: string;
-      resendGenericError: string;
+      verifyingDescription: string;
     };
     renew: {
       title: string;
@@ -423,7 +417,16 @@ export const messages: MessagesCatalog = {
         subscriptionRenewalRequired: 'Subscription renewal is required.',
         success: 'Sign-in succeeded.',
         genericError: 'Unable to sign in right now.',
-      },
+        verificationRecoveryTitle: 'Verify your email',
+        verificationRecoveryDescription:
+          'This link is invalid or expired. Resend a verification email to continue.',
+        verificationRetryDescription:
+          "We couldn't verify your email right now. Resend a verification email to continue.",
+        resendVerificationEmail: 'Resend verification email',
+        resendingVerificationEmail: 'Sending verification email...',
+        resendVerificationSuccess: 'Verification email sent. Check your inbox.',
+        resendVerificationError: 'Unable to resend the verification email right now.',
+    },
       register: {
         eyebrow: 'Register',
         heroTitle: 'Create your Coke account',
@@ -475,22 +478,8 @@ export const messages: MessagesCatalog = {
       },
       verifyEmail: {
         title: 'Verify your email',
-        description:
-          'Use the link from your inbox, or paste the verification token here to finish account setup.',
-        emailLabel: 'Email',
-        emailPlaceholder: 'alice@example.com',
-        tokenLabel: 'Verification token',
-        tokenPlaceholder: 'Paste the token from your email',
-        submit: 'Verify email',
-        submitting: 'Verifying...',
-        resend: 'Resend verification email',
-        resending: 'Sending...',
-        backToSignInPrompt: 'Need to sign in instead?',
-        backToSignInLink: 'Back to sign in',
-        verifiedMessage: 'Email verified.',
-        resendSuccessMessage: 'If the account exists, a verification email has been sent.',
-        genericError: 'Unable to verify your email right now.',
-        resendGenericError: 'Unable to resend the verification email right now.',
+        description: 'We are preparing your secure email verification.',
+        verifyingDescription: 'Verifying your email link now...',
       },
       renew: {
         title: 'Renew your access',
@@ -742,7 +731,14 @@ export const messages: MessagesCatalog = {
         subscriptionRenewalRequired: '需要先完成订阅续费。',
         success: '登录成功。',
         genericError: '暂时无法登录，请稍后再试。',
-      },
+        verificationRecoveryTitle: '验证你的邮箱',
+        verificationRecoveryDescription: '这个链接已失效或已过期。请重新发送验证邮件继续。',
+        verificationRetryDescription: '暂时无法验证你的邮箱。请重新发送验证邮件继续。',
+        resendVerificationEmail: '重新发送验证邮件',
+        resendingVerificationEmail: '正在发送验证邮件...',
+        resendVerificationSuccess: '验证邮件已发送，请查收邮箱。',
+        resendVerificationError: '暂时无法重新发送验证邮件，请稍后再试。',
+    },
       register: {
         eyebrow: '注册',
         heroTitle: '创建你的 Coke 账号',
@@ -792,21 +788,8 @@ export const messages: MessagesCatalog = {
       },
       verifyEmail: {
         title: '验证邮箱',
-        description: '你可以直接使用收件箱里的链接，或把验证令牌粘贴到这里完成账号设置。',
-        emailLabel: '邮箱',
-        emailPlaceholder: 'alice@example.com',
-        tokenLabel: '验证令牌',
-        tokenPlaceholder: '粘贴邮件中的令牌',
-        submit: '验证邮箱',
-        submitting: '验证中...',
-        resend: '重新发送验证邮件',
-        resending: '发送中...',
-        backToSignInPrompt: '想直接登录？',
-        backToSignInLink: '返回登录',
-        verifiedMessage: '邮箱已验证。',
-        resendSuccessMessage: '如果该账号存在，我们已经发送了一封验证邮件。',
-        genericError: '暂时无法验证邮箱，请稍后再试。',
-        resendGenericError: '暂时无法重新发送验证邮件，请稍后再试。',
+        description: '我们正在为你准备安全的邮箱验证。',
+        verifyingDescription: '正在验证你的邮箱链接...',
       },
       renew: {
         title: '续订访问权限',

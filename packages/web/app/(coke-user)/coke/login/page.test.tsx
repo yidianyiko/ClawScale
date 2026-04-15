@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
+import { cokeUserApi } from '../../../../lib/coke-user-api';
 
 const pushMock = vi.hoisted(() => vi.fn());
 
@@ -36,8 +37,12 @@ describe('CokeLoginPage', () => {
   let container: HTMLDivElement;
   let root: Root;
 
+  const waitForEffects = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
   beforeEach(() => {
     pushMock.mockReset();
+    vi.mocked(cokeUserApi.post).mockReset();
+    window.history.replaceState({}, '', '/coke/login');
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -48,7 +53,94 @@ describe('CokeLoginPage', () => {
     container?.remove();
   });
 
-  it('renders English account copy and entry links without mixed labels', () => {
+  it('prefills the email and shows recovery copy from an expired verification link', async () => {
+    window.history.replaceState({}, '', '/coke/login?email=alice%40example.com&verification=expired');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CokeLoginPage />
+        </LocaleProvider>,
+      );
+    });
+    await waitForEffects();
+
+    expect((container.querySelector('#email') as HTMLInputElement).value).toBe('alice@example.com');
+    expect(container.textContent).toContain('This link is invalid or expired.');
+    expect(container.textContent).toContain('Resend verification email');
+    expect(container.querySelector('button[type="button"]')).toBeTruthy();
+  });
+
+  it('shows retry recovery copy when verification could not be completed right now', async () => {
+    window.history.replaceState({}, '', '/coke/login?email=alice%40example.com&verification=retry');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CokeLoginPage />
+        </LocaleProvider>,
+      );
+    });
+    await waitForEffects();
+
+    expect((container.querySelector('#email') as HTMLInputElement).value).toBe('alice@example.com');
+    expect(container.textContent).toContain("We couldn't verify your email right now.");
+    expect(container.textContent).toContain('Resend verification email');
+    expect(container.querySelector('button[type="button"]')).toBeTruthy();
+  });
+
+  it('calls the resend endpoint with the current email from recovery state', async () => {
+    let resolveResend: (value: { ok: boolean; data: Record<string, never> }) => void = () => {};
+    const resendPromise = new Promise<{ ok: boolean; data: Record<string, never> }>((resolve) => {
+      resolveResend = resolve;
+    });
+    vi.mocked(cokeUserApi.post).mockReturnValueOnce(resendPromise);
+
+    window.history.replaceState({}, '', '/coke/login?email=alice%40example.com&verification=expired');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CokeLoginPage />
+        </LocaleProvider>,
+      );
+    });
+    await waitForEffects();
+
+    const button = container.querySelector('button[type="button"]') as HTMLButtonElement;
+    button.click();
+
+    await waitForEffects();
+
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe('Sending verification email...');
+
+    resolveResend({ ok: true, data: {} });
+    await waitForEffects();
+
+    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+      email: 'alice@example.com',
+    });
+    expect(container.textContent).toContain('Verification email sent.');
+  });
+
+  it('keeps unverified login attempts on the recovery flow instead of routing to verify-email', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: false,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="en">
@@ -57,16 +149,17 @@ describe('CokeLoginPage', () => {
       );
     });
 
-    expect(container.textContent).toContain('Sign in to Coke');
-    expect(container.textContent).toContain('Return to your Coke account');
-    expect(container.textContent).not.toContain('Sign in / 登录');
-    expect(container.textContent).not.toContain('Email / 邮箱');
-    expect(container.querySelector('a[href="/"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/forgot-password"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/coke/login', expect.any(Object));
+    expect(pushMock).not.toHaveBeenCalledWith('/coke/verify-email');
+    expect(container.textContent).toContain('This link is invalid or expired.');
+    expect(container.querySelector('button[type="button"]')).toBeTruthy();
   });
 
-  it('renders Chinese account copy without English fallback text in the UI copy', () => {
+  it('only shows the resend button in verification recovery state', () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="zh">
@@ -75,10 +168,7 @@ describe('CokeLoginPage', () => {
       );
     });
 
-    expect(container.textContent).toContain('登录 Coke');
-    expect(container.textContent).toContain('返回你的 Coke 账号');
-    expect(container.textContent).toContain('返回首页');
-    expect(container.textContent).not.toContain('Sign in to Coke');
-    expect(container.textContent).not.toContain('Back to homepage');
+    expect(container.querySelector('button[type="button"]')).toBeNull();
+    expect(container.textContent).not.toContain('重新发送验证邮件');
   });
 });

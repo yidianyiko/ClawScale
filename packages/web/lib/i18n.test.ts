@@ -112,6 +112,18 @@ describe('i18n helpers', () => {
     expect(messages.zh.common.languageLabel).toBe('语言');
     expect(messages.en.publicShell.cta.signIn).toBeDefined();
     expect(messages.zh.publicShell.cta.signIn).toBeDefined();
+    expect(messages.en.cokeUserPages.login.resendVerificationEmail).toBe('Resend verification email');
+    expect(messages.zh.cokeUserPages.login.resendVerificationEmail).toBe('重新发送验证邮件');
+    expect(messages.en.cokeUserPages.login.verificationRetryDescription).toBe(
+      "We couldn't verify your email right now. Resend a verification email to continue.",
+    );
+    expect(messages.zh.cokeUserPages.login.verificationRetryDescription).toBe(
+      '暂时无法验证你的邮箱。请重新发送验证邮件继续。',
+    );
+    expect(messages.en.cokeUserPages.verifyEmail.verifyingDescription).toBe(
+      'Verifying your email link now...',
+    );
+    expect(messages.zh.cokeUserPages.verifyEmail.verifyingDescription).toBe('正在验证你的邮箱链接...');
     expect(messages.en.homepage.platforms.items.length).toBeGreaterThan(0);
     expect(messages.zh.homepage.platforms.items.length).toBeGreaterThan(0);
     expect(LOCALE_COOKIE_NAME).toBe(LOCALE_STORAGE_KEY);

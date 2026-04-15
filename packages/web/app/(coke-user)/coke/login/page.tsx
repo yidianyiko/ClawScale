@@ -1,6 +1,6 @@
 'use client';
 
-import type { FormEvent } from 'react';
+import { useEffect, type FormEvent } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -8,6 +8,8 @@ import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
+
+type VerificationRecoveryReason = 'expired' | 'retry' | null;
 
 export default function CokeLoginPage() {
   const { messages } = useLocale();
@@ -18,6 +20,39 @@ export default function CokeLoginPage() {
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationRecovery, setVerificationRecovery] = useState<VerificationRecoveryReason>(null);
+  const [resendMessage, setResendMessage] = useState('');
+  const [resendStatus, setResendStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const nextEmail = params.get('email');
+
+    if (nextEmail !== null) {
+      setEmail(nextEmail);
+    }
+
+    const verificationState = params.get('verification');
+    setVerificationRecovery(
+      verificationState === 'expired' || verificationState === 'retry' ? verificationState : null,
+    );
+  }, []);
+
+  const verificationRecoveryDescription =
+    verificationRecovery === 'retry'
+      ? copy.verificationRetryDescription
+      : copy.verificationRecoveryDescription;
+
+  function showVerificationRecovery(reason: Exclude<VerificationRecoveryReason, null>) {
+    setVerificationRecovery(reason);
+    setResendMessage('');
+    setResendStatus('idle');
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -45,7 +80,7 @@ export default function CokeLoginPage() {
 
       if (res.data.user.email_verified !== true) {
         setStatusMessage(copy.emailVerificationRequired);
-        router.push('/coke/verify-email');
+        showVerificationRecovery('expired');
         return;
       }
 
@@ -66,6 +101,36 @@ export default function CokeLoginPage() {
     }
   }
 
+  async function handleResendVerification() {
+    if (email.trim() === '') {
+      return;
+    }
+
+    setResendMessage('');
+    setResendStatus('idle');
+    setResending(true);
+
+    try {
+      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/coke/verify-email/resend', {
+        email,
+      });
+
+      if (!res.ok) {
+        setResendStatus('error');
+        setResendMessage(copy.resendVerificationError);
+        return;
+      }
+
+      setResendStatus('success');
+      setResendMessage(copy.resendVerificationSuccess);
+    } catch {
+      setResendStatus('error');
+      setResendMessage(copy.resendVerificationError);
+    } finally {
+      setResending(false);
+    }
+  }
+
   return (
     <section className="grid gap-6 lg:grid-cols-[0.86fr_1.14fr]">
       <div className="rounded-[2rem] border border-white/10 bg-white/6 p-8 text-slate-100">
@@ -83,6 +148,30 @@ export default function CokeLoginPage() {
       <div className="rounded-[2rem] bg-white p-8 text-slate-950 shadow-2xl shadow-slate-950/20">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">{copy.description}</p>
+
+        {verificationRecovery ? (
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+            <p className="font-medium">{copy.verificationRecoveryTitle}</p>
+            <p className="mt-2 leading-6">{verificationRecoveryDescription}</p>
+            <button
+              type="button"
+              className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              disabled={resending || email.trim() === ''}
+              onClick={handleResendVerification}
+            >
+              {resending ? copy.resendingVerificationEmail : copy.resendVerificationEmail}
+            </button>
+            {resendMessage ? (
+              <p
+                className={`mt-3 text-sm ${
+                  resendStatus === 'success' ? 'text-emerald-700' : 'text-red-700'
+                }`}
+              >
+                {resendMessage}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
