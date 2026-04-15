@@ -8,6 +8,13 @@ function hasDryRunFlag() {
   return process.argv.includes('--dry-run');
 }
 
+function parseMongoAccountIds() {
+  return (process.env.MONGO_ACCOUNT_IDS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function requireEnv(name: string) {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -20,9 +27,10 @@ function requireEnv(name: string) {
 async function main() {
   const dryRun = hasDryRunFlag();
   let agentId = 'dry-run';
+  const mongoAccountIds = parseMongoAccountIds();
 
   if (!dryRun) {
-    const auditSummary = await auditLegacyBaseline({ mongoAccountIds: [] });
+    const auditSummary = await auditLegacyBaseline({ mongoAccountIds });
     if (auditSummary.errors.length > 0) {
       console.log(
         JSON.stringify(
@@ -30,6 +38,7 @@ async function main() {
             dryRun,
             blocked: true,
             reason: 'platformization_audit_blocked',
+            mongoAccountIds,
             ...auditSummary,
           },
           null,
@@ -53,6 +62,7 @@ async function main() {
       {
         agentId,
         dryRun,
+        mongoAccountIds,
         ...summary,
       },
       null,

@@ -42,6 +42,7 @@ const db = vi.hoisted(() => {
       count: vi.fn(),
     },
     agentBinding: {
+      findMany: vi.fn(),
       count: vi.fn(),
     },
     $transaction: vi.fn(async (fn: (txArg: typeof tx) => Promise<unknown>) => fn(tx)),
@@ -312,6 +313,18 @@ describe('platformization backfill orchestration', () => {
     db.client.customer.count.mockResolvedValue(2);
     db.client.membership.count.mockResolvedValue(2);
     db.client.agentBinding.count.mockResolvedValue(2);
+    db.client.agentBinding.findMany.mockResolvedValue([
+      {
+        customerId: 'acct_1',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+      },
+      {
+        customerId: 'acct_2',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+      },
+    ]);
     db.client.agent.count.mockResolvedValue(1);
     db.client.channel.findMany.mockResolvedValue([
       {
@@ -343,6 +356,7 @@ describe('platformization backfill orchestration', () => {
         agentBindings: 2,
         defaultAgents: 1,
         channels: 3,
+        verifiedAgentBindings: 2,
         customerOwnedChannels: 2,
         sharedOwnedChannels: 1,
         invalidOwnershipChannels: 0,
@@ -375,6 +389,19 @@ describe('platformization backfill orchestration', () => {
         },
       },
     });
+    expect(db.client.agentBinding.findMany).toHaveBeenCalledWith({
+      where: {
+        customerId: {
+          in: legacyAccountIds,
+        },
+      },
+      select: {
+        customerId: true,
+        agentId: true,
+        provisionStatus: true,
+      },
+      orderBy: { customerId: 'asc' },
+    });
     expect(db.client.channel.findMany).toHaveBeenCalledWith({
       select: {
         id: true,
@@ -392,6 +419,13 @@ describe('platformization backfill orchestration', () => {
     db.client.customer.count.mockResolvedValue(1);
     db.client.membership.count.mockResolvedValue(1);
     db.client.agentBinding.count.mockResolvedValue(1);
+    db.client.agentBinding.findMany.mockResolvedValue([
+      {
+        customerId: 'acct_1',
+        agentId: 'agent_other',
+        provisionStatus: 'error',
+      },
+    ]);
     db.client.agent.count.mockResolvedValue(1);
     db.client.channel.findMany.mockResolvedValue([
       {
@@ -423,11 +457,14 @@ describe('platformization backfill orchestration', () => {
         agentBindings: 1,
         defaultAgents: 1,
         channels: 3,
+        verifiedAgentBindings: 1,
         customerOwnedChannels: 2,
         sharedOwnedChannels: 1,
         invalidOwnershipChannels: 2,
       },
       errors: [
+        `agent_binding_default_agent_mismatch:acct_1:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
+        'agent_binding_provision_status_mismatch:acct_1:expected=ready:actual=error',
         'invalid_channel_ownership:chan_broken_customer:ownershipKind=customer:customerId=null:agentId=null',
         `shared_channel_default_agent_mismatch:chan_wrong_shared_agent:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
         'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=acct_1:agentId=agent_other',
@@ -469,6 +506,7 @@ describe('platformization backfill orchestration', () => {
     vi.resetModules();
     vi.stubEnv('COKE_AGENT_ENDPOINT', 'https://coke.example.com/agent');
     vi.stubEnv('COKE_AGENT_AUTH_TOKEN', 'secret-token');
+    vi.stubEnv('MONGO_ACCOUNT_IDS', 'acct_1, acct_2');
 
     const auditLegacyBaselineMock = vi.fn().mockResolvedValue({
       counts: {
@@ -495,7 +533,7 @@ describe('platformization backfill orchestration', () => {
       'platformization_audit_blocked',
     );
 
-    expect(auditLegacyBaselineMock).toHaveBeenCalledWith({ mongoAccountIds: [] });
+    expect(auditLegacyBaselineMock).toHaveBeenCalledWith({ mongoAccountIds: ['acct_1', 'acct_2'] });
     expect(ensureDefaultAgentMock).not.toHaveBeenCalled();
     expect(backfillLegacyCustomersMock).not.toHaveBeenCalled();
 

@@ -195,6 +195,19 @@ export async function verifyPlatformizationMigration() {
     },
     orderBy: { id: 'asc' },
   });
+  const agentBindings = await db.agentBinding.findMany({
+    where: {
+      customerId: {
+        in: legacyAccountIds,
+      },
+    },
+    select: {
+      customerId: true,
+      agentId: true,
+      provisionStatus: true,
+    },
+    orderBy: { customerId: 'asc' },
+  });
 
   const counts = {
     cokeAccounts: legacyAccountIds.length,
@@ -230,6 +243,7 @@ export async function verifyPlatformizationMigration() {
       where: { isDefault: true },
     }),
     channels: channels.length,
+    verifiedAgentBindings: agentBindings.length,
     customerOwnedChannels: channels.filter((channel) => channel.ownershipKind === 'customer').length,
     sharedOwnedChannels: channels.filter((channel) => channel.ownershipKind === 'shared').length,
     invalidOwnershipChannels: 0,
@@ -259,6 +273,19 @@ export async function verifyPlatformizationMigration() {
   }
   if (counts.defaultAgents !== 1) {
     errors.push(`default_agent_count_mismatch:expected=1:actual=${counts.defaultAgents}`);
+  }
+
+  for (const agentBinding of agentBindings) {
+    if (agentBinding.agentId !== DEFAULT_COKE_AGENT_ID) {
+      errors.push(
+        `agent_binding_default_agent_mismatch:${agentBinding.customerId}:expected=${DEFAULT_COKE_AGENT_ID}:actual=${agentBinding.agentId}`,
+      );
+    }
+    if (agentBinding.provisionStatus !== 'ready') {
+      errors.push(
+        `agent_binding_provision_status_mismatch:${agentBinding.customerId}:expected=ready:actual=${agentBinding.provisionStatus}`,
+      );
+    }
   }
 
   for (const channel of channels) {

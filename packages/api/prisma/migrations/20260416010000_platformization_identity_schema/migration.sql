@@ -150,7 +150,7 @@ WHERE "channels"."customer_id" IS NULL;
 ALTER TABLE "channels"
     ADD CONSTRAINT "channels_ownership_kind_check"
     CHECK (
-        ("ownership_kind" = 'customer'::"ChannelOwnershipKind" AND "customer_id" IS NOT NULL)
+        ("ownership_kind" = 'customer'::"ChannelOwnershipKind" AND "customer_id" IS NOT NULL AND "agent_id" IS NULL)
         OR
         ("ownership_kind" = 'shared'::"ChannelOwnershipKind" AND "customer_id" IS NULL AND "agent_id" IS NOT NULL)
     );
