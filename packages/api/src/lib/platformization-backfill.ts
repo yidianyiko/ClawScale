@@ -185,6 +185,9 @@ export async function verifyPlatformizationMigration() {
   const derivedIdentityIds = legacyAccountIds.map((accountId) =>
     deriveDeterministicPlatformId('identity', accountId),
   );
+  const derivedMembershipIds = legacyAccountIds.map((accountId) =>
+    deriveDeterministicPlatformId('membership', accountId),
+  );
 
   const counts = {
     cokeAccounts: legacyAccountIds.length,
@@ -204,8 +207,8 @@ export async function verifyPlatformizationMigration() {
     }),
     memberships: await db.membership.count({
       where: {
-        customerId: {
-          in: legacyAccountIds,
+        id: {
+          in: derivedMembershipIds,
         },
       },
     }),

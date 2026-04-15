@@ -60,6 +60,7 @@ import {
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
   buildLegacyCustomerGraph,
+  deriveDeterministicPlatformId,
 } from './platformization-migration.js';
 
 describe('platformization backfill orchestration', () => {
@@ -275,10 +276,12 @@ describe('platformization backfill orchestration', () => {
   });
 
   it('verifyPlatformizationMigration reports matching counts for only the migrated legacy slice', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      { id: 'acct_1' },
-      { id: 'acct_2' },
-    ]);
+    const legacyAccountIds = ['acct_1', 'acct_2'];
+    const membershipIds = legacyAccountIds.map((accountId) =>
+      deriveDeterministicPlatformId('membership', accountId),
+    );
+
+    db.client.cokeAccount.findMany.mockResolvedValue(legacyAccountIds.map((id) => ({ id })));
     db.client.identity.count.mockResolvedValue(2);
     db.client.customer.count.mockResolvedValue(2);
     db.client.membership.count.mockResolvedValue(2);
@@ -304,21 +307,21 @@ describe('platformization backfill orchestration', () => {
     expect(db.client.customer.count).toHaveBeenCalledWith({
       where: {
         id: {
-          in: ['acct_1', 'acct_2'],
+          in: legacyAccountIds,
         },
       },
     });
     expect(db.client.membership.count).toHaveBeenCalledWith({
       where: {
-        customerId: {
-          in: ['acct_1', 'acct_2'],
+        id: {
+          in: membershipIds,
         },
       },
     });
     expect(db.client.agentBinding.count).toHaveBeenCalledWith({
       where: {
         customerId: {
-          in: ['acct_1', 'acct_2'],
+          in: legacyAccountIds,
         },
       },
     });
