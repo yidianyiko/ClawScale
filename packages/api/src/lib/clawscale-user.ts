@@ -246,8 +246,11 @@ async function ensurePlatformizationShadowGraph(
     await client.agentBinding.create({
       data: agentBindingSeed,
     });
-  } catch {
-    return;
+  } catch (error) {
+    console.warn('[clawscale-user] compatibility AgentBinding shadow write skipped', {
+      cokeAccountId: account.id,
+      error,
+    });
   }
 }
 

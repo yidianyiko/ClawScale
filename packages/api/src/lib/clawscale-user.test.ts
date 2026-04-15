@@ -420,6 +420,7 @@ describe('clawscale-user helpers', () => {
       updatedAt: existingAccount.updatedAt,
     });
     const compatibilityError = new Error('default agent binding is unavailable');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     db.cokeAccount.findUnique.mockResolvedValueOnce(existingAccount);
     db.clawscaleUser.findUnique.mockResolvedValueOnce({
@@ -493,6 +494,14 @@ describe('clawscale-user helpers', () => {
       }),
     });
     expect(db.agentBinding.upsert).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[clawscale-user] compatibility AgentBinding shadow write skipped',
+      expect.objectContaining({
+        cokeAccountId: existingAccount.id,
+        error: compatibilityError,
+      }),
+    );
+    warnSpy.mockRestore();
   });
 
   it('ensureClawscaleUserForCokeAccount recovers when cokeAccountId create races and still shadow-writes the compatibility graph', async () => {
