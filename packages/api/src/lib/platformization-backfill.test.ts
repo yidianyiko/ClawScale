@@ -65,6 +65,7 @@ import {
 describe('platformization backfill orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('ensureDefaultAgent creates the default Coke agent when one does not exist', async () => {
@@ -200,7 +201,6 @@ describe('platformization backfill orchestration', () => {
         displayName: firstGraph.identity.displayName,
         passwordHash: 'hash_1',
         claimStatus: firstGraph.identity.claimStatus,
-        createdAt,
         updatedAt,
       },
     });
@@ -210,7 +210,6 @@ describe('platformization backfill orchestration', () => {
       update: {
         kind: firstGraph.customer.kind,
         displayName: firstGraph.customer.displayName,
-        createdAt,
         updatedAt,
       },
     });
@@ -221,7 +220,6 @@ describe('platformization backfill orchestration', () => {
         identityId: firstGraph.membership.identityId,
         customerId: firstGraph.membership.customerId,
         role: firstGraph.membership.role,
-        createdAt,
         updatedAt,
       },
     });
@@ -240,8 +238,47 @@ describe('platformization backfill orchestration', () => {
     });
   });
 
-  it('verifyPlatformizationMigration reports matching graph counts after a successful backfill', async () => {
-    db.client.cokeAccount.count.mockResolvedValue(2);
+  it('backfillLegacyCustomers dry run returns the pending count without mutating', async () => {
+    db.client.cokeAccount.findMany.mockResolvedValue([
+      {
+        id: 'acct_1',
+        email: 'one@example.com',
+        displayName: 'One',
+        passwordHash: 'hash_1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+      },
+      {
+        id: 'acct_2',
+        email: 'two@example.com',
+        displayName: 'Two',
+        passwordHash: 'hash_2',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+      },
+    ]);
+
+    await expect(
+      backfillLegacyCustomers({
+        agentId: 'agent_unused_for_dry_run',
+        dryRun: true,
+      }),
+    ).resolves.toEqual({
+      wouldBackfill: 2,
+    });
+
+    expect(db.client.$transaction).not.toHaveBeenCalled();
+    expect(db.tx.identity.upsert).not.toHaveBeenCalled();
+    expect(db.tx.customer.upsert).not.toHaveBeenCalled();
+    expect(db.tx.membership.upsert).not.toHaveBeenCalled();
+    expect(db.tx.agentBinding.upsert).not.toHaveBeenCalled();
+  });
+
+  it('verifyPlatformizationMigration reports matching counts for only the migrated legacy slice', async () => {
+    db.client.cokeAccount.findMany.mockResolvedValue([
+      { id: 'acct_1' },
+      { id: 'acct_2' },
+    ]);
     db.client.identity.count.mockResolvedValue(2);
     db.client.customer.count.mockResolvedValue(2);
     db.client.membership.count.mockResolvedValue(2);
@@ -259,5 +296,61 @@ describe('platformization backfill orchestration', () => {
       },
       errors: [],
     });
+
+    expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    expect(db.client.customer.count).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ['acct_1', 'acct_2'],
+        },
+      },
+    });
+    expect(db.client.membership.count).toHaveBeenCalledWith({
+      where: {
+        customerId: {
+          in: ['acct_1', 'acct_2'],
+        },
+      },
+    });
+    expect(db.client.agentBinding.count).toHaveBeenCalledWith({
+      where: {
+        customerId: {
+          in: ['acct_1', 'acct_2'],
+        },
+      },
+    });
+  });
+
+  it('backfill dry-run CLI skips env validation and default agent creation', async () => {
+    vi.resetModules();
+    vi.stubEnv('COKE_AGENT_ENDPOINT', '');
+    vi.stubEnv('COKE_AGENT_AUTH_TOKEN', '');
+
+    const ensureDefaultAgentMock = vi.fn();
+    const backfillLegacyCustomersMock = vi.fn().mockResolvedValue({ wouldBackfill: 2 });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const originalArgv = process.argv;
+
+    process.argv = ['node', 'script', '--dry-run'];
+
+    vi.doMock('../lib/platformization-backfill.js', () => ({
+      ensureDefaultAgent: ensureDefaultAgentMock,
+      backfillLegacyCustomers: backfillLegacyCustomersMock,
+    }));
+
+    await import('../scripts/backfill-platformization-identity.ts');
+
+    expect(ensureDefaultAgentMock).not.toHaveBeenCalled();
+    expect(backfillLegacyCustomersMock).toHaveBeenCalledWith({
+      agentId: 'dry-run',
+      dryRun: true,
+    });
+
+    logSpy.mockRestore();
+    process.argv = originalArgv;
+    vi.doUnmock('../lib/platformization-backfill.js');
   });
 });

@@ -17,10 +17,15 @@ function requireEnv(name: string) {
 }
 
 async function main() {
-  const endpoint = requireEnv('COKE_AGENT_ENDPOINT');
-  const authToken = requireEnv('COKE_AGENT_AUTH_TOKEN');
   const dryRun = hasDryRunFlag();
-  const agentId = await ensureDefaultAgent({ endpoint, authToken });
+  let agentId = 'dry-run';
+
+  if (!dryRun) {
+    const endpoint = requireEnv('COKE_AGENT_ENDPOINT');
+    const authToken = requireEnv('COKE_AGENT_AUTH_TOKEN');
+    agentId = await ensureDefaultAgent({ endpoint, authToken });
+  }
+
   const summary = await backfillLegacyCustomers({ agentId, dryRun });
 
   console.log(

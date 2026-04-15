@@ -3,6 +3,7 @@ import {
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
   buildLegacyCustomerGraph,
+  deriveDeterministicPlatformId,
   summarizeLegacyBaseline,
 } from './platformization-migration.js';
 
@@ -126,7 +127,6 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
           displayName: graph.identity.displayName,
           passwordHash: legacyAccount.passwordHash,
           claimStatus: graph.identity.claimStatus,
-          createdAt: legacyAccount.createdAt,
           updatedAt: legacyAccount.updatedAt,
         },
       });
@@ -137,7 +137,6 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
         update: {
           kind: graph.customer.kind,
           displayName: graph.customer.displayName,
-          createdAt: legacyAccount.createdAt,
           updatedAt: legacyAccount.updatedAt,
         },
       });
@@ -149,7 +148,6 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
           identityId: graph.membership.identityId,
           customerId: graph.membership.customerId,
           role: graph.membership.role,
-          createdAt: legacyAccount.createdAt,
           updatedAt: legacyAccount.updatedAt,
         },
       });
@@ -178,12 +176,46 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
 }
 
 export async function verifyPlatformizationMigration() {
+  const legacyAccountIds = (
+    await db.cokeAccount.findMany({
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    })
+  ).map((account) => account.id);
+  const derivedIdentityIds = legacyAccountIds.map((accountId) =>
+    deriveDeterministicPlatformId('identity', accountId),
+  );
+
   const counts = {
-    cokeAccounts: await db.cokeAccount.count(),
-    identities: await db.identity.count(),
-    customers: await db.customer.count(),
-    memberships: await db.membership.count(),
-    agentBindings: await db.agentBinding.count(),
+    cokeAccounts: legacyAccountIds.length,
+    identities: await db.identity.count({
+      where: {
+        id: {
+          in: derivedIdentityIds,
+        },
+      },
+    }),
+    customers: await db.customer.count({
+      where: {
+        id: {
+          in: legacyAccountIds,
+        },
+      },
+    }),
+    memberships: await db.membership.count({
+      where: {
+        customerId: {
+          in: legacyAccountIds,
+        },
+      },
+    }),
+    agentBindings: await db.agentBinding.count({
+      where: {
+        customerId: {
+          in: legacyAccountIds,
+        },
+      },
+    }),
     defaultAgents: await db.agent.count({
       where: { isDefault: true },
     }),
