@@ -261,12 +261,7 @@ describe('platformization backfill orchestration', () => {
         customerId: firstGraph.customer.id,
         agentId: 'agent_default_1',
       }),
-      update: {
-        agentId: 'agent_default_1',
-        provisionStatus: 'ready',
-        provisionAttempts: 0,
-        provisionLastError: null,
-      },
+      update: {},
     });
   });
 

@@ -198,6 +198,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.status === 'archived') {
+      return c.json({ ok: false, error: 'archived_channel' }, 409);
+    }
     if (channel.status === 'connected') {
       return c.json({ ok: true, data: { status: 'connected' } });
     }

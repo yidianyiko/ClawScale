@@ -162,12 +162,7 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
       await tx.agentBinding.upsert({
         where: { customerId: graph.customer.id },
         create: agentBindingSeed,
-        update: {
-          agentId: agentBindingSeed.agentId,
-          provisionStatus: agentBindingSeed.provisionStatus,
-          provisionAttempts: agentBindingSeed.provisionAttempts,
-          provisionLastError: agentBindingSeed.provisionLastError,
-        },
+        update: {},
       });
     }
   });
