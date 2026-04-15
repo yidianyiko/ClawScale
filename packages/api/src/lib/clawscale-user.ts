@@ -205,6 +205,16 @@ async function ensurePlatformizationShadowGraph(
     agentId: DEFAULT_COKE_AGENT_ID,
   });
 
+  await client.customer.upsert({
+    where: { id: graph.customer.id },
+    create: graph.customer,
+    update: {
+      kind: graph.customer.kind,
+      displayName: graph.customer.displayName,
+      updatedAt: account.updatedAt,
+    },
+  });
+
   try {
     await client.identity.upsert({
       where: { id: graph.identity.id },
@@ -235,16 +245,6 @@ async function ensurePlatformizationShadowGraph(
     );
     return;
   }
-
-  await client.customer.upsert({
-    where: { id: graph.customer.id },
-    create: graph.customer,
-    update: {
-      kind: graph.customer.kind,
-      displayName: graph.customer.displayName,
-      updatedAt: account.updatedAt,
-    },
-  });
 
   await client.membership.upsert({
     where: { id: graph.membership.id },

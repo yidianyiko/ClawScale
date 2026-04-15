@@ -551,7 +551,17 @@ describe('clawscale-user helpers', () => {
       ready: true,
     });
 
-    expect(db.customer.upsert).not.toHaveBeenCalled();
+    expect(db.customer.upsert).toHaveBeenCalledWith({
+      where: { id: existingAccount.id },
+      create: expect.objectContaining({
+        id: existingAccount.id,
+        kind: 'personal',
+      }),
+      update: expect.objectContaining({
+        kind: 'personal',
+        updatedAt: existingAccount.updatedAt,
+      }),
+    });
     expect(db.membership.upsert).not.toHaveBeenCalled();
     expect(db.agentBinding.create).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
