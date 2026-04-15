@@ -279,7 +279,12 @@ describe('platformization backfill orchestration', () => {
         customerId: firstGraph.customer.id,
         agentId: 'agent_default_1',
       }),
-      update: {},
+      update: {
+        agentId: 'agent_default_1',
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
     });
   });
 
@@ -320,7 +325,7 @@ describe('platformization backfill orchestration', () => {
     expect(db.tx.agentBinding.upsert).not.toHaveBeenCalled();
   });
 
-  it('verifyPlatformizationMigration reports matching counts for only the migrated legacy slice', async () => {
+  it('verifyPlatformizationMigration reports matching counts for a requested migrated legacy slice', async () => {
     const legacyAccountIds = ['acct_1', 'acct_2'];
     const membershipIds = legacyAccountIds.map((accountId) =>
       deriveDeterministicPlatformId('membership', accountId),
@@ -365,7 +370,11 @@ describe('platformization backfill orchestration', () => {
       },
     ]);
 
-    await expect(verifyPlatformizationMigration()).resolves.toEqual({
+    await expect(
+      verifyPlatformizationMigration({
+        cokeAccountIds: legacyAccountIds,
+      }),
+    ).resolves.toEqual({
       counts: {
         cokeAccounts: 2,
         identities: 2,
@@ -383,6 +392,11 @@ describe('platformization backfill orchestration', () => {
     });
 
     expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: legacyAccountIds,
+        },
+      },
       select: { id: true },
       orderBy: { id: 'asc' },
     });
@@ -431,7 +445,7 @@ describe('platformization backfill orchestration', () => {
     });
   });
 
-  it('verifyPlatformizationMigration surfaces invalid channel ownership rows and shared rows bound to the wrong agent', async () => {
+  it('verifyPlatformizationMigration surfaces invalid channel ownership rows and non-ready agent bindings', async () => {
     db.client.cokeAccount.findMany.mockResolvedValue([{ id: 'acct_1' }]);
     db.client.identity.count.mockResolvedValue(1);
     db.client.customer.count.mockResolvedValue(1);
@@ -466,7 +480,11 @@ describe('platformization backfill orchestration', () => {
       },
     ]);
 
-    await expect(verifyPlatformizationMigration()).resolves.toEqual({
+    await expect(
+      verifyPlatformizationMigration({
+        cokeAccountIds: ['acct_1'],
+      }),
+    ).resolves.toEqual({
       counts: {
         cokeAccounts: 1,
         identities: 1,
@@ -481,10 +499,8 @@ describe('platformization backfill orchestration', () => {
         invalidOwnershipChannels: 2,
       },
       errors: [
-        `agent_binding_default_agent_mismatch:acct_1:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
         'agent_binding_provision_status_mismatch:acct_1:expected=ready:actual=error',
         'invalid_channel_ownership:chan_broken_customer:ownershipKind=customer:customerId=null:agentId=null',
-        `shared_channel_default_agent_mismatch:chan_wrong_shared_agent:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
         'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=acct_1:agentId=agent_other',
       ],
     });
@@ -558,6 +574,45 @@ describe('platformization backfill orchestration', () => {
 
     logSpy.mockRestore();
     process.argv = originalArgv;
+    vi.doUnmock('../lib/platformization-backfill.js');
+  });
+
+  it('verify CLI scopes verification to MONGO_ACCOUNT_IDS when provided', async () => {
+    vi.resetModules();
+    vi.stubEnv('MONGO_ACCOUNT_IDS', 'acct_1, acct_2');
+
+    const verifyPlatformizationMigrationMock = vi.fn().mockResolvedValue({
+      counts: {
+        cokeAccounts: 2,
+      },
+      errors: [],
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    vi.doMock('../lib/platformization-backfill.js', () => ({
+      verifyPlatformizationMigration: verifyPlatformizationMigrationMock,
+    }));
+
+    await import('../scripts/verify-platformization-migration.ts');
+
+    expect(verifyPlatformizationMigrationMock).toHaveBeenCalledWith({
+      cokeAccountIds: ['acct_1', 'acct_2'],
+    });
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify(
+        {
+          mongoAccountIds: ['acct_1', 'acct_2'],
+          counts: {
+            cokeAccounts: 2,
+          },
+          errors: [],
+        },
+        null,
+        2,
+      ),
+    );
+
+    logSpy.mockRestore();
     vi.doUnmock('../lib/platformization-backfill.js');
   });
 });

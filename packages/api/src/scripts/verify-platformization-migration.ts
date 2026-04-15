@@ -1,9 +1,28 @@
 import { verifyPlatformizationMigration } from '../lib/platformization-backfill.js';
 
-async function main() {
-  const summary = await verifyPlatformizationMigration();
+function parseMongoAccountIds() {
+  return (process.env.MONGO_ACCOUNT_IDS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
 
-  console.log(JSON.stringify(summary, null, 2));
+async function main() {
+  const mongoAccountIds = parseMongoAccountIds();
+  const summary = await verifyPlatformizationMigration({
+    cokeAccountIds: mongoAccountIds,
+  });
+
+  console.log(
+    JSON.stringify(
+      {
+        mongoAccountIds,
+        ...summary,
+      },
+      null,
+      2,
+    ),
+  );
 
   if (summary.errors.length > 0) {
     process.exitCode = 1;

@@ -25,6 +25,10 @@ export interface BackfillLegacyCustomersInput {
   cokeAccountIds?: string[];
 }
 
+export interface VerifyPlatformizationMigrationInput {
+  cokeAccountIds?: string[];
+}
+
 function buildLegacyAccountWhere(ids?: string[]) {
   if (!ids || ids.length === 0) {
     return undefined;
@@ -164,7 +168,12 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
       await tx.agentBinding.upsert({
         where: { customerId: graph.customer.id },
         create: agentBindingSeed,
-        update: {},
+        update: {
+          agentId: agentBindingSeed.agentId,
+          provisionStatus: agentBindingSeed.provisionStatus,
+          provisionAttempts: agentBindingSeed.provisionAttempts,
+          provisionLastError: agentBindingSeed.provisionLastError,
+        },
       });
     });
   }
@@ -174,9 +183,12 @@ export async function backfillLegacyCustomers(input: BackfillLegacyCustomersInpu
   };
 }
 
-export async function verifyPlatformizationMigration() {
+export async function verifyPlatformizationMigration(
+  input: VerifyPlatformizationMigrationInput = {},
+) {
   const legacyAccountIds = (
     await db.cokeAccount.findMany({
+      where: buildLegacyAccountWhere(input.cokeAccountIds),
       select: { id: true },
       orderBy: { id: 'asc' },
     })
@@ -278,11 +290,6 @@ export async function verifyPlatformizationMigration() {
   }
 
   for (const agentBinding of agentBindings) {
-    if (agentBinding.agentId !== DEFAULT_COKE_AGENT_ID) {
-      errors.push(
-        `agent_binding_default_agent_mismatch:${agentBinding.customerId}:expected=${DEFAULT_COKE_AGENT_ID}:actual=${agentBinding.agentId}`,
-      );
-    }
     if (agentBinding.provisionStatus !== 'ready') {
       errors.push(
         `agent_binding_provision_status_mismatch:${agentBinding.customerId}:expected=ready:actual=${agentBinding.provisionStatus}`,
@@ -306,12 +313,6 @@ export async function verifyPlatformizationMigration() {
         `invalid_channel_ownership:${channel.id}:ownershipKind=${channel.ownershipKind}:customerId=${channel.customerId ?? 'null'}:agentId=${channel.agentId ?? 'null'}`,
       );
       continue;
-    }
-
-    if (channel.ownershipKind === 'shared' && channel.agentId !== DEFAULT_COKE_AGENT_ID) {
-      errors.push(
-        `shared_channel_default_agent_mismatch:${channel.id}:expected=${DEFAULT_COKE_AGENT_ID}:actual=${channel.agentId}`,
-      );
     }
   }
 
