@@ -19,6 +19,7 @@ import { cokeWechatRouter } from './routes/coke-wechat-routes.js';
 import { cokeBindingsRouter } from './routes/coke-bindings.js';
 import { cokeDeliveryRoutesRouter } from './routes/coke-delivery-routes.js';
 import { cokeUserProvisionRouter } from './routes/coke-user-provision.js';
+import { customerAuthRouter } from './routes/customer-auth-routes.js';
 import { userWechatChannelRouter } from './routes/user-wechat-channel.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initDiscordAdapters } from './adapters/discord.js';
@@ -72,6 +73,7 @@ app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
 
 app.route('/api/onboard', onboardRouter);
 app.route('/api/outbound', outboundRouter);
+app.route('/api/auth', customerAuthRouter);
 app.route('/api/coke', cokeAuthRouter);
 app.route('/api/coke', cokePaymentRouter);
 app.route('/api/coke/wechat-channel', cokeWechatRouter);
