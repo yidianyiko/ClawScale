@@ -9,6 +9,7 @@ const db = vi.hoisted(() => {
       upsert: vi.fn(),
     },
     membership: {
+      findFirst: vi.fn(),
       upsert: vi.fn(),
     },
     agentBinding: {
@@ -32,6 +33,7 @@ const db = vi.hoisted(() => {
     },
     cokeAccount: {
       findUnique: vi.fn(),
+      upsert: vi.fn(),
     },
     clawscaleUser: {
       findUnique: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('../db/index.js', () => ({ db }));
 
 import {
   bindEndUserToCokeAccount,
+  ensureClawscaleUserForCustomer,
   ensureClawscaleUserForCokeAccount,
   getUnifiedConversationIds,
 } from './clawscale-user.js';
@@ -66,12 +69,35 @@ const defaultCokeAccount = {
   updatedAt: new Date('2026-04-02T00:00:00.000Z'),
 };
 
+const defaultCustomerOwnership = {
+  customer: {
+    id: 'ck_customer_1',
+    displayName: 'Alice',
+    createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+  },
+  identity: {
+    id: 'idt_1',
+    email: 'Alice@Example.com',
+    displayName: 'Alice',
+    passwordHash: 'hashed-password',
+    claimStatus: 'active',
+    updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+  },
+  role: 'owner',
+};
+
 describe('clawscale-user helpers', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     process.env.COKE_BRIDGE_INBOUND_URL = 'http://127.0.0.1:8090/bridge/inbound';
     process.env.COKE_BRIDGE_API_KEY = 'dev-bridge-key';
+    db.$transaction.mockImplementation(async (fn: (tx: any) => Promise<unknown>) => fn(db));
     db.cokeAccount.findUnique.mockResolvedValue(defaultCokeAccount);
+    db.cokeAccount.upsert.mockResolvedValue({
+      id: defaultCustomerOwnership.customer.id,
+    });
+    db.membership.findFirst.mockResolvedValue(defaultCustomerOwnership);
   });
 
   it('bindEndUserToCokeAccount upserts a tenant-scoped ClawscaleUser and attaches an EndUser', async () => {
@@ -188,6 +214,81 @@ describe('clawscale-user helpers', () => {
 
     expect(db.tenant.create).not.toHaveBeenCalled();
     expect(db.clawscaleUser.create).not.toHaveBeenCalled();
+  });
+
+  it('ensureClawscaleUserForCustomer creates a compatibility coke account and personal tenant', async () => {
+    db.clawscaleUser.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    await expect(
+      ensureClawscaleUserForCustomer({
+        customerId: defaultCustomerOwnership.customer.id,
+      }),
+    ).resolves.toEqual({
+      tenantId: expect.any(String),
+      clawscaleUserId: expect.any(String),
+      created: true,
+      ready: true,
+    });
+
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: defaultCustomerOwnership.customer.id,
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        identity: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            passwordHash: true,
+            claimStatus: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    expect(db.cokeAccount.upsert).toHaveBeenCalledWith({
+      where: { id: defaultCustomerOwnership.customer.id },
+      create: {
+        id: defaultCustomerOwnership.customer.id,
+        email: 'alice@example.com',
+        passwordHash: 'hashed-password',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      update: {
+        email: 'alice@example.com',
+        passwordHash: 'hashed-password',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+    });
+    expect(db.agentBinding.upsert).toHaveBeenCalledWith({
+      where: { customerId: defaultCustomerOwnership.customer.id },
+      create: buildLegacyAgentBindingSeed({
+        customerId: defaultCustomerOwnership.customer.id,
+        agentId: DEFAULT_COKE_AGENT_ID,
+      }),
+      update: {
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+        provisionAttempts: 0,
+        provisionLastError: null,
+      },
+    });
+    expect(db.identity.upsert).not.toHaveBeenCalled();
+    expect(db.customer.upsert).not.toHaveBeenCalled();
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {

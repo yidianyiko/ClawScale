@@ -138,7 +138,11 @@ function readErrorCode(err: unknown): string | undefined {
 function respondLifecycleError(c: Context, err: unknown) {
   const code = readErrorCode(err) ?? (err instanceof Error ? err.message : undefined);
 
-  if (code === 'coke_account_not_found' || code === 'account_not_found') {
+  if (
+    code === 'coke_account_not_found' ||
+    code === 'account_not_found' ||
+    code === 'customer_not_found'
+  ) {
     return c.json({ ok: false, error: code }, 404);
   }
 
