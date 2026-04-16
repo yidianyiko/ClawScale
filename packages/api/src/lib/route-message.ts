@@ -266,6 +266,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'asc' },
   });
+  const channelCustomerId = channel.customerId ?? null;
 
   const replies: ReplyEntry[] = [];
 
@@ -383,8 +384,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
             ? { businessConversationKey: routeBinding.businessConversationKey }
             : {}),
           ...(resolvedClawscaleUserId ? { clawscaleUserId: resolvedClawscaleUserId } : {}),
-          ...(channel.customerId
-            ? { customerId: channel.customerId, customer_id: channel.customerId }
+          ...(channelCustomerId
+            ? { customerId: channelCustomerId, customer_id: channelCustomerId }
             : {}),
           ...(resolvedCokeAccountId
             ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }

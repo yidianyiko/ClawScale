@@ -52,13 +52,19 @@ cokeDeliveryRoutesRouter.post('/', async (c) => {
     });
 
     const result = await bindBusinessConversation({
-      tenantId: parsed.data.tenant_id,
-      conversationId: parsed.data.conversation_id,
-      cokeAccountId: parsed.data.account_id,
+      routeBinding: {
+        tenantId: parsed.data.tenant_id,
+        channelId: parsed.data.channel_id,
+        endUserId: parsed.data.end_user_id,
+        externalEndUserId: parsed.data.external_end_user_id,
+        cokeAccountId: parsed.data.account_id,
+        customerId: null,
+        gatewayConversationId: parsed.data.conversation_id,
+        businessConversationKey: null,
+        previousBusinessConversationKey: null,
+        previousClawscaleUserId: null,
+      },
       businessConversationKey: parsed.data.business_conversation_key,
-      channelId: parsed.data.channel_id,
-      endUserId: parsed.data.end_user_id,
-      externalEndUserId: parsed.data.external_end_user_id,
     });
 
     return c.json({

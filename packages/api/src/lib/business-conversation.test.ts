@@ -113,8 +113,8 @@ describe('business conversation helpers', () => {
         tenantId: 'ten_1',
         channelId: 'ch_1',
         endUserId: 'eu_1',
-        businessConversationKey: null,
-        clawscaleUserId: null,
+        businessConversationKey: { equals: null },
+        clawscaleUserId: { equals: null },
       },
       data: {
         clawscaleUserId: 'csu_1',
@@ -491,8 +491,8 @@ describe('business conversation helpers', () => {
         tenantId: 'ten_1',
         channelId: 'ch_1',
         endUserId: 'eu_1',
-        businessConversationKey: null,
-        clawscaleUserId: null,
+        businessConversationKey: { equals: null },
+        clawscaleUserId: { equals: null },
       },
       data: {
         clawscaleUserId: 'csu_1',

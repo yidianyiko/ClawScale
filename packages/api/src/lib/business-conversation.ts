@@ -97,6 +97,7 @@ export async function bindBusinessConversation(
 ): Promise<DeliveryRouteRecord> {
   const { routeBinding } = input;
   const conversationId = routeBinding.gatewayConversationId;
+  const cokeAccountId = routeBinding.cokeAccountId;
 
   if (!conversationId) {
     throw new BusinessConversationBindingError(
@@ -105,7 +106,7 @@ export async function bindBusinessConversation(
     );
   }
 
-  if (!routeBinding.cokeAccountId) {
+  if (!cokeAccountId) {
     throw new BusinessConversationBindingError(
       'coke_account_identity_mismatch',
       `Conversation ${conversationId} does not match coke account identity`,
@@ -160,7 +161,7 @@ export async function bindBusinessConversation(
     }
 
     const clawscaleUser = await tx.clawscaleUser.findUnique({
-      where: { cokeAccountId: routeBinding.cokeAccountId },
+      where: { cokeAccountId },
       select: {
         id: true,
         tenantId: true,
@@ -217,8 +218,14 @@ export async function bindBusinessConversation(
           tenantId: routeBinding.tenantId,
           channelId: routeBinding.channelId,
           endUserId: routeBinding.endUserId,
-          businessConversationKey: routeBinding.previousBusinessConversationKey,
-          clawscaleUserId: routeBinding.previousClawscaleUserId,
+          businessConversationKey:
+            routeBinding.previousBusinessConversationKey === null
+              ? { equals: null }
+              : routeBinding.previousBusinessConversationKey,
+          clawscaleUserId:
+            routeBinding.previousClawscaleUserId === null
+              ? { equals: null }
+              : routeBinding.previousClawscaleUserId,
         },
         data: {
           clawscaleUserId: clawscaleUser.id,
@@ -242,7 +249,7 @@ export async function bindBusinessConversation(
     )) {
       await tx.deliveryRoute.updateMany({
         where: {
-          cokeAccountId: routeBinding.cokeAccountId,
+          cokeAccountId,
           businessConversationKey: staleBusinessConversationKey,
           isActive: true,
         },
@@ -255,13 +262,13 @@ export async function bindBusinessConversation(
     return tx.deliveryRoute.upsert({
       where: {
         cokeAccountId_businessConversationKey: {
-          cokeAccountId: routeBinding.cokeAccountId,
+          cokeAccountId,
           businessConversationKey: input.businessConversationKey,
         },
       },
       create: {
         tenantId: routeBinding.tenantId,
-        cokeAccountId: routeBinding.cokeAccountId,
+        cokeAccountId,
         businessConversationKey: input.businessConversationKey,
         channelId: routeBinding.channelId,
         endUserId: routeBinding.endUserId,

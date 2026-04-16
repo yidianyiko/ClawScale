@@ -45,14 +45,6 @@ enum ChannelType {
   wechat_personal
 }
 
-enum WorkflowType {
-  script_js
-  script_python
-  script_shell
-  n8n
-  pulse_editor
-}
-
 enum MessageRole {
   user
   assistant
@@ -116,7 +108,6 @@ model Tenant {
   channels      Channel[]
   endUsers      EndUser[]
   clawscaleUsers ClawscaleUser[]
-  workflows     Workflow[]
   auditLogs     AuditLog[]
   aiBackends    AiBackend[]
   deliveryRoutes DeliveryRoute[]
@@ -412,8 +403,9 @@ model VerifyToken {
   @@map("verify_tokens")
 }
 
-/// Many-to-many join: which AI backends an end-user has active in their session.
 model EndUserBackend {
+  /// Compatibility survivor: per-end-user backend selections still read from
+  /// gateway storage until agent storage owns backend selection state.
   endUserId String   @map("end_user_id")
   backendId String   @map("backend_id")
   addedAt   DateTime @default(now()) @map("added_at")
@@ -428,12 +420,13 @@ model EndUserBackend {
 }
 
 model Conversation {
+  /// Compatibility survivor: reduced to the route-binding minimum while delivery
+  /// route cutover still depends on gateway conversation identifiers.
   id        String   @id
   tenantId  String   @map("tenant_id")
   channelId String   @map("channel_id")
   endUserId String   @map("end_user_id")
   clawscaleUserId String? @map("clawscale_user_id")
-  backendId String?  @map("backend_id")
   businessConversationKey String? @map("business_conversation_key")
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
@@ -442,7 +435,6 @@ model Conversation {
   channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
   endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
   clawscaleUser ClawscaleUser? @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
-  backend  AiBackend? @relation(fields: [backendId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@index([tenantId])
@@ -476,6 +468,8 @@ model DeliveryRoute {
 }
 
 model Message {
+  /// Compatibility survivor: assistant message attribution still reads backend
+  /// IDs from gateway history until agent storage owns transcript history.
   id             String      @id
   conversationId String      @map("conversation_id")
   role           MessageRole
@@ -509,9 +503,9 @@ model OutboundDelivery {
   @@map("outbound_deliveries")
 }
 
-/// Admin-configured AI providers. End-users pick one at the start of a conversation.
-/// Many-to-many with EndUser (via selectedBackend) and Conversation (via backendId).
 model AiBackend {
+  /// Compatibility survivor: backend registry still powers bridge delivery,
+  /// message attribution, and legacy backend selection during cutover.
   id        String   @id
   tenantId  String   @map("tenant_id")
   /// Human-readable name shown to end-users in the selection menu
@@ -529,35 +523,10 @@ model AiBackend {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   endUsers      EndUserBackend[]
-  conversations Conversation[]
   messages      Message[]
 
   @@index([tenantId])
   @@map("ai_backends")
-}
-
-/// Owner-defined automations that the AI agent can invoke during a conversation.
-model Workflow {
-  id          String       @id
-  tenantId    String       @map("tenant_id")
-  name        String
-  description String?
-  type        WorkflowType
-  /// For script types: the script source code.
-  /// For n8n/pulse_editor: not used (use config instead).
-  code        String?
-  /// For n8n: { webhookUrl, method, headers }
-  /// For pulse_editor: { appId, skillName }
-  /// For scripts: optional env/args config
-  config      Json         @default("{}")
-  isActive    Boolean      @default(true) @map("is_active")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@map("workflows")
 }
 
 model AuditLog {

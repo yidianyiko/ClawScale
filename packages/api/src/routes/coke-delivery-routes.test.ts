@@ -91,13 +91,19 @@ describe('coke-delivery-routes router', () => {
       cokeAccountId: 'acct_1',
     });
     expect(bindBusinessConversation).toHaveBeenCalledWith({
-      tenantId: 'ten_1',
-      conversationId: 'conv_1',
-      cokeAccountId: 'acct_1',
+      routeBinding: {
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'wxid_1',
+        cokeAccountId: 'acct_1',
+        customerId: null,
+        gatewayConversationId: 'conv_1',
+        businessConversationKey: null,
+        previousBusinessConversationKey: null,
+        previousClawscaleUserId: null,
+      },
       businessConversationKey: 'biz_conv_1',
-      channelId: 'ch_1',
-      endUserId: 'eu_1',
-      externalEndUserId: 'wxid_1',
     });
     await expect(res.json()).resolves.toEqual({
       ok: true,
