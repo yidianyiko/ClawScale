@@ -87,6 +87,39 @@ describe('coke-bindings router', () => {
     });
   });
 
+  it('accepts customer_id as a compatibility alias', async () => {
+    vi.mocked(bindEndUserToCokeAccount).mockResolvedValue({
+      clawscaleUserId: 'csu_1',
+      endUserId: 'eu_1',
+      cokeAccountId: 'acct_customer_1',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/coke-bindings', cokeBindingsRouter);
+
+    const res = await app.request('/api/internal/coke-bindings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret',
+      },
+      body: JSON.stringify({
+        tenant_id: 'ten_1',
+        channel_id: 'ch_1',
+        external_id: 'ext_1',
+        customer_id: 'acct_customer_1',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bindEndUserToCokeAccount).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'ext_1',
+      cokeAccountId: 'acct_customer_1',
+    });
+  });
+
   it('returns 404 when the end user does not exist', async () => {
     vi.mocked(bindEndUserToCokeAccount).mockRejectedValue({ code: 'end_user_not_found' });
 

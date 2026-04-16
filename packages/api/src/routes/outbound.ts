@@ -10,7 +10,8 @@ import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
 
 const bodySchema = z.object({
   output_id: z.string().min(1),
-  account_id: z.string().min(1),
+  account_id: z.string().min(1).optional(),
+  customer_id: z.string().min(1).optional(),
   business_conversation_key: z.string().min(1),
   message_type: z.enum(['text']),
   text: z.string().min(1),
@@ -20,6 +21,9 @@ const bodySchema = z.object({
   trace_id: z.string().min(1),
   causal_inbound_event_id: z.string().min(1).optional(),
 });
+
+type RawOutboundBody = z.infer<typeof bodySchema>;
+type NormalizedOutboundBody = RawOutboundBody & { customer_id: string };
 
 export const outboundRouter = new Hono();
 
@@ -32,10 +36,20 @@ function isUniqueConstraintError(error: unknown): error is { code: string } {
   );
 }
 
-function normalizePayload(body: z.infer<typeof bodySchema>): Prisma.InputJsonObject {
+function normalizeBody(body: RawOutboundBody): NormalizedOutboundBody | null {
+  const customerId = body.customer_id?.trim() ?? body.account_id?.trim() ?? '';
+  if (!customerId) return null;
+
+  return {
+    ...body,
+    customer_id: customerId,
+  };
+}
+
+function normalizePayload(body: NormalizedOutboundBody): Prisma.InputJsonObject {
   return {
     output_id: body.output_id,
-    account_id: body.account_id,
+    customer_id: body.customer_id,
     business_conversation_key: body.business_conversation_key,
     message_type: body.message_type,
     text: body.text,
@@ -78,7 +92,17 @@ outboundRouter.post('/', async (c) => {
     );
   }
 
-  const body = parsed.data;
+  const body = normalizeBody(parsed.data);
+  if (!body) {
+    return c.json(
+      {
+        ok: false,
+        error: 'validation_error',
+      },
+      400,
+    );
+  }
+
   const payload = normalizePayload(body);
 
   const handleExistingIdempotency = (
@@ -147,7 +171,7 @@ outboundRouter.post('/', async (c) => {
   if (!outboundDelivery) {
     try {
       deliveryRoute = await resolveExactDeliveryRoute({
-        cokeAccountId: body.account_id,
+        cokeAccountId: body.customer_id,
         businessConversationKey: body.business_conversation_key,
       });
     } catch (error) {
@@ -158,7 +182,7 @@ outboundRouter.post('/', async (c) => {
         error instanceof DeliveryRouteResolutionError
           ? error.context
           : (error.context ?? {
-              cokeAccountId: body.account_id,
+              cokeAccountId: body.customer_id,
               businessConversationKey: body.business_conversation_key,
             });
 
@@ -221,7 +245,7 @@ outboundRouter.post('/', async (c) => {
   if (!deliveryRoute) {
     try {
       deliveryRoute = await resolveExactDeliveryRoute({
-        cokeAccountId: body.account_id,
+        cokeAccountId: body.customer_id,
         businessConversationKey: body.business_conversation_key,
       });
     } catch (error) {
@@ -232,7 +256,7 @@ outboundRouter.post('/', async (c) => {
         error instanceof DeliveryRouteResolutionError
           ? error.context
           : (error.context ?? {
-              cokeAccountId: body.account_id,
+              cokeAccountId: body.customer_id,
               businessConversationKey: body.business_conversation_key,
             });
 

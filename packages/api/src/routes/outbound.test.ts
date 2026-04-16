@@ -44,7 +44,8 @@ import { outboundRouter } from './outbound.js';
 
 interface OutboundBody {
   output_id: string;
-  account_id: string;
+  account_id?: string;
+  customer_id?: string;
   business_conversation_key: string;
   message_type: string;
   text: string;
@@ -104,9 +105,10 @@ function makeBody(overrides?: Partial<OutboundBody>): OutboundBody {
 }
 
 function normalizePayload(body: OutboundBody): Record<string, string> {
+  const normalizedCustomerId = body.customer_id ?? body.account_id ?? '';
   const payload: Record<string, string> = {
     output_id: body.output_id,
-    account_id: body.account_id,
+    customer_id: normalizedCustomerId,
     business_conversation_key: body.business_conversation_key,
     message_type: body.message_type,
     text: body.text,
@@ -317,6 +319,28 @@ describe('outbound router', () => {
       where: { id: 'ch_1', tenantId: 'ten_1' },
     });
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
+  });
+
+  it('accepts customer_id as a compatibility alias', async () => {
+    const body = makeBody({
+      account_id: undefined,
+      customer_id: 'ck_123',
+    });
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(200);
+    expect(resolveExactDeliveryRoute).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_123',
+      businessConversationKey: 'biz_conv_1',
+    });
+    expect(db.outboundDelivery.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: expect.objectContaining({
+          customer_id: 'ck_123',
+        }),
+      }),
+    });
   });
 
   it('returns 409 and suppresses delivery for duplicate request with same payload', async () => {

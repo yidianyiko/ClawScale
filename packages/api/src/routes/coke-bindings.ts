@@ -6,8 +6,14 @@ const bodySchema = z.object({
   tenant_id: z.string().min(1),
   channel_id: z.string().min(1),
   external_id: z.string().min(1),
-  coke_account_id: z.string().min(1),
+  coke_account_id: z.string().min(1).optional(),
+  customer_id: z.string().min(1).optional(),
 });
+
+function resolveCustomerId(input: z.infer<typeof bodySchema>): string | null {
+  const customerId = input.customer_id?.trim() ?? input.coke_account_id?.trim() ?? '';
+  return customerId || null;
+}
 
 function readErrorCode(err: unknown): string | undefined {
   if (typeof err !== 'object' || err === null) return undefined;
@@ -36,12 +42,17 @@ cokeBindingsRouter.post('/', async (c) => {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
 
+  const customerId = resolveCustomerId(parsed.data);
+  if (!customerId) {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
+
   try {
     const result = await bindEndUserToCokeAccount({
       tenantId: parsed.data.tenant_id,
       channelId: parsed.data.channel_id,
       externalId: parsed.data.external_id,
-      cokeAccountId: parsed.data.coke_account_id,
+      cokeAccountId: customerId,
     });
 
     return c.json({

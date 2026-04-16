@@ -93,7 +93,7 @@ async function readBridgeAuth(
 
   let accountId: string | undefined;
   if (c.req.method === 'GET') {
-    accountId = c.req.query('account_id')?.trim();
+    accountId = c.req.query('customer_id')?.trim() || c.req.query('account_id')?.trim();
   } else {
     let rawBody: unknown;
     try {
@@ -106,7 +106,8 @@ async function readBridgeAuth(
       throw new Error('invalid_body');
     }
 
-    const candidate = (rawBody as { account_id?: unknown }).account_id;
+    const payload = rawBody as { account_id?: unknown; customer_id?: unknown };
+    const candidate = payload.customer_id ?? payload.account_id;
     if (typeof candidate === 'string') {
       accountId = candidate.trim();
     }

@@ -129,6 +129,61 @@ describe('userWechatChannelRouter', () => {
     });
   });
 
+  it('accepts customer_id as a bridge compatibility alias', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+      created: false,
+    });
+    mocks.createOrReusePersonalWeChatChannel.mockResolvedValueOnce({
+      id: 'ch_bridge',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request('/api/internal/user/wechat-channel', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ customer_id: 'ck_123' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_123',
+    });
+  });
+
+  it('accepts customer_id query params for bridge status checks', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+      created: false,
+    });
+    mocks.findMany.mockResolvedValueOnce([]);
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request('/api/internal/user/wechat-channel/status?customer_id=ck_456', {
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer secret',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_456',
+    });
+  });
+
   it('creates or reuses the authenticated user channel', async () => {
     mocks.createOrReusePersonalWeChatChannel.mockResolvedValueOnce({
       id: 'ch_1',
