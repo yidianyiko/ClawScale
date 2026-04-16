@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { db } from '../db/index.js';
 
 export interface StrandedModelCounts {
@@ -37,19 +39,28 @@ export function summarizeStrandedModelAudit(
 }
 
 export async function collectStrandedModelCounts(): Promise<StrandedModelCounts> {
-  const [conversations, messages, aiBackends, workflows, endUserBackends] = await Promise.all([
+  const [conversations, messages, aiBackends, endUserBackends, workflowRows] = await Promise.all([
     db.conversation.count(),
     db.message.count(),
     db.aiBackend.count(),
-    db.workflow.count(),
     db.endUserBackend.count(),
+    db.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+      SELECT COUNT(*)::int AS "count"
+      FROM "workflows"
+    `).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('does not exist')) {
+        return [{ count: 0 }];
+      }
+      throw error;
+    }),
   ]);
 
   return {
     conversations,
     messages,
     aiBackends,
-    workflows,
+    workflows: workflowRows[0]?.count ?? 0,
     endUserBackends,
   };
 }

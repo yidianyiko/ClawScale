@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { Prisma } from '@prisma/client';
 
 import { db } from '../db/index.js';
+import {
+  resolveExactDeliveryRoute,
+  type DeliveryRouteRecord,
+} from '../lib/business-conversation.js';
 
 export const MOVED_TO_AGENT_STORAGE_ERROR = 'moved_to_agent_storage';
 export const GONE_STATUS = 410;
@@ -20,13 +24,27 @@ type DeferredSurvivorModel = keyof typeof DEFERRED_SURVIVOR_REASONS;
 
 interface RouteBindingCheck {
   businessConversationKey?: string | null;
+  cokeAccountId?: string | null;
   resolved?: boolean;
+}
+
+export interface ActiveDeliveryRouteResolutionCheck {
+  businessConversationKey: string | null;
+  cokeAccountId: string | null;
+  channelId: string | null;
+  endUserId: string | null;
+  externalEndUserId: string | null;
+  hasChannel: boolean;
+  hasEndUser: boolean;
+  hasClawscaleUser: boolean;
+  resolvedRoute?: DeliveryRouteRecord | null;
 }
 
 interface RetirementEvaluationInput {
   schema: string;
   migrationFiles: Record<string, string>;
   routeBindingCheck?: RouteBindingCheck;
+  deferredUsageCounts?: Partial<Record<DeferredSurvivorModel, number>>;
 }
 
 interface TombstoneSummary {
@@ -45,6 +63,7 @@ interface DeferredSurvivor {
 export interface StrandedModelRetirementSummary {
   errors: string[];
   deferredSurvivors: DeferredSurvivor[];
+  deferredUsageCounts?: Partial<Record<DeferredSurvivorModel, number>>;
   tombstone: TombstoneSummary;
 }
 
@@ -57,6 +76,37 @@ function findMigration(
   suffix: string,
 ) {
   return Object.entries(migrationFiles).find(([path]) => path.endsWith(suffix))?.[1] ?? '';
+}
+
+export function findBrokenActiveDeliveryRouteResolution(
+  checks: ActiveDeliveryRouteResolutionCheck[],
+): ActiveDeliveryRouteResolutionCheck | null {
+  for (const check of checks) {
+    if (
+      !check.businessConversationKey ||
+      !check.cokeAccountId ||
+      !check.channelId ||
+      !check.endUserId ||
+      !check.externalEndUserId ||
+      !check.hasChannel ||
+      !check.hasEndUser ||
+      !check.hasClawscaleUser
+    ) {
+      return check;
+    }
+
+    if (
+      !check.resolvedRoute ||
+      check.resolvedRoute.isActive !== true ||
+      check.resolvedRoute.channelId !== check.channelId ||
+      check.resolvedRoute.endUserId !== check.endUserId ||
+      check.resolvedRoute.externalEndUserId !== check.externalEndUserId
+    ) {
+      return check;
+    }
+  }
+
+  return null;
 }
 
 export function evaluateStrandedModelRetirement(
@@ -97,6 +147,7 @@ export function evaluateStrandedModelRetirement(
   return {
     errors,
     deferredSurvivors,
+    ...(input.deferredUsageCounts ? { deferredUsageCounts: input.deferredUsageCounts } : {}),
     tombstone: {
       status: GONE_STATUS,
       payload: {
@@ -150,18 +201,32 @@ async function columnExists(tableName: string, columnName: string) {
   return rows[0]?.exists === true;
 }
 
-async function getBrokenActiveDeliveryRoute() {
-  const rows = await db.$queryRaw<Array<{ businessConversationKey: string }>>(Prisma.sql`
-    SELECT dr.business_conversation_key AS "businessConversationKey"
+async function getActiveDeliveryRoutesForVerification() {
+  return db.$queryRaw<Array<{
+    businessConversationKey: string | null;
+    cokeAccountId: string | null;
+    channelId: string | null;
+    endUserId: string | null;
+    externalEndUserId: string | null;
+    hasChannel: boolean;
+    hasEndUser: boolean;
+    hasClawscaleUser: boolean;
+  }>>(Prisma.sql`
+    SELECT
+      dr.business_conversation_key AS "businessConversationKey",
+      dr.coke_account_id AS "cokeAccountId",
+      dr.channel_id AS "channelId",
+      dr.end_user_id AS "endUserId",
+      dr.external_end_user_id AS "externalEndUserId",
+      ch.id IS NOT NULL AS "hasChannel",
+      eu.id IS NOT NULL AS "hasEndUser",
+      cu.id IS NOT NULL AS "hasClawscaleUser"
     FROM delivery_routes dr
     LEFT JOIN channels ch ON ch.id = dr.channel_id
     LEFT JOIN end_users eu ON eu.id = dr.end_user_id
+    LEFT JOIN clawscale_users cu ON cu.coke_account_id = dr.coke_account_id
     WHERE dr.is_active = TRUE
-      AND (ch.id IS NULL OR eu.id IS NULL)
-    LIMIT 1
   `);
-
-  return rows[0] ?? null;
 }
 
 export async function verifyStrandedModelRetirement() {
@@ -169,15 +234,56 @@ export async function verifyStrandedModelRetirement() {
   const migrationsDir = resolve(process.cwd(), 'prisma/migrations');
   const schema = readFileSync(schemaPath, 'utf8');
   const migrationFiles = readMigrationFiles(migrationsDir);
-  const brokenRoute = await getBrokenActiveDeliveryRoute();
+  const activeRoutes = await getActiveDeliveryRoutesForVerification();
+  const activeRouteChecks = await Promise.all(
+    activeRoutes.map(async (route) => {
+      if (!route.businessConversationKey || !route.cokeAccountId) {
+        return {
+          ...route,
+          resolvedRoute: null,
+        };
+      }
+
+      try {
+        const resolvedRoute = await resolveExactDeliveryRoute({
+          cokeAccountId: route.cokeAccountId,
+          businessConversationKey: route.businessConversationKey,
+        });
+
+        return {
+          ...route,
+          resolvedRoute,
+        };
+      } catch {
+        return {
+          ...route,
+          resolvedRoute: null,
+        };
+      }
+    }),
+  );
+  const brokenRoute = findBrokenActiveDeliveryRouteResolution(activeRouteChecks);
+  const [conversationCount, messageCount, aiBackendCount, endUserBackendCount] = await Promise.all([
+    db.conversation.count(),
+    db.message.count(),
+    db.aiBackend.count(),
+    db.endUserBackend.count(),
+  ]);
 
   const summary = evaluateStrandedModelRetirement({
     schema,
     migrationFiles,
+    deferredUsageCounts: {
+      Conversation: conversationCount,
+      Message: messageCount,
+      AiBackend: aiBackendCount,
+      EndUserBackend: endUserBackendCount,
+    },
     ...(brokenRoute
       ? {
           routeBindingCheck: {
             businessConversationKey: brokenRoute.businessConversationKey,
+            cokeAccountId: brokenRoute.cokeAccountId,
             resolved: false,
           },
         }

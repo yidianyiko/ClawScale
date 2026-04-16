@@ -11,12 +11,10 @@ const db = vi.hoisted(() => ({
     aiBackend: {
       count: vi.fn(),
     },
-    workflow: {
-      count: vi.fn(),
-    },
     endUserBackend: {
       count: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -68,8 +66,8 @@ describe('stranded model audit helpers', () => {
     db.client.conversation.count.mockResolvedValue(7);
     db.client.message.count.mockResolvedValue(11);
     db.client.aiBackend.count.mockResolvedValue(3);
-    db.client.workflow.count.mockResolvedValue(5);
     db.client.endUserBackend.count.mockResolvedValue(13);
+    db.client.$queryRaw.mockResolvedValue([{ count: 5 }]);
 
     await expect(collectStrandedModelCounts()).resolves.toEqual({
       conversations: 7,
@@ -82,16 +80,16 @@ describe('stranded model audit helpers', () => {
     expect(db.client.conversation.count).toHaveBeenCalledTimes(1);
     expect(db.client.message.count).toHaveBeenCalledTimes(1);
     expect(db.client.aiBackend.count).toHaveBeenCalledTimes(1);
-    expect(db.client.workflow.count).toHaveBeenCalledTimes(1);
     expect(db.client.endUserBackend.count).toHaveBeenCalledTimes(1);
+    expect(db.client.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('auditStrandedModels combines live counts with the frozen verdict table', async () => {
     db.client.conversation.count.mockResolvedValue(1);
     db.client.message.count.mockResolvedValue(2);
     db.client.aiBackend.count.mockResolvedValue(3);
-    db.client.workflow.count.mockResolvedValue(4);
     db.client.endUserBackend.count.mockResolvedValue(5);
+    db.client.$queryRaw.mockResolvedValue([{ count: 4 }]);
 
     await expect(auditStrandedModels()).resolves.toEqual({
       counts: {
@@ -108,6 +106,22 @@ describe('stranded model audit helpers', () => {
         Workflow: 'drop',
         EndUserBackend: 'drop_or_move',
       },
+    });
+  });
+
+  it('treats a missing workflows table as already retired', async () => {
+    db.client.conversation.count.mockResolvedValue(0);
+    db.client.message.count.mockResolvedValue(0);
+    db.client.aiBackend.count.mockResolvedValue(0);
+    db.client.endUserBackend.count.mockResolvedValue(0);
+    db.client.$queryRaw.mockRejectedValue(new Error('relation "workflows" does not exist'));
+
+    await expect(collectStrandedModelCounts()).resolves.toEqual({
+      conversations: 0,
+      messages: 0,
+      aiBackends: 0,
+      workflows: 0,
+      endUserBackends: 0,
     });
   });
 });

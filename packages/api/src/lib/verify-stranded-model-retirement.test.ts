@@ -2,10 +2,66 @@ import { describe, expect, it } from 'vitest';
 
 import {
   evaluateStrandedModelRetirement,
+  findBrokenActiveDeliveryRouteResolution,
   MOVED_TO_AGENT_STORAGE_ERROR,
 } from '../scripts/verify-stranded-model-retirement.js';
 
 describe('verify stranded model retirement helpers', () => {
+  it('accepts active delivery routes that resolve through businessConversationKey alone', () => {
+    const broken = findBrokenActiveDeliveryRouteResolution([
+      {
+        businessConversationKey: 'biz_conv_1',
+        cokeAccountId: 'acct_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'wxid_123',
+        hasChannel: true,
+        hasEndUser: true,
+        hasClawscaleUser: true,
+        resolvedRoute: {
+          tenantId: 'ten_1',
+          cokeAccountId: 'acct_1',
+          businessConversationKey: 'biz_conv_1',
+          channelId: 'ch_1',
+          endUserId: 'eu_1',
+          externalEndUserId: 'wxid_123',
+          isActive: true,
+        },
+      },
+    ]);
+
+    expect(broken).toBeNull();
+  });
+
+  it('flags active delivery routes that cannot be re-resolved through businessConversationKey', () => {
+    const broken = findBrokenActiveDeliveryRouteResolution([
+      {
+        businessConversationKey: 'biz_conv_1',
+        cokeAccountId: 'acct_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'wxid_123',
+        hasChannel: true,
+        hasEndUser: true,
+        hasClawscaleUser: true,
+        resolvedRoute: {
+          tenantId: 'ten_1',
+          cokeAccountId: 'acct_1',
+          businessConversationKey: 'biz_conv_1',
+          channelId: 'ch_other',
+          endUserId: 'eu_1',
+          externalEndUserId: 'wxid_123',
+          isActive: true,
+        },
+      },
+    ]);
+
+    expect(broken).toMatchObject({
+      businessConversationKey: 'biz_conv_1',
+      cokeAccountId: 'acct_1',
+    });
+  });
+
   it('reports deferred survivors without failing when the safe retirement subset is present', () => {
     const summary = evaluateStrandedModelRetirement({
       schema: `
@@ -36,6 +92,12 @@ describe('verify stranded model retirement helpers', () => {
         '20260417010000_stranded_model_retirement/migration.sql':
           'DROP TABLE "workflows"; ALTER TABLE "conversations" DROP COLUMN "backend_id"; DROP TYPE "WorkflowType";',
       },
+      deferredUsageCounts: {
+        Conversation: 3,
+        Message: 9,
+        AiBackend: 2,
+        EndUserBackend: 4,
+      },
     });
 
     expect(summary.errors).toEqual([]);
@@ -61,6 +123,12 @@ describe('verify stranded model retirement helpers', () => {
         reason: 'per_end_user_backend_selection_compatibility',
       },
     ]);
+    expect(summary.deferredUsageCounts).toEqual({
+      Conversation: 3,
+      Message: 9,
+      AiBackend: 2,
+      EndUserBackend: 4,
+    });
   });
 
   it('fails when workflow retirement or active delivery-route resolution is broken', () => {
