@@ -25,7 +25,14 @@ const db = vi.hoisted(() => ({
   $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
 }));
 
+const sendCustomerVerificationEmail = vi.hoisted(() => vi.fn());
+const sendCustomerPasswordResetEmail = vi.hoisted(() => vi.fn());
+
 vi.mock('../db/index.js', () => ({ db }));
+vi.mock('../lib/customer-email.js', () => ({
+  sendCustomerVerificationEmail,
+  sendCustomerPasswordResetEmail,
+}));
 
 import {
   hashPassword,
@@ -56,7 +63,21 @@ describe('customer auth routes', () => {
       customerId: 'ck_generated',
       role: 'owner',
     });
-    db.membership.findMany.mockResolvedValue([]);
+    db.membership.findMany.mockResolvedValue([
+      {
+        role: 'owner',
+        customer: { id: 'ck_generated' },
+        identity: {
+          id: 'idt_123',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          passwordHash: 'hashed-password',
+          updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+        },
+      },
+    ]);
+    sendCustomerVerificationEmail.mockResolvedValue(undefined);
+    sendCustomerPasswordResetEmail.mockResolvedValue(undefined);
   });
 
   it('registers a neutral customer identity graph', async () => {
@@ -104,6 +125,11 @@ describe('customer auth routes', () => {
         role: 'owner',
       },
     });
+    expect(sendCustomerVerificationEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      email: 'alice@example.com',
+      token: expect.any(String),
+    });
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: {
@@ -115,6 +141,92 @@ describe('customer auth routes', () => {
         token: expect.any(String),
       },
     });
+  });
+
+  it('still returns the auth payload when verification email delivery fails during registration', async () => {
+    db.identity.findUnique.mockResolvedValue(null);
+    sendCustomerVerificationEmail.mockRejectedValueOnce(new Error('smtp down'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: 'Alice',
+        email: 'alice@example.com',
+        password: 'password123',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(sendCustomerVerificationEmail).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[customer-auth] failed to send verification email after registration',
+      expect.objectContaining({
+        customerId: expect.any(String),
+        email: 'alice@example.com',
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        customerId: expect.any(String),
+        identityId: 'idt_123',
+        claimStatus: 'active',
+        email: 'alice@example.com',
+        membershipRole: 'owner',
+        token: expect.any(String),
+      },
+    });
+
+    errorSpy.mockRestore();
+  });
+
+  it('still returns the auth payload when post-registration email lookup fails', async () => {
+    db.identity.findUnique.mockResolvedValue(null);
+    db.membership.findMany.mockRejectedValueOnce(new Error('lookup down'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        displayName: 'Alice',
+        email: 'alice@example.com',
+        password: 'password123',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[customer-auth] failed to send verification email after registration',
+      expect.objectContaining({
+        email: 'alice@example.com',
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        customerId: expect.any(String),
+        identityId: 'idt_123',
+        claimStatus: 'active',
+        email: 'alice@example.com',
+        membershipRole: 'owner',
+        token: expect.any(String),
+      },
+    });
+
+    errorSpy.mockRestore();
   });
 
   it('logs in by identity email and returns the current customer session', async () => {
@@ -320,6 +432,165 @@ describe('customer auth routes', () => {
     await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'invalid_or_expired_token',
+    });
+  });
+
+  it('resends a neutral verification email when the identity exists', async () => {
+    db.membership.findMany.mockResolvedValue([
+      {
+        role: 'owner',
+        customer: { id: 'ck_123' },
+        identity: {
+          id: 'idt_123',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+        },
+      },
+    ]);
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendCustomerVerificationEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      email: 'alice@example.com',
+      token: expect.any(String),
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'If the account exists, a verification email has been sent.',
+      },
+    });
+  });
+
+  it('keeps a blind response when resend-verification delivery fails', async () => {
+    db.membership.findMany.mockResolvedValue([
+      {
+        role: 'owner',
+        customer: { id: 'ck_123' },
+        identity: {
+          id: 'idt_123',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+        },
+      },
+    ]);
+    sendCustomerVerificationEmail.mockRejectedValueOnce(new Error('smtp down'));
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'If the account exists, a verification email has been sent.',
+      },
+    });
+  });
+
+  it('sends a neutral password reset email when the identity exists', async () => {
+    const passwordHash = await hashPassword('old-password123');
+    db.membership.findMany.mockResolvedValue([
+      {
+        role: 'owner',
+        customer: { id: 'ck_123' },
+        identity: {
+          id: 'idt_123',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          passwordHash,
+          updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+        },
+      },
+    ]);
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendCustomerPasswordResetEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      token: expect.any(String),
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'Password reset instructions were sent if the account exists.',
+      },
+    });
+  });
+
+  it('keeps a blind response when forgot-password delivery fails', async () => {
+    const passwordHash = await hashPassword('old-password123');
+    db.membership.findMany.mockResolvedValue([
+      {
+        role: 'owner',
+        customer: { id: 'ck_123' },
+        identity: {
+          id: 'idt_123',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          passwordHash,
+          updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+        },
+      },
+    ]);
+    sendCustomerPasswordResetEmail.mockRejectedValueOnce(new Error('smtp down'));
+
+    const app = new Hono();
+    app.route('/api/auth', customerAuthRouter);
+
+    const res = await app.request('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'alice@example.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'Password reset instructions were sent if the account exists.',
+      },
     });
   });
 

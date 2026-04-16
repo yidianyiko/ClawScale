@@ -1,10 +1,12 @@
 import { Resend } from 'resend';
 
-export interface SendCokeEmailInput {
+export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
 }
+
+export type SendCokeEmailInput = SendEmailInput;
 
 function getResendApiKey(): string {
   const apiKey = process.env['RESEND_API_KEY']?.trim();
@@ -24,7 +26,7 @@ function getEmailFrom(): string {
   return fromName ? `"${fromName}" <${fromAddress}>` : fromAddress;
 }
 
-export async function sendCokeEmail(input: SendCokeEmailInput): Promise<void> {
+export async function sendEmail(input: SendEmailInput): Promise<void> {
   const resend = new Resend(getResendApiKey());
   const { data, error } = await resend.emails.send({
     from: getEmailFrom(),
@@ -41,3 +43,5 @@ export async function sendCokeEmail(input: SendCokeEmailInput): Promise<void> {
     throw new Error('resend_send_failed:missing_id');
   }
 }
+
+export const sendCokeEmail = sendEmail;

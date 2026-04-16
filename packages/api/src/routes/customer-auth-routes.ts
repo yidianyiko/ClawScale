@@ -6,11 +6,17 @@ import {
   CustomerAuthError,
   authenticateCustomer,
   getCustomerSession,
+  issueCustomerActionToken,
+  normalizeEmail,
   registerCustomer,
   resetCustomerPassword,
   verifyCustomerEmail,
   verifyCustomerToken,
 } from '../lib/customer-auth.js';
+import {
+  sendCustomerPasswordResetEmail,
+  sendCustomerVerificationEmail,
+} from '../lib/customer-email.js';
 
 const VERIFY_EMAIL_SENT_MESSAGE = 'If the account exists, a verification email has been sent.';
 const PASSWORD_RESET_SENT_MESSAGE = 'Password reset instructions were sent if the account exists.';
@@ -40,6 +46,19 @@ const resetPasswordSchema = z.object({
   password: z.string().min(8),
 });
 
+type CustomerOwnershipRecord = {
+  customer: {
+    id: string;
+  };
+  identity: {
+    id: string;
+    email: string | null;
+    claimStatus: 'active' | 'unclaimed' | 'pending';
+    passwordHash?: string | null;
+    updatedAt?: Date;
+  };
+};
+
 function readBearerToken(header: string | undefined): string | null {
   if (!header?.startsWith('Bearer ')) {
     return null;
@@ -66,10 +85,106 @@ function mapCustomerAuthError(error: unknown): { status: number; body: { ok: fal
   }
 }
 
+async function findSingleOwnerByEmail(email: string): Promise<CustomerOwnershipRecord | null> {
+  const records = await db.membership.findMany({
+    where: {
+      role: 'owner',
+      identity: {
+        email,
+      },
+    },
+    include: {
+      customer: {
+        select: {
+          id: true,
+        },
+      },
+      identity: {
+        select: {
+          claimStatus: true,
+          email: true,
+          id: true,
+          passwordHash: true,
+          updatedAt: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'asc',
+    },
+    take: 2,
+  });
+
+  if (records.length !== 1 || !records[0]?.identity.email) {
+    return null;
+  }
+
+  return records[0];
+}
+
+async function sendVerificationEmailForIdentity(record: CustomerOwnershipRecord): Promise<void> {
+  await sendCustomerVerificationEmail({
+    to: record.identity.email!,
+    email: record.identity.email!,
+    token: issueCustomerActionToken({
+      purpose: 'verify_email',
+      customerId: record.customer.id,
+      identityId: record.identity.id,
+      email: record.identity.email!,
+      updatedAt: record.identity.updatedAt,
+    }),
+  });
+}
+
+async function sendPasswordResetEmailForIdentity(record: CustomerOwnershipRecord): Promise<void> {
+  if (!record.identity.passwordHash || !record.identity.email) {
+    return;
+  }
+
+  await sendCustomerPasswordResetEmail({
+    to: record.identity.email,
+    token: issueCustomerActionToken({
+      purpose: 'password_reset',
+      customerId: record.customer.id,
+      identityId: record.identity.id,
+      email: record.identity.email,
+      passwordHash: record.identity.passwordHash,
+    }),
+  });
+}
+
+function logEmailFailure(action: 'registration' | 'resend_verification' | 'forgot_password', details: {
+  customerId?: string;
+  email: string;
+  error: unknown;
+}) {
+  const label =
+    action === 'registration'
+      ? '[customer-auth] failed to send verification email after registration'
+      : action === 'resend_verification'
+        ? '[customer-auth] failed to resend verification email'
+        : '[customer-auth] failed to send password reset email';
+
+  console.error(label, details);
+}
+
 export const customerAuthRouter = new Hono()
   .post('/register', zValidator('json', registerSchema), async (c) => {
     try {
       const result = await registerCustomer(db as never, c.req.valid('json'));
+      try {
+        const ownership = await findSingleOwnerByEmail(normalizeEmail(result.email));
+        if (ownership) {
+          await sendVerificationEmailForIdentity(ownership);
+        }
+      } catch (error) {
+        logEmailFailure('registration', {
+          customerId: result.customerId,
+          email: result.email,
+          error,
+        });
+      }
+
       return c.json({ ok: true, data: result }, 201);
     } catch (error) {
       const failure = mapCustomerAuthError(error);
@@ -95,7 +210,20 @@ export const customerAuthRouter = new Hono()
     }
   })
   .post('/resend-verification', zValidator('json', emailOnlySchema), async (c) => {
-    c.req.valid('json');
+    const input = c.req.valid('json');
+    try {
+      const ownership = await findSingleOwnerByEmail(normalizeEmail(input.email));
+      if (ownership) {
+        await sendVerificationEmailForIdentity(ownership);
+      }
+    } catch (error) {
+      logEmailFailure('resend_verification', {
+        customerId: undefined,
+        email: normalizeEmail(input.email),
+        error,
+      });
+    }
+
     return c.json({
       ok: true,
       data: {
@@ -104,7 +232,20 @@ export const customerAuthRouter = new Hono()
     });
   })
   .post('/forgot-password', zValidator('json', emailOnlySchema), async (c) => {
-    c.req.valid('json');
+    const input = c.req.valid('json');
+    try {
+      const ownership = await findSingleOwnerByEmail(normalizeEmail(input.email));
+      if (ownership) {
+        await sendPasswordResetEmailForIdentity(ownership);
+      }
+    } catch (error) {
+      logEmailFailure('forgot_password', {
+        customerId: undefined,
+        email: normalizeEmail(input.email),
+        error,
+      });
+    }
+
     return c.json({
       ok: true,
       data: {
