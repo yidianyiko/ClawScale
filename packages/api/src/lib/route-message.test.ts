@@ -5,6 +5,7 @@ const db = vi.hoisted(() => ({
   tenant: { findUnique: vi.fn() },
   endUser: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   conversation: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+  deliveryRoute: { findFirst: vi.fn() },
   message: { create: vi.fn(), findMany: vi.fn() },
   cokeAccount: { findUnique: vi.fn() },
   aiBackend: { findMany: vi.fn() },
@@ -36,6 +37,7 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      customerId: null,
       status: 'connected',
       scope: 'tenant_shared',
       ownerClawscaleUserId: null,
@@ -65,8 +67,11 @@ describe('routeInboundMessage', () => {
       tenantId: 'ten_1',
       channelId: 'ch_1',
       endUserId: 'eu_1',
+      clawscaleUserId: null,
+      businessConversationKey: null,
     });
     db.conversation.findMany.mockResolvedValue([{ id: 'conv_1' }, { id: 'conv_2' }]);
+    db.deliveryRoute.findFirst.mockResolvedValue(null);
     db.message.create.mockResolvedValue({});
     db.message.findMany.mockResolvedValue([]);
     db.aiBackend.findMany.mockResolvedValue([
@@ -118,6 +123,7 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      customerId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -162,13 +168,19 @@ describe('routeInboundMessage', () => {
     expect(firstGenerateCall?.metadata?.businessConversationKey).toBeUndefined();
 
     expect(bindBusinessConversation).toHaveBeenCalledWith({
-      tenantId: 'ten_1',
-      conversationId: 'conv_1',
-      cokeAccountId: 'acct_1',
+      routeBinding: expect.objectContaining({
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'wxid_123',
+        cokeAccountId: 'acct_1',
+        customerId: null,
+        gatewayConversationId: 'conv_1',
+        businessConversationKey: null,
+        previousBusinessConversationKey: null,
+        previousClawscaleUserId: null,
+      }),
       businessConversationKey: 'biz_conv_1',
-      channelId: 'ch_1',
-      endUserId: 'eu_1',
-      externalEndUserId: 'wxid_123',
     });
     expect(bindEndUserToCokeAccount).toHaveBeenCalledWith({
       tenantId: 'ten_1',
@@ -185,20 +197,42 @@ describe('routeInboundMessage', () => {
     }
     expect(preBindOrder).toBeLessThan(bindOrder);
     expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          conversationId: 'conv_1',
+          role: 'user',
+          content: 'first message',
+          metadata: expect.objectContaining({
+            platform: 'wechat_personal',
+            channelScope: 'personal',
+            clawscaleUserId: 'csu_1',
+            cokeAccountId: 'acct_1',
+            inboundEventId: expect.any(String),
+          }),
+        }),
+      }),
+    );
+    expect(db.message.create).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         data: expect.objectContaining({
+          conversationId: 'conv_1',
+          role: 'assistant',
+          content: 'bridge ok',
+          backendId: 'ab_1',
           metadata: expect.objectContaining({
+            backendName: 'Coke Bridge',
+            businessConversationKey: 'biz_conv_1',
             outputId: 'out_1',
             causalInboundEventId: 'in_evt_prev',
-            businessConversationKey: 'biz_conv_1',
           }),
         }),
       }),
     );
   });
 
-  it('passes stored businessConversationKey to backend for established conversations', async () => {
+  it('prefers delivery-route businessConversationKey over legacy conversation metadata', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
       tenantId: 'ten_1',
@@ -216,7 +250,26 @@ describe('routeInboundMessage', () => {
       tenantId: 'ten_1',
       channelId: 'ch_1',
       endUserId: 'eu_1',
-      businessConversationKey: 'biz_existing',
+      clawscaleUserId: 'csu_legacy',
+      businessConversationKey: 'biz_legacy',
+    });
+    db.deliveryRoute.findFirst.mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_route',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'wxid_123',
+      isActive: true,
+    });
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      customerId: 'cust_1',
+      status: 'connected',
+      scope: 'personal',
+      ownerClawscaleUserId: 'csu_1',
+      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'acct_1' },
     });
 
     await routeInboundMessage({
@@ -232,17 +285,23 @@ describe('routeInboundMessage', () => {
       | undefined;
     expect(firstGenerateCall?.metadata).toEqual(
       expect.objectContaining({
+        businessConversationKey: 'biz_route',
         gatewayConversationId: 'conv_1',
-        businessConversationKey: 'biz_existing',
+        customerId: 'cust_1',
+        customer_id: 'cust_1',
+        cokeAccountId: 'acct_1',
+        coke_account_id: 'acct_1',
       }),
     );
     expect(bindBusinessConversation).not.toHaveBeenCalled();
+    expect(db.message.create).toHaveBeenCalledTimes(2);
   });
 
   it('keeps backend reply when post-reply business binding fails', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      customerId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -288,8 +347,11 @@ describe('routeInboundMessage', () => {
       2,
       expect.objectContaining({
         data: expect.objectContaining({
+          backendId: 'ab_1',
           content: 'bridge ok',
           metadata: expect.objectContaining({
+            businessConversationKey: 'biz_conv_1',
+            outputId: 'out_1',
             businessConversationBindingErrorCode: 'conversation_binding_conflict',
             businessConversationBindingErrorMessage: 'business conversation bind failed',
           }),
@@ -302,6 +364,7 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      customerId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -350,22 +413,12 @@ describe('routeInboundMessage', () => {
           externalId: 'wxid_123',
           clawscaleUserId: 'csu_1',
           cokeAccountId: 'acct_1',
+          coke_account_id: 'acct_1',
           channelScope: 'personal',
         }),
       }),
     );
-    expect(db.message.create).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        data: expect.objectContaining({
-          metadata: expect.objectContaining({
-            channelScope: 'personal',
-            clawscaleUserId: 'csu_1',
-            cokeAccountId: 'acct_1',
-          }),
-        }),
-      }),
-    );
+    expect(db.message.create).toHaveBeenCalledTimes(2);
     expect(db.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -385,6 +438,7 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      customerId: 'cust_1',
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -423,7 +477,10 @@ describe('routeInboundMessage', () => {
       | undefined;
     expect(firstGenerateCall?.metadata).toEqual(
       expect.objectContaining({
+        customerId: 'cust_1',
+        customer_id: 'cust_1',
         cokeAccountId: 'acct_1',
+        coke_account_id: 'acct_1',
         cokeAccountDisplayName: 'Alice',
         accountStatus: 'normal',
         emailVerified: true,
@@ -441,6 +498,90 @@ describe('routeInboundMessage', () => {
         channelScope: 'personal',
       }),
     );
+  });
+
+  it('persists message rows so subsequent turns can load history continuity', async () => {
+    const persistedMessages: Array<{
+      role: 'user' | 'assistant';
+      content: string;
+      backendId?: string | null;
+      metadata?: Record<string, unknown>;
+    }> = [];
+
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.conversation.findFirst.mockResolvedValue({
+      id: 'conv_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      clawscaleUserId: null,
+      businessConversationKey: null,
+    });
+    db.message.create.mockImplementation(async ({ data }) => {
+      persistedMessages.push({
+        role: data.role,
+        content: data.content,
+        backendId: data.backendId ?? null,
+        metadata: (data.metadata ?? {}) as Record<string, unknown>,
+      });
+      return {};
+    });
+    db.message.findMany.mockImplementation(async ({ where }) => {
+      const backendId =
+        where?.OR?.find((entry: Record<string, unknown>) => 'backendId' in entry)?.backendId ?? null;
+
+      return persistedMessages
+        .filter((message) => {
+          if (message.role === 'user') return true;
+          return message.role === 'assistant' && message.backendId === backendId;
+        })
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+          metadata: message.metadata ?? {},
+        }));
+    });
+    generateReply
+      .mockResolvedValueOnce('bridge first')
+      .mockResolvedValueOnce('bridge second');
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'first turn',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'second turn',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    const secondGenerateCall = vi.mocked(generateReply).mock.calls[1]?.[0] as
+      | { history?: Array<{ role: 'user' | 'assistant'; content: string }> }
+      | undefined;
+
+    expect(secondGenerateCall?.history).toEqual([
+      { role: 'user', content: 'first turn' },
+      { role: 'assistant', content: 'bridge first' },
+      { role: 'user', content: 'second turn' },
+    ]);
+    expect(db.message.create).toHaveBeenCalledTimes(4);
   });
 
   it('falls back to current conversation history when unified personal lookup is empty', async () => {

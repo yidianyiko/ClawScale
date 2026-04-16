@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RouteBindingSnapshot } from './route-binding.js';
 
 const tx = vi.hoisted(() => ({
   conversation: {
@@ -50,6 +51,24 @@ import {
   resolveExactDeliveryRoute,
 } from './business-conversation.js';
 
+function makeRouteBindingSnapshot(
+  overrides: Partial<RouteBindingSnapshot> = {},
+): RouteBindingSnapshot {
+  return {
+    tenantId: 'ten_1',
+    channelId: 'ch_1',
+    endUserId: 'eu_1',
+    externalEndUserId: 'ext_1',
+    cokeAccountId: 'acct_1',
+    customerId: null,
+    gatewayConversationId: 'conv_1',
+    businessConversationKey: null,
+    previousBusinessConversationKey: null,
+    previousClawscaleUserId: null,
+    ...overrides,
+  };
+}
+
 describe('business conversation helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,13 +103,8 @@ describe('business conversation helpers', () => {
     });
 
     const result = await bindBusinessConversation({
-      tenantId: 'ten_1',
-      conversationId: 'conv_1',
-      cokeAccountId: 'acct_1',
+      routeBinding: makeRouteBindingSnapshot(),
       businessConversationKey: 'biz_conv_1',
-      channelId: 'ch_1',
-      endUserId: 'eu_1',
-      externalEndUserId: 'ext_1',
     });
 
     expect(tx.conversation.updateMany).toHaveBeenCalledWith({
@@ -192,13 +206,10 @@ describe('business conversation helpers', () => {
 
     await expect(
       bindBusinessConversation({
-        tenantId: 'ten_1',
-        conversationId: 'conv_1',
-        cokeAccountId: 'acct_1',
+        routeBinding: makeRouteBindingSnapshot({
+          previousBusinessConversationKey: 'biz_old',
+        }),
         businessConversationKey: 'biz_conv_1',
-        channelId: 'ch_1',
-        endUserId: 'eu_1',
-        externalEndUserId: 'ext_1',
       }),
     ).rejects.toMatchObject({
       name: 'BusinessConversationBindingError',
@@ -236,13 +247,8 @@ describe('business conversation helpers', () => {
 
     await expect(
       bindBusinessConversation({
-        tenantId: 'ten_1',
-        conversationId: 'conv_1',
-        cokeAccountId: 'acct_1',
+        routeBinding: makeRouteBindingSnapshot(),
         businessConversationKey: 'biz_conv_1',
-        channelId: 'ch_1',
-        endUserId: 'eu_1',
-        externalEndUserId: 'ext_1',
       }),
     ).rejects.toMatchObject({
       name: 'BusinessConversationBindingError',
@@ -270,13 +276,8 @@ describe('business conversation helpers', () => {
 
     await expect(
       bindBusinessConversation({
-        tenantId: 'ten_1',
-        conversationId: 'conv_1',
-        cokeAccountId: 'acct_1',
+        routeBinding: makeRouteBindingSnapshot(),
         businessConversationKey: 'biz_conv_1',
-        channelId: 'ch_1',
-        endUserId: 'eu_1',
-        externalEndUserId: 'ext_1',
       }),
     ).rejects.toMatchObject({
       name: 'BusinessConversationBindingError',
@@ -307,13 +308,8 @@ describe('business conversation helpers', () => {
 
     await expect(
       bindBusinessConversation({
-        tenantId: 'ten_1',
-        conversationId: 'conv_1',
-        cokeAccountId: 'acct_1',
+        routeBinding: makeRouteBindingSnapshot(),
         businessConversationKey: 'biz_conv_1',
-        channelId: 'ch_1',
-        endUserId: 'eu_1',
-        externalEndUserId: 'ext_1',
       }),
     ).rejects.toMatchObject({
       name: 'BusinessConversationBindingError',
@@ -355,13 +351,11 @@ describe('business conversation helpers', () => {
     });
 
     const result = await bindBusinessConversation({
-      tenantId: 'ten_1',
-      conversationId: 'conv_1',
-      cokeAccountId: 'acct_1',
+      routeBinding: makeRouteBindingSnapshot({
+        previousBusinessConversationKey: 'biz_old',
+        previousClawscaleUserId: 'csu_1',
+      }),
       businessConversationKey: 'biz_new',
-      channelId: 'ch_1',
-      endUserId: 'eu_1',
-      externalEndUserId: 'ext_1',
     });
 
     expect(tx.deliveryRoute.updateMany).toHaveBeenCalledWith({
@@ -375,6 +369,67 @@ describe('business conversation helpers', () => {
       },
     });
     expect(result.businessConversationKey).toBe('biz_new');
+  });
+
+  it('bindBusinessConversation deactivates both effective and legacy stale keys when they differ', async () => {
+    tx.conversation.findUnique.mockResolvedValue({
+      id: 'conv_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      clawscaleUserId: 'csu_1',
+      businessConversationKey: 'biz_legacy',
+      endUser: {
+        externalId: 'ext_1',
+        clawscaleUserId: 'csu_1',
+      },
+    });
+    tx.clawscaleUser.findUnique.mockResolvedValue({
+      id: 'csu_1',
+      tenantId: 'ten_1',
+    });
+    tx.conversation.findFirst.mockResolvedValue(null);
+    tx.conversation.updateMany.mockResolvedValue({ count: 1 });
+    tx.deliveryRoute.updateMany.mockResolvedValue({ count: 1 });
+    tx.deliveryRoute.upsert.mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_new',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'ext_1',
+      isActive: true,
+    });
+
+    await bindBusinessConversation({
+      routeBinding: makeRouteBindingSnapshot({
+        businessConversationKey: 'biz_route',
+        previousBusinessConversationKey: 'biz_legacy',
+        previousClawscaleUserId: 'csu_1',
+      }),
+      businessConversationKey: 'biz_new',
+    });
+
+    expect(tx.deliveryRoute.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_route',
+        isActive: true,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+    expect(tx.deliveryRoute.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_legacy',
+        isActive: true,
+      },
+      data: {
+        isActive: false,
+      },
+    });
   });
 
   it('bindBusinessConversation clears existing business key claim from another conversation in same account context', async () => {
@@ -413,13 +468,10 @@ describe('business conversation helpers', () => {
     });
 
     await bindBusinessConversation({
-      tenantId: 'ten_1',
-      conversationId: 'conv_new',
-      cokeAccountId: 'acct_1',
+      routeBinding: makeRouteBindingSnapshot({
+        gatewayConversationId: 'conv_new',
+      }),
       businessConversationKey: 'biz_shared',
-      channelId: 'ch_1',
-      endUserId: 'eu_1',
-      externalEndUserId: 'ext_1',
     });
 
     expect(tx.conversation.updateMany).toHaveBeenNthCalledWith(1, {

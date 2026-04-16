@@ -19,6 +19,7 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
 import { bindBusinessConversation } from './business-conversation.js';
 import { resolveCokeAccountAccess } from './coke-account-access.js';
+import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
@@ -73,6 +74,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     select: {
       id: true,
       tenantId: true,
+      customerId: true,
       status: true,
       scope: true,
       ownerClawscaleUserId: true,
@@ -181,14 +183,54 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     });
   }
   const inboundEventId = generateId('in_evt');
+  const activeDeliveryRoute = resolvedCokeAccountId
+    ? await db.deliveryRoute.findFirst({
+        where: {
+          tenantId,
+          channelId,
+          endUserId: endUser.id,
+          externalEndUserId: endUser.externalId,
+          cokeAccountId: resolvedCokeAccountId,
+          isActive: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          businessConversationKey: true,
+        },
+      })
+    : null;
+  const routeBinding = createRouteBindingSnapshot({
+    tenantId,
+    channelId,
+    endUserId: endUser.id,
+    externalEndUserId: endUser.externalId,
+    cokeAccountId: resolvedCokeAccountId,
+    customerId: channel.customerId ?? null,
+    gatewayConversationId: conversation.id,
+    previousBusinessConversationKey: conversation.businessConversationKey ?? null,
+    previousClawscaleUserId: conversation.clawscaleUserId ?? null,
+    deliveryRoute: activeDeliveryRoute,
+  });
 
-  // 6. Persist inbound message
   await db.message.create({
     data: {
-      id: generateId('msg'), conversationId: conversation.id, role: 'user', content: text,
+      id: generateId('msg'),
+      conversationId: conversation.id,
+      role: 'user',
+      content: text,
       metadata: {
         ...(meta ?? {}),
         ...(personalChannelOwnership ?? {}),
+        ...(channel.customerId
+          ? { customerId: channel.customerId, customer_id: channel.customerId }
+          : {}),
+        ...(resolvedCokeAccountId
+          ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
+          : {}),
+        ...(routeBinding.businessConversationKey
+          ? { businessConversationKey: routeBinding.businessConversationKey }
+          : {}),
+        gatewayConversationId: routeBinding.gatewayConversationId,
         inboundEventId,
         ...(attachments?.length ? { attachments } : {}),
       } as any,
@@ -275,7 +317,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   async function reply(content: string, backendId: string | null = null, backendName: string | null = clawscaleName): Promise<RouteResult> {
     replies.push({ backendId, backendName, reply: content });
     await db.message.create({
-      data: { id: generateId('msg'), conversationId: conversation!.id, role: 'assistant', content, backendId },
+      data: {
+        id: generateId('msg'),
+        conversationId: conversation!.id,
+        role: 'assistant',
+        content,
+        backendId,
+      },
     });
     await db.conversation.update({ where: { id: conversation!.id }, data: { updatedAt: new Date() } });
     const combined = formatCombinedReplies(replies);
@@ -328,14 +376,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           channelId,
           endUserId: endUser!.id,
           conversationId: conversation!.id,
-          gatewayConversationId: conversation!.id,
+          gatewayConversationId: routeBinding.gatewayConversationId ?? conversation!.id,
           inboundEventId,
           externalId: endUser!.externalId,
-          ...(conversation!.businessConversationKey
-            ? { businessConversationKey: conversation!.businessConversationKey }
+          ...(routeBinding.businessConversationKey
+            ? { businessConversationKey: routeBinding.businessConversationKey }
             : {}),
           ...(resolvedClawscaleUserId ? { clawscaleUserId: resolvedClawscaleUserId } : {}),
-          ...(resolvedCokeAccountId ? { cokeAccountId: resolvedCokeAccountId } : {}),
+          ...(channel.customerId
+            ? { customerId: channel.customerId, customer_id: channel.customerId }
+            : {}),
+          ...(resolvedCokeAccountId
+            ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
+            : {}),
           ...(personalChannelOwnership ?? {}),
           ...(resolvedCokeAccount && resolvedCokeAccountAccess
             ? {
@@ -364,18 +417,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
               cokeAccountId: resolvedCokeAccountId,
             });
             await bindBusinessConversation({
-              tenantId,
-              conversationId: conversation!.id,
-              cokeAccountId: resolvedCokeAccountId,
+              routeBinding,
               businessConversationKey: backendReply.businessConversationKey,
-              channelId,
-              endUserId: endUser!.id,
-              externalEndUserId: endUser!.externalId,
             });
           } catch (error) {
             const code = (error as { code?: unknown })?.code;
             bindingErrorCode = typeof code === 'string' ? code : undefined;
-            bindingErrorMessage = error instanceof Error ? error.message : 'business conversation bind failed';
+            bindingErrorMessage =
+              error instanceof Error ? error.message : 'business conversation bind failed';
             console.error('[business conversation bind error]', {
               tenantId,
               channelId,
@@ -404,8 +453,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         replies.push({ backendId: backend.id, backendName: backend.name, reply: replyText });
         await db.message.create({
           data: {
-            id: generateId('msg'), conversationId: conversation!.id,
-            role: 'assistant', content: replyText, backendId: backend.id,
+            id: generateId('msg'),
+            conversationId: conversation!.id,
+            role: 'assistant',
+            content: replyText,
+            backendId: backend.id,
             metadata: {
               backendName: backend.name,
               ...(backendReply.businessConversationKey
@@ -415,8 +467,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
               ...(backendReply.causalInboundEventId
                 ? { causalInboundEventId: backendReply.causalInboundEventId }
                 : {}),
-              ...(bindingErrorCode ? { businessConversationBindingErrorCode: bindingErrorCode } : {}),
-              ...(bindingErrorMessage ? { businessConversationBindingErrorMessage: bindingErrorMessage } : {}),
+              ...(bindingErrorCode
+                ? { businessConversationBindingErrorCode: bindingErrorCode }
+                : {}),
+              ...(bindingErrorMessage
+                ? { businessConversationBindingErrorMessage: bindingErrorMessage }
+                : {}),
             },
           },
         });
@@ -768,6 +824,9 @@ async function runBackend(
     businessConversationKey?: string;
     clawscaleUserId?: string;
     cokeAccountId?: string;
+    coke_account_id?: string;
+    customerId?: string;
+    customer_id?: string;
     cokeAccountDisplayName?: string | null;
     accountStatus?: 'normal' | 'suspended';
     emailVerified?: boolean;

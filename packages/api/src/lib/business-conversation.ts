@@ -1,13 +1,9 @@
 import { db } from '../db/index.js';
+import type { RouteBindingSnapshot } from './route-binding.js';
 
 export interface BindBusinessConversationInput {
-  tenantId: string;
-  conversationId: string;
-  cokeAccountId: string;
+  routeBinding: RouteBindingSnapshot;
   businessConversationKey: string;
-  channelId: string;
-  endUserId: string;
-  externalEndUserId: string;
 }
 
 export interface DeliveryRouteRecord {
@@ -77,12 +73,48 @@ function isUniqueConstraint(error: unknown): boolean {
   return prismaError.code === 'P2002';
 }
 
+function collectStaleBusinessConversationKeys(
+  routeBinding: RouteBindingSnapshot,
+  nextBusinessConversationKey: string,
+): string[] {
+  const staleKeys: string[] = [];
+
+  for (const candidate of [
+    routeBinding.businessConversationKey,
+    routeBinding.previousBusinessConversationKey,
+  ]) {
+    if (!candidate || candidate === nextBusinessConversationKey || staleKeys.includes(candidate)) {
+      continue;
+    }
+    staleKeys.push(candidate);
+  }
+
+  return staleKeys;
+}
+
 export async function bindBusinessConversation(
   input: BindBusinessConversationInput,
 ): Promise<DeliveryRouteRecord> {
+  const { routeBinding } = input;
+  const conversationId = routeBinding.gatewayConversationId;
+
+  if (!conversationId) {
+    throw new BusinessConversationBindingError(
+      'conversation_not_found',
+      'Route binding is missing a gateway conversation id',
+    );
+  }
+
+  if (!routeBinding.cokeAccountId) {
+    throw new BusinessConversationBindingError(
+      'coke_account_identity_mismatch',
+      `Conversation ${conversationId} does not match coke account identity`,
+    );
+  }
+
   return db.$transaction(async (tx) => {
     const conversation = await tx.conversation.findUnique({
-      where: { id: input.conversationId },
+      where: { id: conversationId },
       select: {
         id: true,
         tenantId: true,
@@ -102,30 +134,33 @@ export async function bindBusinessConversation(
     if (!conversation) {
       throw new BusinessConversationBindingError(
         'conversation_not_found',
-        `Conversation ${input.conversationId} not found`,
+        `Conversation ${conversationId} not found`,
       );
     }
 
     if (
-      conversation.tenantId !== input.tenantId ||
-      conversation.channelId !== input.channelId ||
-      conversation.endUserId !== input.endUserId
+      conversation.tenantId !== routeBinding.tenantId ||
+      conversation.channelId !== routeBinding.channelId ||
+      conversation.endUserId !== routeBinding.endUserId
     ) {
       throw new BusinessConversationBindingError(
         'conversation_identity_mismatch',
-        `Conversation ${input.conversationId} does not match tenant/channel/end-user`,
+        `Conversation ${conversationId} does not match tenant/channel/end-user`,
       );
     }
 
-    if (!conversation.endUser || conversation.endUser.externalId !== input.externalEndUserId) {
+    if (
+      !conversation.endUser ||
+      conversation.endUser.externalId !== routeBinding.externalEndUserId
+    ) {
       throw new BusinessConversationBindingError(
         'external_end_user_mismatch',
-        `Conversation ${input.conversationId} does not match external end-user identity`,
+        `Conversation ${conversationId} does not match external end-user identity`,
       );
     }
 
     const clawscaleUser = await tx.clawscaleUser.findUnique({
-      where: { cokeAccountId: input.cokeAccountId },
+      where: { cokeAccountId: routeBinding.cokeAccountId },
       select: {
         id: true,
         tenantId: true,
@@ -134,22 +169,19 @@ export async function bindBusinessConversation(
 
     if (
       !clawscaleUser ||
-      clawscaleUser.tenantId !== input.tenantId ||
+      clawscaleUser.tenantId !== routeBinding.tenantId ||
       conversation.endUser.clawscaleUserId !== clawscaleUser.id
     ) {
       throw new BusinessConversationBindingError(
         'coke_account_identity_mismatch',
-        `Conversation ${input.conversationId} does not match coke account identity`,
+        `Conversation ${conversationId} does not match coke account identity`,
       );
     }
 
-    const snapshotBusinessConversationKey = conversation.businessConversationKey ?? null;
-    const snapshotClawscaleUserId = conversation.clawscaleUserId ?? null;
-
     const claimant = await tx.conversation.findFirst({
       where: {
-        tenantId: input.tenantId,
-        id: { not: input.conversationId },
+        tenantId: routeBinding.tenantId,
+        id: { not: conversationId },
         clawscaleUserId: clawscaleUser.id,
         businessConversationKey: input.businessConversationKey,
       },
@@ -164,7 +196,7 @@ export async function bindBusinessConversation(
       const clearClaimant = await tx.conversation.updateMany({
         where: {
           id: claimant.id,
-          tenantId: input.tenantId,
+          tenantId: routeBinding.tenantId,
           clawscaleUserId: claimant.clawscaleUserId,
           businessConversationKey: claimant.businessConversationKey,
         },
@@ -174,19 +206,19 @@ export async function bindBusinessConversation(
       });
 
       if (clearClaimant.count !== 1) {
-        throwConversationBindingConflict(input.conversationId);
+        throwConversationBindingConflict(conversationId);
       }
     }
 
     try {
       const applyBinding = await tx.conversation.updateMany({
         where: {
-          id: input.conversationId,
-          tenantId: input.tenantId,
-          channelId: input.channelId,
-          endUserId: input.endUserId,
-          businessConversationKey: snapshotBusinessConversationKey,
-          clawscaleUserId: snapshotClawscaleUserId,
+          id: conversationId,
+          tenantId: routeBinding.tenantId,
+          channelId: routeBinding.channelId,
+          endUserId: routeBinding.endUserId,
+          businessConversationKey: routeBinding.previousBusinessConversationKey,
+          clawscaleUserId: routeBinding.previousClawscaleUserId,
         },
         data: {
           clawscaleUserId: clawscaleUser.id,
@@ -195,23 +227,23 @@ export async function bindBusinessConversation(
       });
 
       if (applyBinding.count !== 1) {
-        throwConversationBindingConflict(input.conversationId);
+        throwConversationBindingConflict(conversationId);
       }
     } catch (error) {
       if (isUniqueConstraint(error)) {
-        throwConversationBindingConflict(input.conversationId);
+        throwConversationBindingConflict(conversationId);
       }
       throw error;
     }
 
-    if (
-      conversation.businessConversationKey &&
-      conversation.businessConversationKey !== input.businessConversationKey
-    ) {
+    for (const staleBusinessConversationKey of collectStaleBusinessConversationKeys(
+      routeBinding,
+      input.businessConversationKey,
+    )) {
       await tx.deliveryRoute.updateMany({
         where: {
-          cokeAccountId: input.cokeAccountId,
-          businessConversationKey: conversation.businessConversationKey,
+          cokeAccountId: routeBinding.cokeAccountId,
+          businessConversationKey: staleBusinessConversationKey,
           isActive: true,
         },
         data: {
@@ -223,24 +255,24 @@ export async function bindBusinessConversation(
     return tx.deliveryRoute.upsert({
       where: {
         cokeAccountId_businessConversationKey: {
-          cokeAccountId: input.cokeAccountId,
+          cokeAccountId: routeBinding.cokeAccountId,
           businessConversationKey: input.businessConversationKey,
         },
       },
       create: {
-        tenantId: input.tenantId,
-        cokeAccountId: input.cokeAccountId,
+        tenantId: routeBinding.tenantId,
+        cokeAccountId: routeBinding.cokeAccountId,
         businessConversationKey: input.businessConversationKey,
-        channelId: input.channelId,
-        endUserId: input.endUserId,
-        externalEndUserId: input.externalEndUserId,
+        channelId: routeBinding.channelId,
+        endUserId: routeBinding.endUserId,
+        externalEndUserId: routeBinding.externalEndUserId,
         isActive: true,
       },
       update: {
-        tenantId: input.tenantId,
-        channelId: input.channelId,
-        endUserId: input.endUserId,
-        externalEndUserId: input.externalEndUserId,
+        tenantId: routeBinding.tenantId,
+        channelId: routeBinding.channelId,
+        endUserId: routeBinding.endUserId,
+        externalEndUserId: routeBinding.externalEndUserId,
         isActive: true,
       },
     });
