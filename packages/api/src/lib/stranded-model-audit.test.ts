@@ -34,15 +34,15 @@ describe('stranded model audit helpers', () => {
   });
 
   it('summarizeStrandedModelAudit locks the target verdict for each stranded model', () => {
-    expect(
-      summarizeStrandedModelAudit({
-        conversations: 4,
-        messages: 9,
-        aiBackends: 2,
-        workflows: 3,
-        endUserBackends: 5,
-      }),
-    ).toEqual({
+    const summary = summarizeStrandedModelAudit({
+      conversations: 4,
+      messages: 9,
+      aiBackends: 2,
+      workflows: 3,
+      endUserBackends: 5,
+    });
+
+    expect(summary).toEqual({
       counts: {
         conversations: 4,
         messages: 9,
@@ -58,6 +58,10 @@ describe('stranded model audit helpers', () => {
         EndUserBackend: 'drop_or_move',
       },
     });
+    expect(Object.isFrozen(summary.verdicts)).toBe(true);
+    expect(() => {
+      (summary.verdicts as { Conversation: string }).Conversation = 'drop';
+    }).toThrow(TypeError);
   });
 
   it('collectStrandedModelCounts queries each stranded table exactly once', async () => {

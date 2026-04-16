@@ -19,13 +19,13 @@ export interface StrandedModelAuditSummary {
   };
 }
 
-const STRANDED_MODEL_VERDICTS = {
+const STRANDED_MODEL_VERDICTS = Object.freeze({
   Conversation: 'migrate_route_minimum',
   Message: 'drop_after_history_cutover',
   AiBackend: 'drop',
   Workflow: 'drop',
   EndUserBackend: 'drop_or_move',
-} as const;
+} as const);
 
 export function summarizeStrandedModelAudit(
   counts: StrandedModelCounts,
