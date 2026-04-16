@@ -1,7 +1,10 @@
-import type { Context } from 'hono';
+import { Hono, type Context } from 'hono';
 import { db } from '../db/index.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
-import { ensureClawscaleUserForCokeAccount } from '../lib/clawscale-user.js';
+import {
+  ensureClawscaleUserForCokeAccount,
+  ensureClawscaleUserForCustomer,
+} from '../lib/clawscale-user.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 import {
   createPersonalWechatChannelRouter,
@@ -58,10 +61,14 @@ async function resolveCokeWechatAuth(
 
   enforceAccessForAction(action, access.accountAccessDeniedReason);
 
-  const ensured = await ensureClawscaleUserForCokeAccount({
-    cokeAccountId: account.id,
-    displayName: account.displayName,
-  });
+  const ensured = account.id.startsWith('ck_')
+    ? await ensureClawscaleUserForCustomer({
+        customerId: account.id,
+      })
+    : await ensureClawscaleUserForCokeAccount({
+        cokeAccountId: account.id,
+        displayName: account.displayName,
+      });
 
   return {
     tenantId: ensured.tenantId,
@@ -69,7 +76,35 @@ async function resolveCokeWechatAuth(
   };
 }
 
-export const cokeWechatRouter = createPersonalWechatChannelRouter({
+function resolveWechatSuccessorPath(path: string, method: string): string {
+  if (path.endsWith('/connect')) {
+    return '/api/customer/channels/wechat-personal/connect';
+  }
+
+  if (path.endsWith('/disconnect')) {
+    return '/api/customer/channels/wechat-personal/disconnect';
+  }
+
+  if (path.endsWith('/status')) {
+    return '/api/customer/channels/wechat-personal/status';
+  }
+
+  return '/api/customer/channels/wechat-personal';
+}
+
+function applyDeprecationHeaders(c: Context): void {
+  c.header('Deprecation', 'true');
+  c.header('Link', `<${resolveWechatSuccessorPath(c.req.path, c.req.method)}>; rel="successor-version"`);
+}
+
+const cokeWechatLifecycleRouter = createPersonalWechatChannelRouter({
   authMiddleware: requireCokeUserAuth,
   resolveAuth: resolveCokeWechatAuth,
 });
+
+export const cokeWechatRouter = new Hono()
+  .use('*', async (c, next) => {
+    applyDeprecationHeaders(c);
+    await next();
+  })
+  .route('/', cokeWechatLifecycleRouter);

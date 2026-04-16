@@ -68,7 +68,10 @@ function readBearerToken(header: string | undefined): string | null {
   return token || null;
 }
 
-function mapCustomerAuthError(error: unknown): { status: number; body: { ok: false; error: string } } {
+function mapCustomerAuthError(error: unknown): {
+  status: 400 | 401 | 404 | 409;
+  body: { ok: false; error: string };
+} {
   if (!(error instanceof CustomerAuthError)) {
     throw error;
   }

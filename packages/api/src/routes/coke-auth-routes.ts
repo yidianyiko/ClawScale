@@ -1,8 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { ensureClawscaleUserForCokeAccount } from '../lib/clawscale-user.js';
+import { ensureClawscaleUserForCustomer } from '../lib/clawscale-user.js';
 import { sendCokeEmail } from '../lib/email.js';
 import {
   hashPassword,
@@ -13,6 +13,11 @@ import {
   verifyPassword,
 } from '../lib/coke-auth.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
+import {
+  CustomerAuthError,
+  authenticateCustomer,
+  registerCustomer,
+} from '../lib/customer-auth.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 
 const VERIFY_TOKEN_TTL_MS = 15 * 60 * 1000;
@@ -43,6 +48,20 @@ const resetPasswordSchema = z.object({
   token: z.string().trim().min(1),
   password: z.string().min(8),
 });
+
+type CompatibilityCokeAccount = {
+  id: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+  status: 'normal' | 'suspended';
+  passwordHash: string | null;
+};
+
+function applyDeprecationHeaders(c: Context, successorPath: string): void {
+  c.header('Deprecation', 'true');
+  c.header('Link', `<${successorPath}>; rel="successor-version"`);
+}
 
 function getDomainClient(): string {
   return process.env['DOMAIN_CLIENT']?.replace(/\/$/, '') ?? '';
@@ -91,6 +110,59 @@ function isTokenExpired(expiresAt: Date, now = new Date()): boolean {
   return expiresAt.getTime() <= now.getTime();
 }
 
+function mapCustomerAuthError(error: unknown): {
+  status: 400 | 401 | 404 | 409;
+  body: { ok: false; error: string };
+} {
+  if (!(error instanceof CustomerAuthError)) {
+    throw error;
+  }
+
+  switch (error.code) {
+    case 'email_already_exists':
+      return { status: 409, body: { ok: false, error: error.code } };
+    case 'invalid_credentials':
+      return { status: 401, body: { ok: false, error: error.code } };
+    case 'invalid_or_expired_token':
+      return { status: 400, body: { ok: false, error: error.code } };
+    case 'account_not_found':
+      return { status: 404, body: { ok: false, error: error.code } };
+  }
+}
+
+async function loadCompatibilityCokeAccount(
+  customerId: string,
+  options: { provisionIfMissing: boolean },
+): Promise<CompatibilityCokeAccount | null> {
+  let account = await db.cokeAccount.findUnique({ where: { id: customerId } });
+  if (!account && options.provisionIfMissing) {
+    await ensureClawscaleUserForCustomer({ customerId });
+    account = await db.cokeAccount.findUnique({ where: { id: customerId } });
+  }
+
+  return account;
+}
+
+async function authenticateLegacyCokeAccount(input: {
+  email: string;
+  password: string;
+}): Promise<CompatibilityCokeAccount | null> {
+  const account = await db.cokeAccount.findUnique({
+    where: { email: normalizeEmail(input.email) },
+  });
+
+  if (!account?.passwordHash) {
+    return null;
+  }
+
+  const valid = await verifyPassword(input.password, account.passwordHash);
+  if (!valid) {
+    return null;
+  }
+
+  return account;
+}
+
 async function sendVerificationEmail(account: { id: string; email: string }): Promise<void> {
   const issued = issueVerifyToken();
   await db.verifyToken.create({
@@ -129,86 +201,111 @@ async function sendPasswordResetEmail(account: { id: string; email: string }): P
 
 export const cokeAuthRouter = new Hono()
   .post('/register', zValidator('json', registerSchema), async (c) => {
-    const input = c.req.valid('json');
-    const email = normalizeEmail(input.email);
-    const displayName = input.displayName.trim();
-
-    const existing = await db.cokeAccount.findUnique({ where: { email } });
-    if (existing) {
-      return c.json({ ok: false, error: 'email_already_exists' }, 409);
-    }
-
-    const passwordHash = await hashPassword(input.password);
-    const created = await db.cokeAccount.create({
-      data: {
-        email,
-        displayName,
-        passwordHash,
-      },
-    });
-
-    await ensureClawscaleUserForCokeAccount({
-      cokeAccountId: created.id,
-      displayName: created.displayName,
-    });
-
+    applyDeprecationHeaders(c, '/api/auth/register');
     try {
-      await sendVerificationEmail({ id: created.id, email: created.email });
-    } catch (error) {
-      console.error('[coke-auth] failed to send verification email after registration', {
-        accountId: created.id,
-        email: created.email,
-        error,
+      const result = await registerCustomer(db as never, c.req.valid('json'));
+      await ensureClawscaleUserForCustomer({ customerId: result.customerId });
+      const compatibilityAccount = await db.cokeAccount.update({
+        where: { id: result.customerId },
+        data: { emailVerified: false },
       });
-    }
 
-    return c.json(
-      {
-        ok: true,
-        data: {
-          token: signCokeToken({ sub: created.id, email: created.email }),
-          user: serializeCokeAccount(created),
+      try {
+        await sendVerificationEmail({
+          id: compatibilityAccount.id,
+          email: compatibilityAccount.email,
+        });
+      } catch (error) {
+        console.error('[coke-auth] failed to send verification email after registration', {
+          accountId: compatibilityAccount.id,
+          email: compatibilityAccount.email,
+          error,
+        });
+      }
+
+      return c.json(
+        {
+          ok: true,
+          data: {
+            token: signCokeToken({ sub: result.customerId, email: result.email }),
+            user: serializeCokeAccount(compatibilityAccount),
+          },
         },
-      },
-      201,
-    );
+        201,
+      );
+    } catch (error) {
+      const failure = mapCustomerAuthError(error);
+      return c.json(failure.body, failure.status);
+    }
   })
   .post('/login', zValidator('json', loginSchema), async (c) => {
+    applyDeprecationHeaders(c, '/api/auth/login');
     const input = c.req.valid('json');
-    const email = normalizeEmail(input.email);
+    try {
+      const result = await authenticateCustomer(db as never, input);
+      const account = await loadCompatibilityCokeAccount(result.customerId, {
+        provisionIfMissing: true,
+      });
 
-    const account = await db.cokeAccount.findUnique({ where: { email } });
-    if (!account) {
-      return c.json({ ok: false, error: 'invalid_credentials' }, 401);
+      if (!account) {
+        return c.json({ ok: false, error: 'account_not_found' }, 404);
+      }
+
+      if (account.status !== 'normal') {
+        return c.json({ ok: false, error: 'account_suspended' }, 403);
+      }
+
+      const access = await resolveCokeAccountAccess({
+        account: {
+          id: account.id,
+          status: account.status,
+          emailVerified: account.emailVerified,
+          displayName: account.displayName,
+        },
+      });
+
+      return c.json({
+        ok: true,
+        data: {
+          token: signCokeToken({ sub: result.customerId, email: result.email }),
+          user: withSubscriptionState(serializeCokeAccount(account), access),
+        },
+      });
+    } catch (error) {
+      if (error instanceof CustomerAuthError && error.code === 'invalid_credentials') {
+        const legacyAccount = await authenticateLegacyCokeAccount(input);
+        if (!legacyAccount) {
+          return c.json({ ok: false, error: 'invalid_credentials' }, 401);
+        }
+
+        if (legacyAccount.status !== 'normal') {
+          return c.json({ ok: false, error: 'account_suspended' }, 403);
+        }
+
+        const access = await resolveCokeAccountAccess({
+          account: {
+            id: legacyAccount.id,
+            status: legacyAccount.status,
+            emailVerified: legacyAccount.emailVerified,
+            displayName: legacyAccount.displayName,
+          },
+        });
+
+        return c.json({
+          ok: true,
+          data: {
+            token: signCokeToken({ sub: legacyAccount.id, email: legacyAccount.email }),
+            user: withSubscriptionState(serializeCokeAccount(legacyAccount), access),
+          },
+        });
+      }
+
+      const failure = mapCustomerAuthError(error);
+      return c.json(failure.body, failure.status);
     }
-
-    const valid = await verifyPassword(input.password, account.passwordHash);
-    if (!valid) {
-      return c.json({ ok: false, error: 'invalid_credentials' }, 401);
-    }
-
-    if (account.status !== 'normal') {
-      return c.json({ ok: false, error: 'account_suspended' }, 403);
-    }
-
-    const access = await resolveCokeAccountAccess({
-      account: {
-        id: account.id,
-        status: account.status,
-        emailVerified: account.emailVerified,
-        displayName: account.displayName,
-      },
-    });
-
-    return c.json({
-      ok: true,
-      data: {
-        token: signCokeToken({ sub: account.id, email: account.email }),
-        user: withSubscriptionState(serializeCokeAccount(account), access),
-      },
-    });
   })
   .post('/verify-email', zValidator('json', verifyEmailSchema), async (c) => {
+    applyDeprecationHeaders(c, '/api/auth/verify-email');
     const input = c.req.valid('json');
     const email = normalizeEmail(input.email);
     const tokenHash = sha256Hex(input.token);
@@ -269,6 +366,7 @@ export const cokeAuthRouter = new Hono()
     });
   })
   .post('/verify-email/resend', zValidator('json', emailOnlySchema), async (c) => {
+    applyDeprecationHeaders(c, '/api/auth/resend-verification');
     const input = c.req.valid('json');
     const email = normalizeEmail(input.email);
     const account = await db.cokeAccount.findUnique({ where: { email } });
@@ -300,6 +398,7 @@ export const cokeAuthRouter = new Hono()
     });
   })
   .post('/forgot-password', zValidator('json', emailOnlySchema), async (c) => {
+    applyDeprecationHeaders(c, '/api/auth/forgot-password');
     const input = c.req.valid('json');
     const email = normalizeEmail(input.email);
     const account = await db.cokeAccount.findUnique({ where: { email } });
@@ -324,6 +423,7 @@ export const cokeAuthRouter = new Hono()
     });
   })
   .post('/reset-password', zValidator('json', resetPasswordSchema), async (c) => {
+    applyDeprecationHeaders(c, '/api/auth/reset-password');
     const input = c.req.valid('json');
     const tokenHash = sha256Hex(input.token);
     const token = await db.verifyToken.findFirst({
@@ -346,7 +446,38 @@ export const cokeAuthRouter = new Hono()
     }
 
     const passwordHash = await hashPassword(input.password);
+    const ownerMembership = await db.membership.findFirst({
+      where: {
+        customerId: token.account.id,
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+          },
+        },
+        identity: {
+          select: {
+            claimStatus: true,
+            email: true,
+            id: true,
+            passwordHash: true,
+          },
+        },
+      },
+    });
+
+    if (!ownerMembership?.identity.id) {
+      return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
     await db.$transaction(async (tx) => {
+      await tx.identity.update({
+        where: { id: ownerMembership.identity.id },
+        data: { passwordHash },
+      });
+
       await tx.cokeAccount.update({
         where: { id: token.account.id },
         data: { passwordHash },
@@ -363,9 +494,15 @@ export const cokeAuthRouter = new Hono()
       data: null,
     });
   })
+  .use('/me', async (c, next) => {
+    applyDeprecationHeaders(c, '/api/auth/me');
+    await next();
+  })
   .get('/me', requireCokeUserAuth, async (c) => {
     const auth = c.get('cokeAuth');
-    const account = await db.cokeAccount.findUnique({ where: { id: auth.accountId } });
+    const account = await loadCompatibilityCokeAccount(auth.accountId, {
+      provisionIfMissing: auth.accountId.startsWith('ck_'),
+    });
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);
