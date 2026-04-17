@@ -236,9 +236,11 @@ export async function replayParkedInbounds(
       binding = await retrySharedChannelProvision(binding);
     }
 
-    if (binding.provisionStatus === 'error') {
+    if (binding.provisionStatus !== 'ready') {
       summary.skipped += 1;
-      pushTerminalError(summary, customerId, binding.provisionLastError);
+      if (binding.provisionStatus === 'error') {
+        pushTerminalError(summary, customerId, binding.provisionLastError);
+      }
       continue;
     }
 

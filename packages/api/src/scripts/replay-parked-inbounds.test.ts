@@ -176,6 +176,50 @@ describe('replayParkedInbounds', () => {
     });
   });
 
+  it('keeps the parked row queued when replay retry is still pending', async () => {
+    db.parkedInbound.findMany.mockResolvedValueOnce([
+      {
+        id: 'pi_pending',
+        channelId: 'ch_1',
+        payload: {
+          customerId: 'ck_pending',
+          externalId: 'wxid_pending',
+          displayName: 'Pending',
+          text: 'hello pending',
+        },
+      },
+    ]);
+    db.agentBinding.findUnique.mockResolvedValueOnce({
+      customerId: 'ck_pending',
+      agentId: 'agent_shared',
+      provisionStatus: 'pending',
+      provisionAttempts: 1,
+      provisionLastError: 'still provisioning',
+      customer: { displayName: 'Pending' },
+    });
+    fetchMock.mockRejectedValueOnce(new Error('temporary timeout'));
+
+    const summary = await replayParkedInbounds();
+
+    expect(summary).toEqual({
+      scanned: 1,
+      replayed: 0,
+      skipped: 1,
+      terminalErrors: [],
+    });
+    expect(db.agentBinding.update).toHaveBeenCalledWith({
+      where: { customerId: 'ck_pending' },
+      data: expect.objectContaining({
+        provisionStatus: 'pending',
+        provisionAttempts: { increment: 1 },
+        provisionLastError: 'temporary timeout',
+        provisionUpdatedAt: expect.any(Date),
+      }),
+    });
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+    expect(db.parkedInbound.update).not.toHaveBeenCalled();
+  });
+
   it('promotes repeated replay failures to terminal error after the retry threshold', async () => {
     db.parkedInbound.findMany.mockResolvedValueOnce([
       {

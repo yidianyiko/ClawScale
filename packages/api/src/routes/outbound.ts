@@ -24,6 +24,7 @@ const bodySchema = z.object({
 
 type RawOutboundBody = z.infer<typeof bodySchema>;
 type NormalizedOutboundBody = RawOutboundBody & { customer_id: string };
+type DeliveryRouteTarget = { channelId: string; externalEndUserId: string; tenantId: string };
 
 export const outboundRouter = new Hono();
 
@@ -46,7 +47,7 @@ function normalizeBody(body: RawOutboundBody): NormalizedOutboundBody | null {
   };
 }
 
-function normalizePayload(body: NormalizedOutboundBody): Prisma.InputJsonObject {
+function normalizeComparablePayload(body: NormalizedOutboundBody): Prisma.InputJsonObject {
   return {
     output_id: body.output_id,
     customer_id: body.customer_id,
@@ -61,6 +62,68 @@ function normalizePayload(body: NormalizedOutboundBody): Prisma.InputJsonObject 
       ? { causal_inbound_event_id: body.causal_inbound_event_id }
       : {}),
   };
+}
+
+function buildStoredPayload(
+  body: NormalizedOutboundBody,
+  target: Pick<DeliveryRouteTarget, 'channelId' | 'externalEndUserId'>,
+): Prisma.InputJsonObject {
+  return {
+    ...normalizeComparablePayload(body),
+    channel_id: target.channelId,
+    external_end_user_id: target.externalEndUserId,
+  };
+}
+
+function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {};
+  }
+
+  const record = payload as Record<string, unknown>;
+  const comparable: Prisma.InputJsonObject = {};
+  for (const key of [
+    'output_id',
+    'customer_id',
+    'business_conversation_key',
+    'message_type',
+    'text',
+    'delivery_mode',
+    'expect_output_timestamp',
+    'idempotency_key',
+    'trace_id',
+    'causal_inbound_event_id',
+  ]) {
+    const value = record[key];
+    if (typeof value === 'string' && value.length > 0) {
+      comparable[key] = value;
+    }
+  }
+
+  return comparable;
+}
+
+function readStoredTarget(
+  payload: unknown,
+  fallbackChannelId: string,
+): Pick<DeliveryRouteTarget, 'channelId' | 'externalEndUserId'> | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const channelId = typeof record.channel_id === 'string' && record.channel_id.trim()
+    ? record.channel_id.trim()
+    : fallbackChannelId;
+  const externalEndUserId = typeof record.external_end_user_id === 'string' && record.external_end_user_id.trim()
+    ? record.external_end_user_id.trim()
+    : '';
+
+  if (!channelId || !externalEndUserId) {
+    return null;
+  }
+
+  return { channelId, externalEndUserId };
 }
 
 function isMissingDeliveryRouteError(
@@ -103,7 +166,7 @@ outboundRouter.post('/', async (c) => {
     );
   }
 
-  const payload = normalizePayload(body);
+  const comparablePayload = normalizeComparablePayload(body);
 
   const handleExistingIdempotency = (
     existingDelivery: {
@@ -112,8 +175,8 @@ outboundRouter.post('/', async (c) => {
       payload: unknown;
     },
   ): { response: Response | null; shouldReclaimFailed: boolean } => {
-    const existingPayload = JSON.stringify(existingDelivery.payload);
-    const requestPayload = JSON.stringify(payload);
+    const existingPayload = JSON.stringify(readComparablePayload(existingDelivery.payload));
+    const requestPayload = JSON.stringify(comparablePayload);
     if (existingPayload !== requestPayload) {
       return {
         response: c.json(
@@ -166,8 +229,9 @@ outboundRouter.post('/', async (c) => {
     shouldReclaimFailed = existingResult.shouldReclaimFailed;
   }
 
-  let deliveryRoute;
+  let deliveryRoute: DeliveryRouteTarget | undefined;
   let channel;
+  let deliveryTarget: Pick<DeliveryRouteTarget, 'channelId' | 'externalEndUserId'> | undefined;
   if (!outboundDelivery) {
     try {
       deliveryRoute = await resolveExactDeliveryRoute({
@@ -199,9 +263,14 @@ outboundRouter.post('/', async (c) => {
       );
     }
 
+    deliveryTarget = {
+      channelId: deliveryRoute.channelId,
+      externalEndUserId: deliveryRoute.externalEndUserId,
+    };
+
     channel = await db.channel.findFirst({
       where: {
-        id: deliveryRoute.channelId,
+        id: deliveryTarget.channelId,
         tenantId: deliveryRoute.tenantId,
       },
     });
@@ -213,9 +282,9 @@ outboundRouter.post('/', async (c) => {
       outboundDelivery = await db.outboundDelivery.create({
         data: {
           tenantId: deliveryRoute.tenantId,
-          channelId: deliveryRoute.channelId,
+          channelId: deliveryTarget.channelId,
           idempotencyKey: body.idempotency_key,
-          payload,
+          payload: buildStoredPayload(body, deliveryTarget),
           status: 'pending',
         },
       });
@@ -274,24 +343,27 @@ outboundRouter.post('/', async (c) => {
     }
   }
 
-  if (!channel) {
+  if (outboundDelivery && shouldReclaimFailed) {
+    // Preserve the exact delivery target from the original resolution; failed reclaims
+    // must not reroute to a different channel or peer.
+    deliveryTarget = readStoredTarget(outboundDelivery.payload, outboundDelivery.channelId);
+    if (!deliveryTarget) {
+      return c.json({ ok: false, error: 'stored_delivery_target_missing' }, 409);
+    }
+
     channel = await db.channel.findFirst({
       where: {
-        id: outboundDelivery.channelId,
+        id: deliveryTarget.channelId,
         tenantId: outboundDelivery.tenantId,
       },
     });
-    if (!channel && deliveryRoute.channelId !== outboundDelivery.channelId) {
-      channel = await db.channel.findFirst({
-        where: {
-          id: deliveryRoute.channelId,
-          tenantId: deliveryRoute.tenantId,
-        },
-      });
-    }
     if (!channel) {
       return c.json({ ok: false, error: 'channel_not_found' }, 404);
     }
+  }
+
+  if (!channel) {
+    return c.json({ ok: false, error: 'channel_not_found' }, 404);
   }
 
   if (shouldReclaimFailed) {
@@ -319,7 +391,7 @@ outboundRouter.post('/', async (c) => {
   }
 
   try {
-    await deliverOutboundMessage(channel, deliveryRoute.externalEndUserId, body.text);
+    await deliverOutboundMessage(channel, deliveryTarget?.externalEndUserId ?? deliveryRoute!.externalEndUserId, body.text);
   } catch (error) {
     await db.outboundDelivery.update({
       where: { id: outboundDelivery.id },

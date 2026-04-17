@@ -75,6 +75,7 @@ const channel = {
 const movedRoute = {
   ...resolvedRoute,
   channelId: 'ch_2',
+  externalEndUserId: 'wxid_2',
 };
 
 const movedChannel = {
@@ -287,7 +288,11 @@ describe('outbound router', () => {
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: normalizePayload(body),
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
       tenantId: 'ten_1',
       channelId: 'ch_1',
       idempotencyKey: 'idem_1',
@@ -321,12 +326,16 @@ describe('outbound router', () => {
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
   });
 
-  it('reclaims failed shared-channel deliveries through the stored shared channel id', async () => {
+  it('reclaims failed shared-channel deliveries through the stored shared channel id and peer target', async () => {
     const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: normalizePayload(body),
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
       tenantId: 'ten_1',
       channelId: 'ch_1',
       idempotencyKey: 'idem_1',
@@ -348,7 +357,54 @@ describe('outbound router', () => {
 
     expect(res.status).toBe(200);
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
-    expect(deliverOutboundMessage).not.toHaveBeenCalledWith(movedChannel, 'wxid_1', 'hello');
+    expect(deliverOutboundMessage).not.toHaveBeenCalledWith(movedChannel, 'wxid_2', 'hello');
+  });
+
+  it('fails reclaimed deliveries when the stored shared channel target is gone instead of rerouting', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValueOnce({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+    vi.mocked(resolveExactDeliveryRoute).mockResolvedValueOnce(movedRoute as never);
+    vi.mocked(db.channel.findFirst).mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === 'ch_2') {
+        return movedChannel as never;
+      }
+
+      return null as never;
+    });
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'channel_not_found',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('stores the exact delivery target on newly created outbound deliveries', async () => {
+    const res = await postOutbound(makeBody());
+
+    expect(res.status).toBe(200);
+    expect(db.outboundDelivery.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: expect.objectContaining({
+          channel_id: 'ch_1',
+          external_end_user_id: 'wxid_1',
+        }),
+      }),
+    });
   });
 
   it('accepts customer_id as a compatibility alias', async () => {
@@ -486,7 +542,14 @@ describe('outbound router', () => {
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: normalizePayload(body),
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
     } as never);
 
     const res = await postOutbound(body);
@@ -532,7 +595,14 @@ describe('outbound router', () => {
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
       status: 'failed',
-      payload: normalizePayload(body),
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
     } as never);
     vi.mocked(db.outboundDelivery.updateMany).mockResolvedValueOnce({ count: 0 } as never);
 
