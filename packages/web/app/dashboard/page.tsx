@@ -19,12 +19,26 @@ interface Stats {
 
 interface ChannelRow { id: string; name: string; type: string; status: string }
 
+const adminHandoffCards = {
+  en: [
+    { to: '/admin/customers', title: 'Customers', desc: 'Review customer accounts, claim state, and channel coverage.' },
+    { to: '/admin/channels', title: 'Channels', desc: 'Inspect platform channel status and routing health in the admin console.' },
+    { to: '/admin/deliveries', title: 'Deliveries', desc: 'Review recent delivery failures and operational follow-up from the admin console.' },
+  ],
+  zh: [
+    { to: '/admin/customers', title: '客户', desc: '查看客户账号、认领状态和渠道覆盖情况。' },
+    { to: '/admin/channels', title: '渠道', desc: '在管理后台检查平台渠道状态和路由健康。' },
+    { to: '/admin/deliveries', title: '投递', desc: '在管理后台查看近期投递失败和后续处理。' },
+  ],
+} as const;
+
 export default function Dashboard() {
   const tenant = getTenant();
   const { locale } = useLocale();
   const [stats, setStats] = useState<Stats | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const copy = getDashboardCopy(locale);
+  const handoffCards = adminHandoffCards[locale];
 
   useEffect(() => {
     api.get<ApiResponse<Stats>>('/api/tenant/stats').then((r) => { if (r.ok) setStats(r.data); });
@@ -38,6 +52,28 @@ export default function Dashboard() {
           {tenant ? `${copy.home.welcomeBackTo} ${tenant.name}` : copy.home.welcomeBack}
         </h1>
         <p className="text-gray-500 mt-1">{copy.home.overview}</p>
+      </div>
+
+      <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
+        <p className="text-sm font-semibold text-amber-900">
+          {locale === 'zh'
+            ? '新的管理后台现已负责客户、渠道和投递。其他旧版工作台区域仍处于过渡阶段。'
+            : 'The new admin console now owns customers, channels, and deliveries. Other dashboard areas remain transitional during the migration.'}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/admin/customers"
+            className="inline-flex items-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-950"
+          >
+            {locale === 'zh' ? '打开新的管理后台' : 'Open the new admin console'}
+          </Link>
+          <Link
+            href="/admin/channels"
+            className="inline-flex items-center rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition-colors hover:border-amber-400 hover:text-amber-950"
+          >
+            {locale === 'zh' ? '查看管理渠道' : 'Review admin channels'}
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
@@ -54,14 +90,14 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <QuickCard to="/dashboard/conversations" title={copy.home.quickCards.conversations.title}
-          desc={copy.home.quickCards.conversations.desc}
-          icon={<MessageSquare className="h-5 w-5" />} />
-        <QuickCard to="/dashboard/channels" title={copy.home.quickCards.channels.title}
-          desc={copy.home.quickCards.channels.desc}
+        <QuickCard to={handoffCards[0].to} title={handoffCards[0].title}
+          desc={handoffCards[0].desc}
+          icon={<Users className="h-5 w-5" />} />
+        <QuickCard to={handoffCards[1].to} title={handoffCards[1].title}
+          desc={handoffCards[1].desc}
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/dashboard/workflows" title={copy.home.quickCards.workflows.title}
-          desc={copy.home.quickCards.workflows.desc}
+        <QuickCard to={handoffCards[2].to} title={handoffCards[2].title}
+          desc={handoffCards[2].desc}
           icon={<Zap className="h-5 w-5" />} />
       </div>
     </div>
