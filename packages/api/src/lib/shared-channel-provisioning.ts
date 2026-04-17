@@ -78,22 +78,13 @@ function isExternalIdentityUniqueConflict(error: unknown): boolean {
   );
 }
 
-async function findExistingCustomerId(identity: NormalizedExternalIdentity): Promise<string | null> {
+async function rereadCustomerId(identity: NormalizedExternalIdentity): Promise<string | null> {
   const existing = await db.externalIdentity.findUnique({
     where: buildExternalIdentityUniqueWhere(identity),
     select: { customerId: true },
   });
 
   return existing?.customerId ?? null;
-}
-
-async function touchExternalIdentity(identity: NormalizedExternalIdentity): Promise<void> {
-  await db.externalIdentity.update({
-    where: buildExternalIdentityUniqueWhere(identity),
-    data: {
-      lastSeenAt: new Date(),
-    },
-  });
 }
 
 async function parkInbound(
@@ -124,7 +115,6 @@ async function resolveExistingCustomer(
   identity: NormalizedExternalIdentity,
   input: SharedChannelProvisioningInput,
 ): Promise<SharedChannelProvisioningResult> {
-  await touchExternalIdentity(identity);
   const provisionStatus = await readProvisionStatus(customerId);
 
   if (provisionStatus === 'ready') {
@@ -190,112 +180,113 @@ export async function provisionSharedChannelCustomer(
     rawValue: input.rawIdentityValue,
   });
 
-  const existingCustomerId = await findExistingCustomerId(identity);
-  if (existingCustomerId) {
-    return resolveExistingCustomer(existingCustomerId, identity, input);
-  }
+  const now = new Date();
+  const identityId = generateId('idn');
+  const customerId = generateId('ck');
+  const membershipId = generateId('mem');
+  const displayName = buildDisplayName(input.displayName);
+
+  let boundCustomerId: string;
 
   try {
-    const customerId = await db.$transaction(async (tx) => {
-      const now = new Date();
-      const identityId = generateId('idn');
-      const customerId = generateId('ck');
-      const membershipId = generateId('mem');
-      const displayName = buildDisplayName(input.displayName);
-
-      await tx.identity.create({
-        data: {
-          id: identityId,
-          displayName,
-          claimStatus: 'unclaimed',
+    const externalIdentity = await db.$transaction(async (tx) => {
+      return tx.externalIdentity.upsert({
+        where: buildExternalIdentityUniqueWhere(identity),
+        update: {
+          lastSeenAt: now,
         },
-      });
-      await tx.customer.create({
-        data: {
-          id: customerId,
-          kind: 'personal',
-          displayName,
-        },
-      });
-      await tx.membership.create({
-        data: {
-          id: membershipId,
-          identityId,
-          customerId,
-          role: 'owner',
-        },
-      });
-      await tx.agentBinding.create({
-        data: {
-          customerId,
-          agentId: input.agentId,
-          provisionStatus: 'pending',
-          provisionAttempts: 0,
-          provisionLastError: null,
-          provisionUpdatedAt: now,
-        },
-      });
-      await tx.externalIdentity.create({
-        data: {
+        create: {
           provider: identity.provider,
           identityType: identity.identityType,
           identityValue: identity.identityValue,
-          customerId,
           firstSeenChannelId: input.channelId,
           lastSeenAt: now,
+          customer: {
+            create: {
+              id: customerId,
+              kind: 'personal',
+              displayName,
+              memberships: {
+                create: {
+                  id: membershipId,
+                  role: 'owner',
+                  identity: {
+                    create: {
+                      id: identityId,
+                      displayName,
+                      claimStatus: 'unclaimed',
+                    },
+                  },
+                },
+              },
+              agentBindings: {
+                create: {
+                  agentId: input.agentId,
+                  provisionStatus: 'pending',
+                  provisionAttempts: 0,
+                  provisionLastError: null,
+                  provisionUpdatedAt: now,
+                },
+              },
+            },
+          },
         },
       });
-
-      return customerId;
     });
 
-    try {
-      await provisionSharedChannelAgent(input.agentId, customerId, input.displayName);
-      await db.agentBinding.update({
-        where: { customerId },
-        data: {
-          provisionStatus: 'ready',
-          provisionAttempts: { increment: 1 },
-          provisionLastError: null,
-          provisionUpdatedAt: new Date(),
-        },
-      });
-
-      return {
-        customerId,
-        created: true,
-        parked: false,
-        provisionStatus: 'ready',
-      };
-    } catch (error) {
-      await db.agentBinding.update({
-        where: { customerId },
-        data: {
-          provisionStatus: 'pending',
-          provisionAttempts: { increment: 1 },
-          provisionLastError: readErrorMessage(error),
-          provisionUpdatedAt: new Date(),
-        },
-      });
-      await parkInbound(identity, input, customerId);
-
-      return {
-        customerId,
-        created: true,
-        parked: true,
-        provisionStatus: 'pending',
-      };
-    }
+    boundCustomerId = externalIdentity.customerId;
   } catch (error) {
     if (!isExternalIdentityUniqueConflict(error)) {
       throw error;
     }
 
-    const winnerCustomerId = await findExistingCustomerId(identity);
+    const winnerCustomerId = await rereadCustomerId(identity);
     if (!winnerCustomerId) {
       throw error;
     }
 
     return resolveExistingCustomer(winnerCustomerId, identity, input);
+  }
+
+  if (boundCustomerId !== customerId) {
+    return resolveExistingCustomer(boundCustomerId, identity, input);
+  }
+
+  try {
+    await provisionSharedChannelAgent(input.agentId, customerId, input.displayName);
+    await db.agentBinding.update({
+      where: { customerId },
+      data: {
+        provisionStatus: 'ready',
+        provisionAttempts: { increment: 1 },
+        provisionLastError: null,
+        provisionUpdatedAt: new Date(),
+      },
+    });
+
+    return {
+      customerId,
+      created: true,
+      parked: false,
+      provisionStatus: 'ready',
+    };
+  } catch (error) {
+    await db.agentBinding.update({
+      where: { customerId },
+      data: {
+        provisionStatus: 'pending',
+        provisionAttempts: { increment: 1 },
+        provisionLastError: readErrorMessage(error),
+        provisionUpdatedAt: new Date(),
+      },
+    });
+    await parkInbound(identity, input, customerId);
+
+    return {
+      customerId,
+      created: true,
+      parked: true,
+      provisionStatus: 'pending',
+    };
   }
 }

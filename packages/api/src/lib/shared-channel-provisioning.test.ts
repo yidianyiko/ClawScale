@@ -2,15 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => {
   const tx = {
-    identity: { create: vi.fn() },
-    customer: { create: vi.fn() },
-    membership: { create: vi.fn() },
-    agentBinding: { create: vi.fn() },
-    externalIdentity: { create: vi.fn() },
+    externalIdentity: { upsert: vi.fn() },
   };
 
   const client = {
-    externalIdentity: { findUnique: vi.fn(), update: vi.fn() },
+    externalIdentity: { findUnique: vi.fn() },
     agentBinding: { findUnique: vi.fn(), update: vi.fn() },
     agent: { findUnique: vi.fn() },
     $transaction: vi.fn(async (fn: (txClient: typeof tx) => Promise<unknown>) => fn(tx)),
@@ -35,8 +31,7 @@ describe('provisionSharedChannelCustomer', () => {
 
     db.$transaction.mockImplementation(async (fn: (txClient: typeof db.__tx) => Promise<unknown>) =>
       fn(db.__tx));
-    db.externalIdentity.findUnique.mockResolvedValue(null);
-    db.externalIdentity.update.mockResolvedValue({});
+    db.externalIdentity.findUnique.mockResolvedValue({ customerId: 'ck_existing' });
     db.agentBinding.findUnique.mockResolvedValue({
       customerId: 'ck_existing',
       provisionStatus: 'ready',
@@ -48,11 +43,9 @@ describe('provisionSharedChannelCustomer', () => {
       authToken: 'secret-token',
     });
 
-    db.__tx.identity.create.mockResolvedValue({});
-    db.__tx.customer.create.mockResolvedValue({});
-    db.__tx.membership.create.mockResolvedValue({});
-    db.__tx.agentBinding.create.mockResolvedValue({});
-    db.__tx.externalIdentity.create.mockResolvedValue({});
+    db.__tx.externalIdentity.upsert.mockImplementation(async (args: any) => ({
+      customerId: args.create.customer.create.id,
+    }));
 
     fetchMock.mockResolvedValue({
       ok: true,
@@ -61,7 +54,7 @@ describe('provisionSharedChannelCustomer', () => {
   });
 
   it('routes an existing shared-channel customer on external identity lookup hit', async () => {
-    db.externalIdentity.findUnique.mockResolvedValueOnce({ customerId: 'ck_existing' });
+    db.__tx.externalIdentity.upsert.mockResolvedValueOnce({ customerId: 'ck_existing' });
 
     await expect(
       provisionSharedChannelCustomer({
@@ -83,7 +76,7 @@ describe('provisionSharedChannelCustomer', () => {
       provisionStatus: 'ready',
     });
 
-    expect(db.externalIdentity.update).toHaveBeenCalledWith({
+    expect(db.__tx.externalIdentity.upsert).toHaveBeenCalledWith({
       where: {
         provider_identityType_identityValue: {
           provider: 'whatsapp_business',
@@ -91,11 +84,16 @@ describe('provisionSharedChannelCustomer', () => {
           identityValue: '14155550100',
         },
       },
-      data: {
+      update: {
         lastSeenAt: expect.any(Date),
       },
+      create: expect.objectContaining({
+        provider: 'whatsapp_business',
+        identityType: 'wa_id',
+        identityValue: '14155550100',
+        firstSeenChannelId: 'ch_1',
+      }),
     });
-    expect(db.$transaction).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(queueParkedInbound).not.toHaveBeenCalled();
   });
@@ -121,42 +119,49 @@ describe('provisionSharedChannelCustomer', () => {
       provisionStatus: 'ready',
     });
 
-    const customerCreateArgs = db.__tx.customer.create.mock.calls[0]?.[0];
-    const customerId = customerCreateArgs?.data?.id;
+    const upsertArgs = db.__tx.externalIdentity.upsert.mock.calls[0]?.[0];
+    const customerId = upsertArgs?.create?.customer?.create?.id;
 
-    expect(db.__tx.identity.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        displayName: 'Alice',
-        claimStatus: 'unclaimed',
+    expect(upsertArgs).toEqual({
+      where: expect.objectContaining({
+        provider_identityType_identityValue: {
+          provider: 'whatsapp_business',
+          identityType: 'wa_id',
+          identityValue: '14155550100',
+        },
       }),
-    });
-    expect(customerCreateArgs).toEqual({
-      data: expect.objectContaining({
-        id: expect.stringMatching(/^ck_/),
-        kind: 'personal',
-        displayName: 'Alice',
-      }),
-    });
-    expect(db.__tx.membership.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId,
-        role: 'owner',
-      }),
-    });
-    expect(db.__tx.agentBinding.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId,
-        agentId: 'agent_shared',
-        provisionStatus: 'pending',
-      }),
-    });
-    expect(db.__tx.externalIdentity.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+      update: {
+        lastSeenAt: expect.any(Date),
+      },
+      create: expect.objectContaining({
         provider: 'whatsapp_business',
         identityType: 'wa_id',
         identityValue: '14155550100',
-        customerId,
         firstSeenChannelId: 'ch_1',
+        customer: {
+          create: expect.objectContaining({
+            id: expect.stringMatching(/^ck_/),
+            kind: 'personal',
+            displayName: 'Alice',
+            memberships: {
+              create: expect.objectContaining({
+                role: 'owner',
+                identity: {
+                  create: expect.objectContaining({
+                    displayName: 'Alice',
+                    claimStatus: 'unclaimed',
+                  }),
+                },
+              }),
+            },
+            agentBindings: {
+              create: expect.objectContaining({
+                agentId: 'agent_shared',
+                provisionStatus: 'pending',
+              }),
+            },
+          }),
+        },
       }),
     });
     expect(fetchMock).toHaveBeenCalledWith(
@@ -192,14 +197,12 @@ describe('provisionSharedChannelCustomer', () => {
       },
     };
 
-    db.externalIdentity.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ customerId: 'ck_existing' });
     db.$transaction.mockImplementationOnce(async (fn: (txClient: typeof db.__tx) => Promise<unknown>) => {
       await expect(fn(db.__tx)).rejects.toEqual(uniqueConflict);
       throw uniqueConflict;
     });
-    db.__tx.externalIdentity.create.mockRejectedValueOnce(uniqueConflict);
+    db.__tx.externalIdentity.upsert.mockRejectedValueOnce(uniqueConflict);
+    db.externalIdentity.findUnique.mockResolvedValueOnce({ customerId: 'ck_existing' });
 
     await expect(
       provisionSharedChannelCustomer({
@@ -221,7 +224,16 @@ describe('provisionSharedChannelCustomer', () => {
       provisionStatus: 'ready',
     });
 
-    expect(db.externalIdentity.findUnique).toHaveBeenCalledTimes(2);
+    expect(db.externalIdentity.findUnique).toHaveBeenCalledWith({
+      where: {
+        provider_identityType_identityValue: {
+          provider: 'whatsapp_business',
+          identityType: 'wa_id',
+          identityValue: '14155550100',
+        },
+      },
+      select: { customerId: true },
+    });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(queueParkedInbound).not.toHaveBeenCalled();
   });
@@ -242,7 +254,7 @@ describe('provisionSharedChannelCustomer', () => {
       },
     });
 
-    const customerId = db.__tx.customer.create.mock.calls[0]?.[0]?.data?.id;
+    const customerId = db.__tx.externalIdentity.upsert.mock.calls[0]?.[0]?.create?.customer?.create?.id;
 
     expect(result).toEqual({
       customerId,
