@@ -13,7 +13,7 @@ export default function PaymentSuccessPage() {
       <p className="mt-3 text-sm leading-6 text-slate-600">{copy.description}</p>
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
-          href="/coke/bind-wechat"
+          href="/channels/wechat-personal"
           className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
         >
           {copy.primaryCta}

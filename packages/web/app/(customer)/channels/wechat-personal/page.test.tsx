@@ -227,7 +227,7 @@ describe('CustomerWechatPersonalPage blocked access states', () => {
 
     expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain('先完成邮箱验证和订阅续费');
-    expect(container.querySelector('a[href="/coke/verify-email"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/verify-email"]')).toBeTruthy();
     expect(container.querySelector('a[href="/coke/renew"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Verify your email and renew your subscription');
   });

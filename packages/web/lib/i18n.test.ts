@@ -110,20 +110,26 @@ describe('i18n helpers', () => {
   it('exposes matching locale branches in the message catalog', () => {
     expect(messages.en.common.languageLabel).toBe('Language');
     expect(messages.zh.common.languageLabel).toBe('语言');
+    expect(messages.en.customerLayout.title).toBeDefined();
+    expect(messages.zh.customerLayout.title).toBeDefined();
     expect(messages.en.publicShell.cta.signIn).toBeDefined();
     expect(messages.zh.publicShell.cta.signIn).toBeDefined();
-    expect(messages.en.cokeUserPages.login.resendVerificationEmail).toBe('Resend verification email');
-    expect(messages.zh.cokeUserPages.login.resendVerificationEmail).toBe('重新发送验证邮件');
-    expect(messages.en.cokeUserPages.login.verificationRetryDescription).toBe(
+    expect(messages.en.customerPages.login.resendVerificationEmail).toBe('Resend verification email');
+    expect(messages.zh.customerPages.login.resendVerificationEmail).toBe('重新发送验证邮件');
+    expect(messages.en.customerPages.login.verificationRetryDescription).toBe(
       "We couldn't verify your email right now. Resend a verification email to continue.",
     );
-    expect(messages.zh.cokeUserPages.login.verificationRetryDescription).toBe(
+    expect(messages.zh.customerPages.login.verificationRetryDescription).toBe(
       '暂时无法验证你的邮箱。请重新发送验证邮件继续。',
     );
-    expect(messages.en.cokeUserPages.verifyEmail.verifyingDescription).toBe(
+    expect(messages.en.customerPages.verifyEmail.verifyingDescription).toBe(
       'Verifying your email link now...',
     );
-    expect(messages.zh.cokeUserPages.verifyEmail.verifyingDescription).toBe('正在验证你的邮箱链接...');
+    expect(messages.zh.customerPages.verifyEmail.verifyingDescription).toBe('正在验证你的邮箱链接...');
+    expect(messages.en.cokeUserLayout.title).toBeDefined();
+    expect(messages.zh.cokeUserLayout.title).toBeDefined();
+    expect(messages.en.cokeUserPages.renew.title).toBeDefined();
+    expect(messages.zh.cokeUserPages.renew.title).toBeDefined();
     expect(messages.en.homepage.platforms.items.length).toBeGreaterThan(0);
     expect(messages.zh.homepage.platforms.items.length).toBeGreaterThan(0);
     expect(LOCALE_COOKIE_NAME).toBe(LOCALE_STORAGE_KEY);

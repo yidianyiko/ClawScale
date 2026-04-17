@@ -52,64 +52,7 @@ type BindWechatViewModelMessages = {
   };
 };
 
-export type LocaleMessages = {
-  common: {
-    languageLabel: string;
-    localeLabel: string;
-    retryLabel: string;
-    signOutLabel: string;
-  };
-  publicShell: {
-    brandTagline: string;
-    nav: Array<{ href: string; label: string }>;
-    cta: SharedButtonMessages;
-    languageSwitchLabel: string;
-  };
-  homepage: {
-    hero: {
-      eyebrow: string;
-      title: string;
-      subtitle: string;
-      body: string;
-      primaryCta: string;
-      secondaryCta: string;
-    };
-    stats: Array<{ value: string; label: string }>;
-    spotlight: {
-      title: string;
-      body: string;
-    };
-    platforms: {
-      eyebrow: string;
-      title: string;
-      subtitle: string;
-      items: string[];
-    };
-    features: {
-      eyebrow: string;
-      title: string;
-      subtitle: string;
-      items: Array<{
-        title: string;
-        subtitle: string;
-        body: string;
-      }>;
-    };
-    architecture: {
-      eyebrow: string;
-      title: string;
-      subtitle: string;
-      points: string[];
-    };
-    contact: {
-      eyebrow: string;
-      title: string;
-      body: string;
-      primaryCta: string;
-      secondaryCta: string;
-    };
-  };
-  cokeUserLayout: {
+type CustomerLayoutMessages = {
     brandName: string;
     brandTagline: string;
     navLabel: string;
@@ -118,7 +61,8 @@ export type LocaleMessages = {
     body: string;
     secondaryBody: string;
   };
-  cokeUserPages: {
+
+type CustomerPagesMessages = {
     login: {
       eyebrow: string;
       heroTitle: string;
@@ -282,6 +226,68 @@ export type LocaleMessages = {
       viewModel: BindWechatViewModelMessages;
     };
   };
+
+export type LocaleMessages = {
+  common: {
+    languageLabel: string;
+    localeLabel: string;
+    retryLabel: string;
+    signOutLabel: string;
+  };
+  publicShell: {
+    brandTagline: string;
+    nav: Array<{ href: string; label: string }>;
+    cta: SharedButtonMessages;
+    languageSwitchLabel: string;
+  };
+  homepage: {
+    hero: {
+      eyebrow: string;
+      title: string;
+      subtitle: string;
+      body: string;
+      primaryCta: string;
+      secondaryCta: string;
+    };
+    stats: Array<{ value: string; label: string }>;
+    spotlight: {
+      title: string;
+      body: string;
+    };
+    platforms: {
+      eyebrow: string;
+      title: string;
+      subtitle: string;
+      items: string[];
+    };
+    features: {
+      eyebrow: string;
+      title: string;
+      subtitle: string;
+      items: Array<{
+        title: string;
+        subtitle: string;
+        body: string;
+      }>;
+    };
+    architecture: {
+      eyebrow: string;
+      title: string;
+      subtitle: string;
+      points: string[];
+    };
+    contact: {
+      eyebrow: string;
+      title: string;
+      body: string;
+      primaryCta: string;
+      secondaryCta: string;
+    };
+  };
+  customerLayout: CustomerLayoutMessages;
+  cokeUserLayout: CustomerLayoutMessages;
+  customerPages: CustomerPagesMessages;
+  cokeUserPages: CustomerPagesMessages;
 };
 
 export type MessagesCatalog = Record<Locale, LocaleMessages>;
@@ -382,14 +388,242 @@ export const messages: MessagesCatalog = {
         secondaryCta: 'Existing account',
       },
     },
+    customerLayout: {
+      brandName: 'Coke AI',
+      brandTagline: 'Unified customer auth and channel access',
+      navLabel: 'Handle sign-in, verification, and personal WeChat access',
+      eyebrow: 'Customer Account',
+      title: 'Enter your customer workspace',
+      body: 'Use the neutral customer routes for sign-in, registration, password recovery, email verification, and personal WeChat setup.',
+      secondaryBody: 'Legacy /coke/* generic routes stay in place as compatibility redirects until every internal caller moves.',
+    },
     cokeUserLayout: {
       brandName: 'Coke AI',
-      brandTagline: 'Public access and personal account flow',
-      navLabel: 'Manage your personal WeChat channel',
-      eyebrow: 'Coke Account',
-      title: 'Access your personal AI workspace',
-      body: 'Start from the public homepage, verify your email, and continue into your personal WeChat channel workflow.',
-      secondaryBody: 'This account flow keeps your personal access, subscription status, and channel setup in one place.',
+      brandTagline: 'Subscription and Coke business management',
+      navLabel: 'Manage Coke billing and delivery state',
+      eyebrow: 'Coke Workspace',
+      title: 'Keep your Coke service active',
+      body: 'Handle renewal, payment follow-up, and the business-side steps that still stay under Coke-specific routes.',
+      secondaryBody: 'Generic sign-in, recovery, and customer channel setup now live under the neutral customer routes.',
+    },
+    customerPages: {
+      login: {
+        eyebrow: 'Sign in',
+        heroTitle: 'Return to your Coke account',
+        heroBody:
+          'After sign-in, Coke keeps the existing verification and subscription checks, then routes you back to your personal WeChat setup.',
+        heroSecondaryBody:
+          'Use the same account flow you started from the public homepage.',
+        backToHomepage: 'Back to homepage',
+        title: 'Sign in to Coke',
+        description: 'Enter your email and password to continue your personal Coke flow.',
+        emailLabel: 'Email',
+        emailPlaceholder: 'alice@example.com',
+        passwordLabel: 'Password',
+        passwordPlaceholder: 'Enter your password',
+        submit: 'Sign in to Coke',
+        submitting: 'Signing in...',
+        forgotPasswordPrompt: 'Forgot your password?',
+        forgotPasswordLink: 'Reset it',
+        registerPrompt: 'Need an account?',
+        registerLink: 'Create one',
+        suspendedError: 'Your Coke account is suspended.',
+        emailVerificationRequired: 'Email verification is required.',
+        subscriptionRenewalRequired: 'Subscription renewal is required.',
+        success: 'Sign-in succeeded.',
+        genericError: 'Unable to sign in right now.',
+        verificationRecoveryTitle: 'Verify your email',
+        verificationRecoveryDescription:
+          'This link is invalid or expired. Resend a verification email to continue.',
+        verificationRetryDescription:
+          "We couldn't verify your email right now. Resend a verification email to continue.",
+        resendVerificationEmail: 'Resend verification email',
+        resendingVerificationEmail: 'Sending verification email...',
+        resendVerificationSuccess: 'Verification email sent. Check your inbox.',
+        resendVerificationError: 'Unable to resend the verification email right now.',
+    },
+      register: {
+        eyebrow: 'Register',
+        heroTitle: 'Create your Coke account',
+        heroBody:
+          'Registration leads into email verification first, then the personal WeChat channel setup you already use.',
+        heroSecondaryBody: 'Create your account once and continue the rest of the setup from here.',
+        backToHomepage: 'Back to homepage',
+        title: 'Create your Coke account',
+        description: 'Register here, verify your email, and continue into personal channel setup.',
+        displayNameLabel: 'Display name',
+        displayNamePlaceholder: 'Alice',
+        emailLabel: 'Email',
+        emailPlaceholder: 'alice@example.com',
+        passwordLabel: 'Password',
+        passwordPlaceholder: 'Create a password',
+        submit: 'Create Coke account',
+        submitting: 'Creating account...',
+        signInPrompt: 'Already registered?',
+        signInLink: 'Sign in',
+        genericError: 'Unable to create your account right now.',
+      },
+      forgotPassword: {
+        title: 'Forgot your password',
+        description:
+          'Enter your account email and we will send a reset link if the address is registered.',
+        emailLabel: 'Email',
+        emailPlaceholder: 'alice@example.com',
+        submit: 'Send reset link',
+        submitting: 'Sending...',
+        success: 'Password reset instructions were sent if the account exists.',
+        backToSignInPrompt: 'Remembered your password?',
+        backToSignInLink: 'Back to sign in',
+        genericError: 'Unable to send password reset instructions right now.',
+      },
+      resetPassword: {
+        title: 'Reset your password',
+        description: 'Paste the reset token from your email and choose a new password.',
+        tokenLabel: 'Reset token',
+        tokenPlaceholder: 'Paste the token from your email',
+        passwordLabel: 'New password',
+        confirmPasswordLabel: 'Confirm password',
+        submit: 'Reset password',
+        submitting: 'Saving...',
+        mismatchError: 'Passwords do not match.',
+        success: 'Password reset complete.',
+        requestNewLinkPrompt: 'Need to start over?',
+        requestNewLinkLink: 'Request a new reset link',
+        genericError: 'Unable to reset your password right now.',
+      },
+      verifyEmail: {
+        title: 'Verify your email',
+        description: 'We are preparing your secure email verification.',
+        verifyingDescription: 'Verifying your email link now...',
+      },
+      renew: {
+        title: 'Renew your access',
+        preparing: 'Preparing your renewal checkout...',
+        ready: 'Return to checkout when you are ready.',
+        signIn: 'Sign in',
+        backToSetup: 'Back to setup',
+        genericError: 'Unable to start renewal right now.',
+      },
+      paymentSuccess: {
+        title: 'Payment complete',
+        description:
+          'Your renewal payment was received. Return to your account to finish connecting WeChat.',
+        primaryCta: 'Go to WeChat setup',
+        secondaryCta: 'Check renewal',
+      },
+      paymentCancel: {
+        title: 'Payment canceled',
+        description:
+          'The checkout flow was canceled before payment completed. You can try again when you are ready.',
+        primaryCta: 'Restart renewal',
+        secondaryCta: 'Back to setup',
+      },
+      bindWechat: {
+        blocked: {
+          accessEyebrow: 'Account access',
+          suspendedTitle: 'Your Coke account is suspended',
+          suspendedDescription:
+            'Contact support to restore access before binding a personal WeChat channel.',
+          prerequisitesTitle:
+            'Verify your email and renew your subscription before creating a WeChat channel.',
+          prerequisitesDescription:
+            'Finish the required account steps, then come back here to create or reconnect your channel.',
+          verifyEmail: 'Verify email',
+          renewSubscription: 'Renew subscription',
+        },
+        loadFailure: {
+          title: 'Unable to load your WeChat channel',
+        },
+        loading: {
+          title: 'Loading your WeChat channel',
+          description: 'We are checking the personal channel attached to this Coke account.',
+        },
+        statusDescriptions: {
+          missing: 'Create the channel first, then start a QR session for your own WeChat login.',
+          archived: 'Archived channels do not route messages. Create a fresh channel to start over.',
+          disconnected:
+            'The channel exists but is not connected yet. Start a QR session to bring it online.',
+        },
+        qr: {
+          imageAlt: 'Personal Coke WeChat login QR',
+          preparing: 'Preparing your QR code...',
+          expiresPrefix: 'This QR session expires at',
+          activeSuffix: 'The current QR session is still active.',
+        },
+        connectedCard: {
+          eyebrow: 'Connected',
+          descriptionWithIdentity: 'WeChat {identity} is connected to this Coke account.',
+          descriptionWithoutIdentity: 'Your personal WeChat channel is connected and ready.',
+          accountOwnershipSuffix: '{name}, this belongs to your Coke account.',
+        },
+        errorCard: {
+          eyebrow: 'Connection error',
+          fallbackDescription: 'The last connect attempt failed. Retry or archive this channel.',
+        },
+        nextSteps: {
+          title: 'What you can do next',
+          missing: 'Create your personal WeChat channel for this account.',
+          disconnected: 'Start a QR login session to connect the existing channel.',
+          pending:
+            'Scan the QR code with the WeChat account you want to own this channel.',
+          connected: 'Disconnect the channel when you want to take it offline.',
+          error: 'Retry the connect flow or archive the broken channel.',
+          archived: 'Create a fresh channel if you want to start over.',
+        },
+        busyActions: {
+          create: 'Creating...',
+          connect: 'Connecting...',
+          refresh: 'Refreshing...',
+          disconnect: 'Disconnecting...',
+          reconnect: 'Reconnecting...',
+          archive: 'Archiving...',
+        },
+        accountPrompt: 'Need an account?',
+        createAccount: 'Create one',
+        viewModel: {
+          missing: {
+            eyebrow: 'No channel yet',
+            title: 'Create my WeChat channel',
+            description:
+              'Create a personal WeChat channel for this Coke account, then connect it with a QR login.',
+            primaryActionLabel: 'Create my WeChat channel',
+          },
+          disconnected: {
+            eyebrow: 'Channel created',
+            title: 'Connect WeChat',
+            description:
+              'Your personal WeChat channel exists. Start a QR login session to bring it online.',
+            primaryActionLabel: 'Connect WeChat',
+          },
+          pending: {
+            eyebrow: 'QR login in progress',
+            title: 'Scan the QR code to connect',
+            description: 'Use the QR below to log your personal channel into WeChat.',
+            primaryActionLabel: 'Refresh QR',
+          },
+          connected: {
+            eyebrow: 'Connected',
+            title: 'WeChat is connected',
+            descriptionWithIdentity: 'Your personal channel is live as {identity}.',
+            descriptionWithoutIdentity: 'Your personal WeChat channel is connected and ready.',
+            primaryActionLabel: 'Disconnect WeChat',
+          },
+          error: {
+            eyebrow: 'Connection error',
+            title: 'Reconnect or archive your channel',
+            descriptionFallback:
+              'The last connect attempt failed. You can retry or archive this channel.',
+            primaryActionLabel: 'Reconnect',
+            secondaryActionLabel: 'Archive channel',
+          },
+          archived: {
+            eyebrow: 'Archived',
+            title: 'This WeChat channel is archived',
+            description: 'Create a fresh personal channel if you want to use WeChat again.',
+            primaryActionLabel: 'Create my WeChat channel again',
+          },
+        },
+      },
     },
     cokeUserPages: {
       login: {
@@ -698,14 +932,226 @@ export const messages: MessagesCatalog = {
         secondaryCta: '已有账号',
       },
     },
+    customerLayout: {
+      brandName: 'Coke AI',
+      brandTagline: '统一管理客户登录与通道接入',
+      navLabel: '处理登录、验证与个人微信接入',
+      eyebrow: '客户账号',
+      title: '进入你的客户工作区',
+      body: '在中立的 customer 路由下完成登录、注册、密码找回、邮箱验证和个人微信接入。',
+      secondaryBody: '旧的 /coke/* 通用入口会暂时保留为兼容跳转，直到所有内部调用都迁移完成。',
+    },
     cokeUserLayout: {
       brandName: 'Coke AI',
-      brandTagline: '公开入口与个人账号流程',
-      navLabel: '管理你的个人微信通道',
-      eyebrow: 'Coke 账号',
-      title: '进入你的个人 AI 工作区',
-      body: '从官网入口注册、验证邮箱后，再继续进入你的个人微信绑定与后续管理流程。',
-      secondaryBody: '这里会统一承接账号访问、订阅状态和个人微信通道设置。',
+      brandTagline: '管理订阅与 Coke 业务状态',
+      navLabel: '管理 Coke 账单与交付状态',
+      eyebrow: 'Coke 工作区',
+      title: '保持你的 Coke 服务处于启用状态',
+      body: '在这里处理续费、支付后续动作，以及仍然保留在 Coke 专属路由下的业务步骤。',
+      secondaryBody: '通用登录、找回访问和客户通道设置现在都放在中立的 customer 路由下。',
+    },
+    customerPages: {
+      login: {
+        eyebrow: '登录',
+        heroTitle: '返回你的 Coke 账号',
+        heroBody: '登录后，系统会继续检查邮箱验证和订阅状态，再把你带回个人微信设置流程。',
+        heroSecondaryBody: '使用你在官网入口创建的同一个账号继续后续流程。',
+        backToHomepage: '返回首页',
+        title: '登录 Coke',
+        description: '输入邮箱和密码，继续你的个人 Coke 使用流程。',
+        emailLabel: '邮箱',
+        emailPlaceholder: 'alice@example.com',
+        passwordLabel: '密码',
+        passwordPlaceholder: '输入你的密码',
+        submit: '登录 Coke',
+        submitting: '登录中...',
+        forgotPasswordPrompt: '忘记密码？',
+        forgotPasswordLink: '立即重置',
+        registerPrompt: '还没有账号？',
+        registerLink: '创建账号',
+        suspendedError: '你的 Coke 账号已被停用。',
+        emailVerificationRequired: '需要先完成邮箱验证。',
+        subscriptionRenewalRequired: '需要先完成订阅续费。',
+        success: '登录成功。',
+        genericError: '暂时无法登录，请稍后再试。',
+        verificationRecoveryTitle: '验证你的邮箱',
+        verificationRecoveryDescription: '这个链接已失效或已过期。请重新发送验证邮件继续。',
+        verificationRetryDescription: '暂时无法验证你的邮箱。请重新发送验证邮件继续。',
+        resendVerificationEmail: '重新发送验证邮件',
+        resendingVerificationEmail: '正在发送验证邮件...',
+        resendVerificationSuccess: '验证邮件已发送，请查收邮箱。',
+        resendVerificationError: '暂时无法重新发送验证邮件，请稍后再试。',
+    },
+      register: {
+        eyebrow: '注册',
+        heroTitle: '创建你的 Coke 账号',
+        heroBody: '注册完成后会先进入邮箱验证，然后继续进入你已经在使用的个人微信设置流程。',
+        heroSecondaryBody: '先完成账号创建，再从这里继续后续步骤。',
+        backToHomepage: '返回首页',
+        title: '创建你的 Coke 账号',
+        description: '在这里注册账号、完成邮箱验证，然后继续进入个人通道设置。',
+        displayNameLabel: '昵称',
+        displayNamePlaceholder: '例如：小可',
+        emailLabel: '邮箱',
+        emailPlaceholder: 'alice@example.com',
+        passwordLabel: '密码',
+        passwordPlaceholder: '创建一个密码',
+        submit: '创建 Coke 账号',
+        submitting: '账号创建中...',
+        signInPrompt: '已经注册？',
+        signInLink: '去登录',
+        genericError: '暂时无法创建账号，请稍后再试。',
+      },
+      forgotPassword: {
+        title: '忘记密码',
+        description: '输入账号邮箱，如果该地址已注册，我们会发送重置链接。',
+        emailLabel: '邮箱',
+        emailPlaceholder: 'alice@example.com',
+        submit: '发送重置链接',
+        submitting: '发送中...',
+        success: '如果该账号存在，我们已经发送了密码重置说明。',
+        backToSignInPrompt: '想起密码了？',
+        backToSignInLink: '返回登录',
+        genericError: '暂时无法发送重置说明，请稍后再试。',
+      },
+      resetPassword: {
+        title: '重置密码',
+        description: '粘贴邮件中的重置令牌，并设置一个新密码。',
+        tokenLabel: '重置令牌',
+        tokenPlaceholder: '粘贴邮件中的令牌',
+        passwordLabel: '新密码',
+        confirmPasswordLabel: '确认密码',
+        submit: '重置密码',
+        submitting: '保存中...',
+        mismatchError: '两次输入的密码不一致。',
+        success: '密码重置完成。',
+        requestNewLinkPrompt: '需要重新开始？',
+        requestNewLinkLink: '申请新的重置链接',
+        genericError: '暂时无法重置密码，请稍后再试。',
+      },
+      verifyEmail: {
+        title: '验证邮箱',
+        description: '我们正在为你准备安全的邮箱验证。',
+        verifyingDescription: '正在验证你的邮箱链接...',
+      },
+      renew: {
+        title: '续订访问权限',
+        preparing: '正在准备续费结账流程...',
+        ready: '准备好后可重新进入结账流程。',
+        signIn: '登录',
+        backToSetup: '返回设置',
+        genericError: '暂时无法发起续费，请稍后再试。',
+      },
+      paymentSuccess: {
+        title: '支付完成',
+        description: '我们已收到你的续费付款。返回账号后即可继续完成微信连接。',
+        primaryCta: '前往微信设置',
+        secondaryCta: '检查续费状态',
+      },
+      paymentCancel: {
+        title: '支付已取消',
+        description: '结账流程在付款完成前已取消。准备好后你可以再次尝试。',
+        primaryCta: '重新发起续费',
+        secondaryCta: '返回设置',
+      },
+      bindWechat: {
+        blocked: {
+          accessEyebrow: '账号访问',
+          suspendedTitle: '你的 Coke 账号已被停用',
+          suspendedDescription: '请先联系支持恢复访问权限，然后再绑定个人微信通道。',
+          prerequisitesTitle: '先完成邮箱验证和订阅续费，再创建微信通道。',
+          prerequisitesDescription: '先把账号要求的步骤完成，再回来创建或重新连接你的微信通道。',
+          verifyEmail: '验证邮箱',
+          renewSubscription: '续费订阅',
+        },
+        loadFailure: {
+          title: '无法加载你的微信通道',
+        },
+        loading: {
+          title: '正在加载你的微信通道',
+          description: '我们正在检查当前 Coke 账号绑定的个人微信通道状态。',
+        },
+        statusDescriptions: {
+          missing: '先创建通道，然后再发起属于你自己的微信扫码登录会话。',
+          archived: '归档通道不会再转发消息。若要重新开始，请创建一个新的通道。',
+          disconnected: '通道已经存在，但尚未连接。发起扫码会话即可让它重新上线。',
+        },
+        qr: {
+          imageAlt: '个人 Coke 微信登录二维码',
+          preparing: '正在生成二维码...',
+          expiresPrefix: '该二维码会话过期时间：',
+          activeSuffix: '当前二维码会话仍然有效。',
+        },
+        connectedCard: {
+          eyebrow: '已连接',
+          descriptionWithIdentity: '微信 {identity} 已连接到这个 Coke 账号。',
+          descriptionWithoutIdentity: '你的个人微信通道已连接并可正常使用。',
+          accountOwnershipSuffix: '{name}，这个通道归属于你的 Coke 账号。',
+        },
+        errorCard: {
+          eyebrow: '连接异常',
+          fallbackDescription: '上一次连接尝试失败了。你可以重试，或归档这个通道。',
+        },
+        nextSteps: {
+          title: '接下来可以做什么',
+          missing: '为这个账号创建你的个人微信通道。',
+          disconnected: '发起扫码登录会话，连接这个已存在的通道。',
+          pending: '使用你希望拥有该通道的微信账号扫描二维码。',
+          connected: '需要下线时，可以断开这个通道。',
+          error: '重新走一次连接流程，或归档当前异常通道。',
+          archived: '如果想重新开始，请创建一个新的通道。',
+        },
+        busyActions: {
+          create: '创建中...',
+          connect: '连接中...',
+          refresh: '刷新中...',
+          disconnect: '断开中...',
+          reconnect: '重新连接中...',
+          archive: '归档中...',
+        },
+        accountPrompt: '还没有账号？',
+        createAccount: '创建一个',
+        viewModel: {
+          missing: {
+            eyebrow: '尚未创建通道',
+            title: '创建我的微信通道',
+            description: '为这个 Coke 账号创建一个个人微信通道，然后通过扫码登录把它连接起来。',
+            primaryActionLabel: '创建我的微信通道',
+          },
+          disconnected: {
+            eyebrow: '通道已创建',
+            title: '连接微信',
+            description: '你的个人微信通道已经存在。发起扫码登录会话即可让它上线。',
+            primaryActionLabel: '连接微信',
+          },
+          pending: {
+            eyebrow: '扫码登录进行中',
+            title: '扫描二维码完成连接',
+            description: '使用下方二维码把你的个人通道登录到微信。',
+            primaryActionLabel: '刷新二维码',
+          },
+          connected: {
+            eyebrow: '已连接',
+            title: '微信已连接',
+            descriptionWithIdentity: '你的个人通道已使用 {identity} 连通。',
+            descriptionWithoutIdentity: '你的个人微信通道已连接并可正常使用。',
+            primaryActionLabel: '断开微信',
+          },
+          error: {
+            eyebrow: '连接异常',
+            title: '重新连接或归档通道',
+            descriptionFallback: '上一次连接尝试失败。你可以重试，或归档这个通道。',
+            primaryActionLabel: '重新连接',
+            secondaryActionLabel: '归档通道',
+          },
+          archived: {
+            eyebrow: '已归档',
+            title: '这个微信通道已归档',
+            description: '如果你还想继续使用微信，请重新创建一个新的个人通道。',
+            primaryActionLabel: '重新创建我的微信通道',
+          },
+        },
+      },
     },
     cokeUserPages: {
       login: {

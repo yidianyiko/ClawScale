@@ -7,7 +7,7 @@ import { useLocale } from '../../../components/locale-provider';
 
 export default function CustomerAuthLayout({ children }: { children: ReactNode }) {
   const { messages } = useLocale();
-  const copy = messages.cokeUserLayout;
+  const copy = messages.customerLayout;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_rgba(10,17,29,0.98)_42%,_#050814_100%)] text-white">

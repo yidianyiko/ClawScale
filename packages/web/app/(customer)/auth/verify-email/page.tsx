@@ -11,8 +11,8 @@ type RecoveryReason = 'manual' | 'expired' | 'retry';
 
 export default function CustomerVerifyEmailPage() {
   const { messages } = useLocale();
-  const copy = messages.cokeUserPages.verifyEmail;
-  const loginCopy = messages.cokeUserPages.login;
+  const copy = messages.customerPages.verifyEmail;
+  const loginCopy = messages.customerPages.login;
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState('');

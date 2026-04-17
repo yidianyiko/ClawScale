@@ -19,7 +19,7 @@ export default function RenewPage() {
 
   useEffect(() => {
     if (!hasToken) {
-      router.replace('/coke/login?next=/coke/renew');
+      router.replace('/auth/login?next=/coke/renew');
       return;
     }
 
@@ -66,13 +66,13 @@ export default function RenewPage() {
       {!loading || error ? (
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
-            href="/coke/login"
+            href="/auth/login"
             className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
           >
             {copy.signIn}
           </Link>
           <Link
-            href="/coke/bind-wechat"
+            href="/channels/wechat-personal"
             className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
           >
             {copy.backToSetup}

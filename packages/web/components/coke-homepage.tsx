@@ -25,14 +25,14 @@ export function CokeHomepage() {
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <Link
-              href="/coke/register"
+              href="/auth/register"
               className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-teal-300"
             >
               {messages.homepage.hero.primaryCta}
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/coke/login"
+              href="/auth/login"
               className="inline-flex items-center rounded-full border border-white/15 px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/5"
             >
               {messages.homepage.hero.secondaryCta}
@@ -132,13 +132,13 @@ export function CokeHomepage() {
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <Link
-              href="/coke/register"
+              href="/auth/register"
               className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
             >
               {messages.homepage.contact.primaryCta}
             </Link>
             <Link
-              href="/coke/login"
+              href="/auth/login"
               className="inline-flex items-center rounded-full border border-white/15 px-6 py-3 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/5"
             >
               {messages.homepage.contact.secondaryCta}

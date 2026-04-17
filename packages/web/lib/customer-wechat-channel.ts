@@ -27,7 +27,7 @@ export interface CustomerWechatChannelViewModel {
   secondaryActionLabel?: string;
 }
 
-type CustomerWechatChannelViewModelMessages = LocaleMessages['cokeUserPages']['bindWechat']['viewModel'];
+type CustomerWechatChannelViewModelMessages = LocaleMessages['customerPages']['bindWechat']['viewModel'];
 
 function normalizeEmptyArchiveResponse(
   response: ApiResponse<CustomerWechatChannelState> | undefined,

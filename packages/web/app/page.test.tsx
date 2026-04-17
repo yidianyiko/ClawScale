@@ -39,8 +39,8 @@ describe('HomePage', () => {
       );
     });
 
-    expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).toContain('An AI Partner That Grows With You');
     expect(container.textContent).toContain('Platforms');
     expect(container.textContent).not.toContain('Register / 注册');
@@ -55,8 +55,8 @@ describe('HomePage', () => {
       );
     });
 
-    expect(container.querySelector('a[href="/coke/register"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).toContain('与您共同成长的 AI 助手');
     expect(container.textContent).toContain('平台');
     expect(container.textContent).not.toContain('Register / 注册');

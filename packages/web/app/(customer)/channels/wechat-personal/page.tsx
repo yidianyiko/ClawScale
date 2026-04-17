@@ -46,7 +46,7 @@ function formatTemplate(template: string, values: Record<string, string>) {
 
 function getBlockedAccessState(
   user: CokeUser | null,
-  copy: ReturnType<typeof useLocale>['messages']['cokeUserPages']['bindWechat']['blocked'],
+  copy: ReturnType<typeof useLocale>['messages']['customerPages']['bindWechat']['blocked'],
 ): BlockedAccessState | null {
   if (isCokeUserSuspended(user)) {
     return {
@@ -58,7 +58,7 @@ function getBlockedAccessState(
 
   const actions: Array<{ href: string; label: string }> = [];
   if (needsCokeEmailVerification(user)) {
-    actions.push({ href: '/coke/verify-email', label: copy.verifyEmail });
+    actions.push({ href: '/auth/verify-email', label: copy.verifyEmail });
   }
   if (needsCokeSubscriptionRenewal(user)) {
     actions.push({ href: '/coke/renew', label: copy.renewSubscription });
@@ -77,7 +77,7 @@ function getBlockedAccessState(
 
 export default function CustomerWechatPersonalPage() {
   const { locale, messages } = useLocale();
-  const copy = messages.cokeUserPages.bindWechat;
+  const copy = messages.customerPages.bindWechat;
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -173,7 +173,7 @@ export default function CustomerWechatPersonalPage() {
     }
 
     if (!hasToken) {
-      router.replace('/coke/login');
+      router.replace('/auth/login');
       setLoading(false);
       return;
     }
@@ -217,7 +217,7 @@ export default function CustomerWechatPersonalPage() {
 
   function handleSignOut() {
     clearCokeUserAuth();
-    router.replace('/coke/login');
+    router.replace('/auth/login');
   }
 
   async function runAction(
@@ -550,7 +550,7 @@ export default function CustomerWechatPersonalPage() {
 
         <div className="mt-8 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
           {copy.accountPrompt}{' '}
-          <Link href="/coke/register" className="font-medium text-slate-950 underline underline-offset-4">
+          <Link href="/auth/register" className="font-medium text-slate-950 underline underline-offset-4">
             {copy.createAccount}
           </Link>
         </div>

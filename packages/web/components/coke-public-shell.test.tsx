@@ -50,6 +50,8 @@ describe('CokePublicShell', () => {
     expect(container.textContent).toContain('An AI Partner That Grows With You');
     expect(container.textContent).not.toContain('Register / 注册');
     expect(container.textContent).not.toContain('Platforms / 平台');
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.textContent).toContain('EN');
     expect(container.textContent).toContain('中文');
   });

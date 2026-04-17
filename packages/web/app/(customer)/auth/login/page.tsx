@@ -17,7 +17,7 @@ function isSafeInternalNext(next: string | null): next is string {
 
 export default function CustomerLoginPage() {
   const { messages } = useLocale();
-  const copy = messages.cokeUserPages.login;
+  const copy = messages.customerPages.login;
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

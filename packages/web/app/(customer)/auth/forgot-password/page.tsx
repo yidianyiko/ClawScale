@@ -9,7 +9,7 @@ import { cokeUserApi } from '../../../../lib/coke-user-api';
 
 export default function CustomerForgotPasswordPage() {
   const { messages } = useLocale();
-  const copy = messages.cokeUserPages.forgotPassword;
+  const copy = messages.customerPages.forgotPassword;
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');

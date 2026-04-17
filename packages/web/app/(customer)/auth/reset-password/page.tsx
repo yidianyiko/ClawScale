@@ -10,7 +10,7 @@ import { cokeUserApi } from '../../../../lib/coke-user-api';
 
 export default function CustomerResetPasswordPage() {
   const { messages } = useLocale();
-  const copy = messages.cokeUserPages.resetPassword;
+  const copy = messages.customerPages.resetPassword;
   const router = useRouter();
   const [enteredToken, setEnteredToken] = useState('');
   const [password, setPassword] = useState('');

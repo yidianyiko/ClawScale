@@ -11,7 +11,7 @@ import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-use
 
 export default function CustomerRegisterPage() {
   const { messages } = useLocale();
-  const copy = messages.cokeUserPages.register;
+  const copy = messages.customerPages.register;
   const router = useRouter();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
