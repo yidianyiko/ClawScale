@@ -3,31 +3,31 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
-const listQuerySchema = z.object({
-  channelId: z.string().min(1).optional(),
-  limit: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(1).max(200))
-    .optional(),
-  offset: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(0))
-    .optional(),
-});
+const listQuerySchema = z
+  .object({
+    channelId: z.string().min(1).optional(),
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(1).max(200))
+      .optional(),
+    offset: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(0))
+      .optional(),
+  })
+  .strict();
 
 export const adminDeliveriesRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const parsedQuery = listQuerySchema.safeParse({
-      channelId: url.searchParams.get('channelId') ?? undefined,
-      limit: url.searchParams.get('limit') ?? undefined,
-      offset: url.searchParams.get('offset') ?? undefined,
-    });
+    const parsedQuery = listQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams.entries()),
+    );
 
     if (!parsedQuery.success) {
       return c.json(

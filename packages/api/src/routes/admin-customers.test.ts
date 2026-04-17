@@ -138,4 +138,20 @@ describe('admin customers route', () => {
     expect(db.customer.findMany).not.toHaveBeenCalled();
     expect(db.customer.count).not.toHaveBeenCalled();
   });
+
+  it('rejects unknown query params', async () => {
+    const app = new Hono();
+    app.route('/api/admin/customers', adminCustomersRouter);
+
+    const res = await app.request('/api/admin/customers?limt=10');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.customer.findMany).not.toHaveBeenCalled();
+    expect(db.customer.count).not.toHaveBeenCalled();
+  });
 });

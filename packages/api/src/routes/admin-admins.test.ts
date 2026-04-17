@@ -9,6 +9,7 @@ const db = vi.hoisted(() => ({
     findUnique: vi.fn(),
     count: vi.fn(),
   },
+  $transaction: vi.fn(),
 }));
 
 vi.mock('../db/index.js', () => ({ db }));
@@ -29,6 +30,11 @@ import { adminAdminsRouter } from './admin-admins.js';
 describe('admin admins route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db.$transaction.mockImplementation(async (callback: any) =>
+      callback({
+        adminAccount: db.adminAccount,
+      }),
+    );
   });
 
   it('lists, adds, and removes AdminAccount rows', async () => {
@@ -115,11 +121,59 @@ describe('admin admins route', () => {
         id: 'adm_456',
       },
     });
+    expect(db.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: 'Serializable',
+      }),
+    );
     expect(db.adminAccount.delete).toHaveBeenCalledWith({
       where: {
         id: 'adm_456',
       },
     });
+  });
+
+  it('retries the delete transaction after a serialization conflict', async () => {
+    const serializationConflict = Object.assign(new Error('write conflict'), {
+      code: 'P2034',
+    });
+
+    db.adminAccount.findUnique.mockResolvedValue({
+      id: 'adm_456',
+      isActive: true,
+    });
+    db.adminAccount.count.mockResolvedValue(2);
+    db.adminAccount.delete.mockResolvedValue({
+      id: 'adm_456',
+    });
+    db.$transaction
+      .mockRejectedValueOnce(serializationConflict)
+      .mockImplementationOnce(async (callback: any, options: any) => {
+        expect(options).toEqual({
+          isolationLevel: 'Serializable',
+        });
+
+        return callback({
+          adminAccount: db.adminAccount,
+        });
+      });
+
+    const app = new Hono();
+    app.route('/api/admin/admins', adminAdminsRouter);
+
+    const res = await app.request('/api/admin/admins/adm_456', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        id: 'adm_456',
+      },
+    });
+    expect(db.$transaction).toHaveBeenCalledTimes(2);
   });
 
   it('blocks self-delete', async () => {
@@ -135,6 +189,7 @@ describe('admin admins route', () => {
       ok: false,
       error: 'cannot_delete_self',
     });
+    expect(db.$transaction).not.toHaveBeenCalled();
     expect(db.adminAccount.findUnique).not.toHaveBeenCalled();
     expect(db.adminAccount.delete).not.toHaveBeenCalled();
   });
@@ -158,6 +213,7 @@ describe('admin admins route', () => {
       ok: false,
       error: 'cannot_delete_last_active_admin',
     });
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
     expect(db.adminAccount.delete).not.toHaveBeenCalled();
   });
 });

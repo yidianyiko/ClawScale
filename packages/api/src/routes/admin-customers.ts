@@ -62,20 +62,22 @@ const customerSelect = {
   },
 } as const;
 
-const listQuerySchema = z.object({
-  limit: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(1).max(200))
-    .optional(),
-  offset: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(0))
-    .optional(),
-});
+const listQuerySchema = z
+  .object({
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(1).max(200))
+      .optional(),
+    offset: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(0))
+      .optional(),
+  })
+  .strict();
 
 function buildContactIdentifier(row: {
   memberships: Array<{
@@ -116,10 +118,9 @@ export const adminCustomersRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const parsedQuery = listQuerySchema.safeParse({
-      limit: url.searchParams.get('limit') ?? undefined,
-      offset: url.searchParams.get('offset') ?? undefined,
-    });
+    const parsedQuery = listQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams.entries()),
+    );
 
     if (!parsedQuery.success) {
       return c.json(

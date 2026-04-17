@@ -96,4 +96,20 @@ describe('admin deliveries route', () => {
     expect(db.outboundDelivery.findMany).not.toHaveBeenCalled();
     expect(db.outboundDelivery.count).not.toHaveBeenCalled();
   });
+
+  it('rejects unknown query params', async () => {
+    const app = new Hono();
+    app.route('/api/admin/deliveries', adminDeliveriesRouter);
+
+    const res = await app.request('/api/admin/deliveries?chnnelId=ch_1');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.outboundDelivery.findMany).not.toHaveBeenCalled();
+    expect(db.outboundDelivery.count).not.toHaveBeenCalled();
+  });
 });

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -17,6 +18,19 @@ const adminSelect = {
   createdAt: true,
   updatedAt: true,
 } as const;
+
+const DELETE_ADMIN_MAX_ATTEMPTS = 2;
+
+class AdminDeleteGuardError extends Error {
+  constructor(
+    public readonly code:
+      | 'admin_not_found'
+      | 'cannot_delete_last_active_admin',
+  ) {
+    super(code);
+    this.name = 'AdminDeleteGuardError';
+  }
+}
 
 function isPrismaErrorCode(error: unknown, code: string): boolean {
   return (
@@ -88,50 +102,77 @@ export const adminAdminsRouter = new Hono()
       return c.json({ ok: false, error: 'cannot_delete_self' }, 422);
     }
 
-    const target = await db.adminAccount.findUnique({
-      where: {
-        id,
-      },
-      select: {
-        id: true,
-        isActive: true,
-      },
-    });
+    for (let attempt = 1; attempt <= DELETE_ADMIN_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const deleted = await db.$transaction(
+          async (tx) => {
+            const target = await tx.adminAccount.findUnique({
+              where: {
+                id,
+              },
+              select: {
+                id: true,
+                isActive: true,
+              },
+            });
 
-    if (!target) {
-      return c.json({ ok: false, error: 'admin_not_found' }, 404);
-    }
+            if (!target) {
+              throw new AdminDeleteGuardError('admin_not_found');
+            }
 
-    if (target.isActive) {
-      const activeAdminCount = await db.adminAccount.count({
-        where: {
-          isActive: true,
-        },
-      });
+            if (target.isActive) {
+              const activeAdminCount = await tx.adminAccount.count({
+                where: {
+                  isActive: true,
+                },
+              });
 
-      if (activeAdminCount <= 1) {
-        return c.json({ ok: false, error: 'cannot_delete_last_active_admin' }, 422);
+              if (activeAdminCount <= 1) {
+                throw new AdminDeleteGuardError('cannot_delete_last_active_admin');
+              }
+            }
+
+            return tx.adminAccount.delete({
+              where: {
+                id,
+              },
+            });
+          },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          },
+        );
+
+        return c.json({
+          ok: true,
+          data: {
+            id: deleted.id,
+          },
+        });
+      } catch (error) {
+        if (error instanceof AdminDeleteGuardError) {
+          if (error.code === 'admin_not_found') {
+            return c.json({ ok: false, error: error.code }, 404);
+          }
+
+          return c.json({ ok: false, error: error.code }, 422);
+        }
+
+        if (isPrismaErrorCode(error, 'P2034') && attempt < DELETE_ADMIN_MAX_ATTEMPTS) {
+          continue;
+        }
+
+        if (isPrismaErrorCode(error, 'P2034')) {
+          return c.json({ ok: false, error: 'delete_conflict' }, 409);
+        }
+
+        if (isPrismaErrorCode(error, 'P2025')) {
+          return c.json({ ok: false, error: 'admin_not_found' }, 404);
+        }
+
+        throw error;
       }
     }
 
-    try {
-      const deleted = await db.adminAccount.delete({
-        where: {
-          id,
-        },
-      });
-
-      return c.json({
-        ok: true,
-        data: {
-          id: deleted.id,
-        },
-      });
-    } catch (error) {
-      if (isPrismaErrorCode(error, 'P2025')) {
-        return c.json({ ok: false, error: 'admin_not_found' }, 404);
-      }
-
-      throw error;
-    }
+    return c.json({ ok: false, error: 'delete_conflict' }, 409);
   });

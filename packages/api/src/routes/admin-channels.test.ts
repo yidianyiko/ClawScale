@@ -116,4 +116,20 @@ describe('admin channels route', () => {
     expect(db.channel.findMany).not.toHaveBeenCalled();
     expect(db.channel.count).not.toHaveBeenCalled();
   });
+
+  it('rejects unknown query params', async () => {
+    const app = new Hono();
+    app.route('/api/admin/channels', adminChannelsRouter);
+
+    const res = await app.request('/api/admin/channels?statsu=connected');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.channel.findMany).not.toHaveBeenCalled();
+    expect(db.channel.count).not.toHaveBeenCalled();
+  });
 });

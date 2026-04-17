@@ -21,22 +21,24 @@ const CHANNEL_KIND_VALUES = [
   'wechat_personal',
 ] as const;
 
-const listQuerySchema = z.object({
-  status: z.enum(CHANNEL_STATUS_VALUES).optional(),
-  kind: z.enum(CHANNEL_KIND_VALUES).optional(),
-  limit: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(1).max(200))
-    .optional(),
-  offset: z
-    .string()
-    .regex(/^\d+$/)
-    .transform((value) => Number.parseInt(value, 10))
-    .pipe(z.number().int().min(0))
-    .optional(),
-});
+const listQuerySchema = z
+  .object({
+    status: z.enum(CHANNEL_STATUS_VALUES).optional(),
+    kind: z.enum(CHANNEL_KIND_VALUES).optional(),
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(1).max(200))
+      .optional(),
+    offset: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number.parseInt(value, 10))
+      .pipe(z.number().int().min(0))
+      .optional(),
+  })
+  .strict();
 
 type ChannelStatusFilter = (typeof CHANNEL_STATUS_VALUES)[number];
 type ChannelKindFilter = (typeof CHANNEL_KIND_VALUES)[number];
@@ -45,12 +47,9 @@ export const adminChannelsRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const parsedQuery = listQuerySchema.safeParse({
-      status: url.searchParams.get('status') ?? undefined,
-      kind: url.searchParams.get('kind') ?? undefined,
-      limit: url.searchParams.get('limit') ?? undefined,
-      offset: url.searchParams.get('offset') ?? undefined,
-    });
+    const parsedQuery = listQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams.entries()),
+    );
 
     if (!parsedQuery.success) {
       return c.json(
