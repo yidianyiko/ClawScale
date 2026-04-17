@@ -76,13 +76,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <QuickCard to="/dashboard/conversations" title={copy.home.quickCards.conversations.title}
+        <QuickCard to="/admin/customers" title={copy.home.quickCards.conversations.title}
           desc={copy.home.quickCards.conversations.desc}
           icon={<MessageSquare className="h-5 w-5" />} />
-        <QuickCard to="/dashboard/channels" title={copy.home.quickCards.channels.title}
+        <QuickCard to="/admin/channels" title={copy.home.quickCards.channels.title}
           desc={copy.home.quickCards.channels.desc}
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/dashboard/workflows" title={copy.home.quickCards.workflows.title}
+        <QuickCard to="/admin/deliveries" title={copy.home.quickCards.workflows.title}
           desc={copy.home.quickCards.workflows.desc}
           icon={<Zap className="h-5 w-5" />} />
       </div>

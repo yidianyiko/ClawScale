@@ -94,6 +94,10 @@ describe('DashboardPage', () => {
 
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();
   });
 
   it('renders Chinese dashboard overview copy', async () => {
@@ -118,5 +122,9 @@ describe('DashboardPage', () => {
 
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();
   });
 });
