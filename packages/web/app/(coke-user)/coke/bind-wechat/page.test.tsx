@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
 
+const redirectMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
 const getCokeUserTokenMock = vi.hoisted(() => vi.fn());
 const getCokeUserMock = vi.hoisted(() => vi.fn());
@@ -13,6 +14,7 @@ const connectCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
 const archiveCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
+  redirect: redirectMock,
   useRouter: () => ({
     replace: replaceMock,
   }),
@@ -56,7 +58,8 @@ vi.mock('../../../../lib/coke-user-wechat-channel', async () => {
   };
 });
 
-import BindWechatPage from './page';
+import CustomerWechatPersonalPage from '../../../(customer)/channels/wechat-personal/page';
+import LegacyBindWechatPage from './page';
 
 async function flushTicks(count: number) {
   for (let i = 0; i < count; i += 1) {
@@ -91,11 +94,34 @@ function renderWithLocale(root: Root, locale: 'en' | 'zh') {
   flushSync(() => {
     root.render(
       <LocaleProvider initialLocale={locale}>
-        <BindWechatPage />
+        <CustomerWechatPersonalPage />
       </LocaleProvider>,
     );
   });
 }
+
+describe('LegacyBindWechatPage redirect', () => {
+  beforeEach(() => {
+    redirectMock.mockReset();
+  });
+
+  it('redirects the legacy bind route to the neutral customer channels page', async () => {
+    await LegacyBindWechatPage({});
+
+    expect(redirectMock).toHaveBeenCalledWith('/channels/wechat-personal');
+  });
+
+  it('preserves legacy bind query params when redirecting to the neutral route', async () => {
+    await LegacyBindWechatPage({
+      searchParams: Promise.resolve({
+        next: 'renew',
+        source: 'legacy',
+      }),
+    });
+
+    expect(redirectMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew&source=legacy');
+  });
+});
 
 describe('BindWechatPage initial load failure', () => {
   let container: HTMLDivElement;
