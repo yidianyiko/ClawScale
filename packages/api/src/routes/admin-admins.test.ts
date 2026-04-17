@@ -6,6 +6,8 @@ const db = vi.hoisted(() => ({
     findMany: vi.fn(),
     create: vi.fn(),
     delete: vi.fn(),
+    findUnique: vi.fn(),
+    count: vi.fn(),
   },
 }));
 
@@ -46,6 +48,11 @@ describe('admin admins route', () => {
       createdAt: new Date('2026-04-02T10:00:00.000Z'),
       updatedAt: new Date('2026-04-02T10:00:00.000Z'),
     });
+    db.adminAccount.findUnique.mockResolvedValue({
+      id: 'adm_456',
+      isActive: true,
+    });
+    db.adminAccount.count.mockResolvedValue(2);
     db.adminAccount.delete.mockResolvedValue({
       id: 'adm_456',
     });
@@ -113,5 +120,44 @@ describe('admin admins route', () => {
         id: 'adm_456',
       },
     });
+  });
+
+  it('blocks self-delete', async () => {
+    const app = new Hono();
+    app.route('/api/admin/admins', adminAdminsRouter);
+
+    const res = await app.request('/api/admin/admins/adm_123', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'cannot_delete_self',
+    });
+    expect(db.adminAccount.findUnique).not.toHaveBeenCalled();
+    expect(db.adminAccount.delete).not.toHaveBeenCalled();
+  });
+
+  it('blocks deletion of the last active admin', async () => {
+    db.adminAccount.findUnique.mockResolvedValue({
+      id: 'adm_456',
+      isActive: true,
+    });
+    db.adminAccount.count.mockResolvedValue(1);
+
+    const app = new Hono();
+    app.route('/api/admin/admins', adminAdminsRouter);
+
+    const res = await app.request('/api/admin/admins/adm_456', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'cannot_delete_last_active_admin',
+    });
+    expect(db.adminAccount.delete).not.toHaveBeenCalled();
   });
 });

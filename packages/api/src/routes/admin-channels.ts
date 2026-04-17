@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { db } from '../db/index.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
@@ -20,43 +21,52 @@ const CHANNEL_KIND_VALUES = [
   'wechat_personal',
 ] as const;
 
+const listQuerySchema = z.object({
+  status: z.enum(CHANNEL_STATUS_VALUES).optional(),
+  kind: z.enum(CHANNEL_KIND_VALUES).optional(),
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(1).max(200))
+    .optional(),
+  offset: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(0))
+    .optional(),
+});
+
 type ChannelStatusFilter = (typeof CHANNEL_STATUS_VALUES)[number];
 type ChannelKindFilter = (typeof CHANNEL_KIND_VALUES)[number];
-
-function parsePaging(search: URLSearchParams) {
-  const limit = Math.min(Math.max(Number.parseInt(search.get('limit') ?? '50', 10) || 50, 1), 200);
-  const offset = Math.max(Number.parseInt(search.get('offset') ?? '0', 10) || 0, 0);
-
-  return { limit, offset };
-}
-
-function parseStatus(value: string | null): ChannelStatusFilter | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return CHANNEL_STATUS_VALUES.includes(value as ChannelStatusFilter)
-    ? (value as ChannelStatusFilter)
-    : undefined;
-}
-
-function parseKind(value: string | null): ChannelKindFilter | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return CHANNEL_KIND_VALUES.includes(value as ChannelKindFilter)
-    ? (value as ChannelKindFilter)
-    : undefined;
-}
 
 export const adminChannelsRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const { limit, offset } = parsePaging(url.searchParams);
-    const status = parseStatus(url.searchParams.get('status')?.trim() ?? null);
-    const kind = parseKind(url.searchParams.get('kind')?.trim() ?? null);
+    const parsedQuery = listQuerySchema.safeParse({
+      status: url.searchParams.get('status') ?? undefined,
+      kind: url.searchParams.get('kind') ?? undefined,
+      limit: url.searchParams.get('limit') ?? undefined,
+      offset: url.searchParams.get('offset') ?? undefined,
+    });
+
+    if (!parsedQuery.success) {
+      return c.json(
+        {
+          ok: false,
+          error: 'validation_error',
+          issues: parsedQuery.error.issues,
+        },
+        400,
+      );
+    }
+
+    const limit = parsedQuery.data.limit ?? 50;
+    const offset = parsedQuery.data.offset ?? 0;
+    const status = parsedQuery.data.status;
+    const kind = parsedQuery.data.kind;
 
     const where: {
       ownershipKind: 'customer';

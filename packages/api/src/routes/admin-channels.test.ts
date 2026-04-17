@@ -84,4 +84,36 @@ describe('admin channels route', () => {
       },
     });
   });
+
+  it('rejects invalid status and kind filters', async () => {
+    const app = new Hono();
+    app.route('/api/admin/channels', adminChannelsRouter);
+
+    const res = await app.request('/api/admin/channels?status=broken&kind=fax');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.channel.findMany).not.toHaveBeenCalled();
+    expect(db.channel.count).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed paging params', async () => {
+    const app = new Hono();
+    app.route('/api/admin/channels', adminChannelsRouter);
+
+    const res = await app.request('/api/admin/channels?limit=ten&offset=0');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.channel.findMany).not.toHaveBeenCalled();
+    expect(db.channel.count).not.toHaveBeenCalled();
+  });
 });

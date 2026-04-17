@@ -23,7 +23,7 @@ describe('admin deliveries route', () => {
     vi.clearAllMocks();
   });
 
-  it('returns recent failed outbound deliveries only', async () => {
+  it('returns recent failed outbound deliveries ordered by failure recency', async () => {
     db.outboundDelivery.findMany.mockResolvedValue([
       {
         id: 'out_1',
@@ -66,7 +66,7 @@ describe('admin deliveries route', () => {
       },
     });
     expect(db.outboundDelivery.findMany).toHaveBeenCalledWith({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       select: expect.any(Object),
       skip: 0,
       take: 25,
@@ -79,5 +79,21 @@ describe('admin deliveries route', () => {
         status: 'failed',
       },
     });
+  });
+
+  it('rejects malformed paging params', async () => {
+    const app = new Hono();
+    app.route('/api/admin/deliveries', adminDeliveriesRouter);
+
+    const res = await app.request('/api/admin/deliveries?limit=25&offset=sideways');
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'validation_error',
+      issues: expect.any(Array),
+    });
+    expect(db.outboundDelivery.findMany).not.toHaveBeenCalled();
+    expect(db.outboundDelivery.count).not.toHaveBeenCalled();
   });
 });

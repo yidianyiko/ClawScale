@@ -22,7 +22,7 @@ describe('admin agents route', () => {
     vi.clearAllMocks();
   });
 
-  it('returns the single Coke agent detail with handshake health derived from the latest agent binding', async () => {
+  it('returns the single Coke agent detail with unknown handshake health until a real heartbeat source exists', async () => {
     db.agent.findFirst.mockResolvedValue({
       id: 'agent_coke',
       slug: 'coke',
@@ -32,12 +32,6 @@ describe('admin agents route', () => {
       isDefault: true,
       createdAt: new Date('2026-04-01T10:00:00.000Z'),
       updatedAt: new Date('2026-04-02T10:00:00.000Z'),
-      bindings: [
-        {
-          provisionStatus: 'ready',
-          provisionUpdatedAt: new Date('2026-04-03T11:30:00.000Z'),
-        },
-      ],
     });
 
     const app = new Hono();
@@ -57,9 +51,9 @@ describe('admin agents route', () => {
         tokenConfigured: true,
         isDefault: true,
         lastHandshakeHealth: {
-          status: 'healthy',
-          source: 'agent_binding_provision_status',
-          observedAt: '2026-04-03T11:30:00.000Z',
+          status: 'unknown',
+          source: 'unavailable',
+          observedAt: null,
         },
         createdAt: '2026-04-01T10:00:00.000Z',
         updatedAt: '2026-04-02T10:00:00.000Z',

@@ -1,20 +1,48 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { db } from '../db/index.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
-function parsePaging(search: URLSearchParams) {
-  const limit = Math.min(Math.max(Number.parseInt(search.get('limit') ?? '50', 10) || 50, 1), 200);
-  const offset = Math.max(Number.parseInt(search.get('offset') ?? '0', 10) || 0, 0);
-
-  return { limit, offset };
-}
+const listQuerySchema = z.object({
+  channelId: z.string().min(1).optional(),
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(1).max(200))
+    .optional(),
+  offset: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(0))
+    .optional(),
+});
 
 export const adminDeliveriesRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const { limit, offset } = parsePaging(url.searchParams);
-    const channelId = url.searchParams.get('channelId')?.trim() || undefined;
+    const parsedQuery = listQuerySchema.safeParse({
+      channelId: url.searchParams.get('channelId') ?? undefined,
+      limit: url.searchParams.get('limit') ?? undefined,
+      offset: url.searchParams.get('offset') ?? undefined,
+    });
+
+    if (!parsedQuery.success) {
+      return c.json(
+        {
+          ok: false,
+          error: 'validation_error',
+          issues: parsedQuery.error.issues,
+        },
+        400,
+      );
+    }
+
+    const limit = parsedQuery.data.limit ?? 50;
+    const offset = parsedQuery.data.offset ?? 0;
+    const channelId = parsedQuery.data.channelId;
 
     const where = {
       status: 'failed',
@@ -34,7 +62,7 @@ export const adminDeliveriesRouter = new Hono()
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         take: limit,
         skip: offset,
       }),

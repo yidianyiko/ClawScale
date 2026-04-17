@@ -81,10 +81,43 @@ export const adminAdminsRouter = new Hono()
     }
   })
   .delete('/:id', async (c) => {
+    const actor = c.get('adminAuth');
+    const id = c.req.param('id');
+
+    if (id === actor.adminId) {
+      return c.json({ ok: false, error: 'cannot_delete_self' }, 422);
+    }
+
+    const target = await db.adminAccount.findUnique({
+      where: {
+        id,
+      },
+      select: {
+        id: true,
+        isActive: true,
+      },
+    });
+
+    if (!target) {
+      return c.json({ ok: false, error: 'admin_not_found' }, 404);
+    }
+
+    if (target.isActive) {
+      const activeAdminCount = await db.adminAccount.count({
+        where: {
+          isActive: true,
+        },
+      });
+
+      if (activeAdminCount <= 1) {
+        return c.json({ ok: false, error: 'cannot_delete_last_active_admin' }, 422);
+      }
+    }
+
     try {
       const deleted = await db.adminAccount.delete({
         where: {
-          id: c.req.param('id'),
+          id,
         },
       });
 

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { db } from '../db/index.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
@@ -61,12 +62,20 @@ const customerSelect = {
   },
 } as const;
 
-function parsePaging(search: URLSearchParams) {
-  const limit = Math.min(Math.max(Number.parseInt(search.get('limit') ?? '50', 10) || 50, 1), 200);
-  const offset = Math.max(Number.parseInt(search.get('offset') ?? '0', 10) || 0, 0);
-
-  return { limit, offset };
-}
+const listQuerySchema = z.object({
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(1).max(200))
+    .optional(),
+  offset: z
+    .string()
+    .regex(/^\d+$/)
+    .transform((value) => Number.parseInt(value, 10))
+    .pipe(z.number().int().min(0))
+    .optional(),
+});
 
 function buildContactIdentifier(row: {
   memberships: Array<{
@@ -107,7 +116,24 @@ export const adminCustomersRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const { limit, offset } = parsePaging(url.searchParams);
+    const parsedQuery = listQuerySchema.safeParse({
+      limit: url.searchParams.get('limit') ?? undefined,
+      offset: url.searchParams.get('offset') ?? undefined,
+    });
+
+    if (!parsedQuery.success) {
+      return c.json(
+        {
+          ok: false,
+          error: 'validation_error',
+          issues: parsedQuery.error.issues,
+        },
+        400,
+      );
+    }
+
+    const limit = parsedQuery.data.limit ?? 50;
+    const offset = parsedQuery.data.offset ?? 0;
 
     const [rows, total] = await Promise.all([
       db.customer.findMany({
