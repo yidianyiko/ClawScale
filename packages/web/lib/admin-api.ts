@@ -118,7 +118,15 @@ async function request<T>(
     });
 
     const json = (await res.json()) as AdminApiResponse<T>;
-    if (!json.ok && (res.status === 401 || res.status === 403) && path !== '/api/admin/login') {
+    if (
+      !json.ok &&
+      path !== '/api/admin/login' &&
+      (
+        res.status === 401 ||
+        res.status === 403 ||
+        (res.status === 404 && json.error === 'account_not_found')
+      )
+    ) {
       clearAdminSession();
     }
 
