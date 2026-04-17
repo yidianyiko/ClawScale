@@ -18,7 +18,17 @@ export default function ClaimPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setToken(params.get('token') ?? '');
+    const nextToken = params.get('token') ?? '';
+    setToken(nextToken);
+
+    if (!nextToken) {
+      return;
+    }
+
+    params.delete('token');
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

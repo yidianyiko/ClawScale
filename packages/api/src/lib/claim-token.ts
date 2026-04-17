@@ -214,6 +214,10 @@ export async function issueClaimToken(
     throw new CustomerAuthError('account_not_found');
   }
 
+  if (membership.identity.claimStatus === 'active') {
+    throw new CustomerAuthError('claim_not_allowed');
+  }
+
   const updated = await client.$transaction(async (tx) => {
     return tx.identity.update({
       where: { id: membership.identity.id },

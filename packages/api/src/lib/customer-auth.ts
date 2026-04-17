@@ -175,7 +175,8 @@ export class CustomerAuthError extends Error {
       | 'email_already_exists'
       | 'invalid_credentials'
       | 'invalid_or_expired_token'
-      | 'account_not_found',
+      | 'account_not_found'
+      | 'claim_not_allowed',
   ) {
     super(code);
     this.name = 'CustomerAuthError';

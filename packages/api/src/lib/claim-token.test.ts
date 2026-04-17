@@ -82,6 +82,41 @@ describe('claim-token helpers', () => {
     });
   });
 
+
+  it('rejects issuing a claim token for identities that are already active', async () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const tx = {
+      identity: {
+        update: vi.fn(),
+      },
+    };
+    const client = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: 'alice@example.com',
+            claimStatus: 'active',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof tx) => Promise<unknown>) => fn(tx)),
+    };
+
+    await expect(
+      issueClaimToken(client as never, {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        email: 'alice@example.com',
+      }),
+    ).rejects.toMatchObject({ code: 'claim_not_allowed' });
+    expect(tx.identity.update).not.toHaveBeenCalled();
+  });
+
   it('completing a claim writes credentials onto the existing customer and flips the claim active', async () => {
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
 
