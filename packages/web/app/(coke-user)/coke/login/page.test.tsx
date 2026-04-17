@@ -1,26 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const redirectMock = vi.hoisted(() => vi.fn());
-
-vi.mock('next/navigation', () => ({
-  redirect: redirectMock,
-}));
-
+import { describe, expect, it } from 'vitest';
+import LegacyRedirectPage from '../../../../components/legacy-redirect-page';
 import CokeLoginPage from './page';
 
 describe('CokeLoginPage', () => {
-  beforeEach(() => {
-    redirectMock.mockReset();
-  });
+  it('maps /coke/login to the neutral login redirect wrapper', () => {
+    const page = CokeLoginPage();
 
-  it('redirects /coke/login to /auth/login while preserving query params', async () => {
-    await CokeLoginPage({
-      searchParams: Promise.resolve({
-        email: 'alice@example.com',
-        verification: 'retry',
-      }),
-    });
-
-    expect(redirectMock).toHaveBeenCalledWith('/auth/login?email=alice%40example.com&verification=retry');
+    expect(page.type).toBe(LegacyRedirectPage);
+    expect(page.props.pathname).toBe('/auth/login');
   });
 });

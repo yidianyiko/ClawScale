@@ -1,21 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const redirectMock = vi.hoisted(() => vi.fn());
-
-vi.mock('next/navigation', () => ({
-  redirect: redirectMock,
-}));
-
+import { describe, expect, it } from 'vitest';
+import LegacyRedirectPage from '../../../../components/legacy-redirect-page';
 import CokeRegisterPage from './page';
 
 describe('CokeRegisterPage', () => {
-  beforeEach(() => {
-    redirectMock.mockReset();
-  });
+  it('maps /coke/register to the neutral register redirect wrapper', () => {
+    const page = CokeRegisterPage();
 
-  it('redirects /coke/register to /auth/register', async () => {
-    await CokeRegisterPage({});
-
-    expect(redirectMock).toHaveBeenCalledWith('/auth/register');
+    expect(page.type).toBe(LegacyRedirectPage);
+    expect(page.props.pathname).toBe('/auth/register');
   });
 });

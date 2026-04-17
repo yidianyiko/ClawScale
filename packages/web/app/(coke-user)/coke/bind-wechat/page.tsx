@@ -1,35 +1,5 @@
-import { redirect } from 'next/navigation';
+import LegacyRedirectPage from '../../../../components/legacy-redirect-page';
 
-export const dynamic = 'force-dynamic';
-
-type LegacySearchParams = Record<string, string | string[] | undefined>;
-
-function buildRedirectPath(pathname: string, searchParams?: LegacySearchParams) {
-  const params = new URLSearchParams();
-
-  if (searchParams) {
-    for (const [key, value] of Object.entries(searchParams)) {
-      if (Array.isArray(value)) {
-        for (const entry of value) {
-          params.append(key, entry);
-        }
-        continue;
-      }
-
-      if (value !== undefined) {
-        params.set(key, value);
-      }
-    }
-  }
-
-  const query = params.toString();
-  return query ? `${pathname}?${query}` : pathname;
-}
-
-export default async function BindWechatPage({
-  searchParams,
-}: {
-  searchParams?: Promise<LegacySearchParams>;
-}) {
-  redirect(buildRedirectPath('/channels/wechat-personal', searchParams ? await searchParams : undefined));
+export default function LegacyBindWechatPage() {
+  return <LegacyRedirectPage pathname='/channels/wechat-personal' />;
 }

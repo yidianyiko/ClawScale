@@ -1,32 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const redirectMock = vi.hoisted(() => vi.fn());
-
-vi.mock('next/navigation', () => ({
-  redirect: redirectMock,
-}));
-
+import { describe, expect, it } from 'vitest';
+import LegacyRedirectPage from '../../../../components/legacy-redirect-page';
 import LegacyBindWechatPage from './page';
 
-describe('LegacyBindWechatPage redirect', () => {
-  beforeEach(() => {
-    redirectMock.mockReset();
-  });
+describe('LegacyBindWechatPage', () => {
+  it('maps /coke/bind-wechat to the neutral personal-channel redirect wrapper', () => {
+    const page = LegacyBindWechatPage();
 
-  it('redirects the legacy bind route to the neutral customer channels page', async () => {
-    await LegacyBindWechatPage({});
-
-    expect(redirectMock).toHaveBeenCalledWith('/channels/wechat-personal');
-  });
-
-  it('preserves legacy bind query params when redirecting to the neutral route', async () => {
-    await LegacyBindWechatPage({
-      searchParams: Promise.resolve({
-        next: 'renew',
-        source: 'legacy',
-      }),
-    });
-
-    expect(redirectMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew&source=legacy');
+    expect(page.type).toBe(LegacyRedirectPage);
+    expect(page.props.pathname).toBe('/channels/wechat-personal');
   });
 });
