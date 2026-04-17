@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
+import { LocaleProvider } from '../../../../components/locale-provider';
 
 const pushMock = vi.hoisted(() => vi.fn());
 
@@ -61,10 +62,18 @@ describe('ClaimPage', () => {
     container.remove();
   });
 
-  it('renders the current claim form, prefills the token from the URL, and keeps the auth login link', async () => {
+  function renderPage() {
     flushSync(() => {
-      root.render(<ClaimPage />);
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <ClaimPage />
+        </LocaleProvider>,
+      );
     });
+  }
+
+  it('renders the localized claim form, prefills the token from the URL, and keeps the auth login link', async () => {
+    renderPage();
 
     await waitForEffects();
 
@@ -75,7 +84,7 @@ describe('ClaimPage', () => {
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
   });
 
-  it('stores the customer auth payload and routes to /channels after a successful claim', async () => {
+  it('stores the customer auth payload and routes to the primary customer channel after a successful claim', async () => {
     vi.mocked(customerApi.post).mockResolvedValueOnce({
       ok: true,
       data: {
@@ -88,9 +97,7 @@ describe('ClaimPage', () => {
       },
     });
 
-    flushSync(() => {
-      root.render(<ClaimPage />);
-    });
+    renderPage();
 
     await waitForEffects();
 
@@ -112,7 +119,7 @@ describe('ClaimPage', () => {
       claimStatus: 'active',
       membershipRole: 'owner',
     });
-    expect(pushMock).toHaveBeenCalledWith('/channels');
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 
   it('shows the invalid-or-expired token error without routing', async () => {
@@ -121,9 +128,7 @@ describe('ClaimPage', () => {
       error: 'invalid_or_expired_token',
     });
 
-    flushSync(() => {
-      root.render(<ClaimPage />);
-    });
+    renderPage();
 
     await waitForEffects();
 
@@ -136,5 +141,25 @@ describe('ClaimPage', () => {
     expect(container.textContent).toContain('This claim link is invalid or has expired.');
     expect(pushMock).not.toHaveBeenCalled();
     expect(vi.mocked(storeCustomerAuth)).not.toHaveBeenCalled();
+  });
+
+  it('shows the duplicate-email conflict copy when the claimed email already exists', async () => {
+    vi.mocked(customerApi.post).mockResolvedValueOnce({
+      ok: false,
+      error: 'email_already_exists',
+    });
+
+    renderPage();
+
+    await waitForEffects();
+
+    setInputValue('#password', 'password-123');
+    setInputValue('#confirmPassword', 'password-123');
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(container.textContent).toContain('That email address is already in use.');
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

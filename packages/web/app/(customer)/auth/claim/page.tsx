@@ -5,10 +5,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '../../../../../shared/src/types/api';
+import { useLocale } from '../../../../components/locale-provider';
 import { customerApi } from '../../../../lib/customer-api';
 import { storeCustomerAuth, type CustomerAuthResult } from '../../../../lib/customer-auth';
 
 export default function ClaimPage() {
+  const { messages } = useLocale();
+  const copy = messages.customerPages.claim;
   const router = useRouter();
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +39,7 @@ export default function ClaimPage() {
     setError('');
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(copy.mismatchError);
       return;
     }
 
@@ -51,16 +54,18 @@ export default function ClaimPage() {
       if (!res.ok) {
         setError(
           res.error === 'invalid_or_expired_token'
-            ? 'This claim link is invalid or has expired.'
-            : 'Unable to claim your account right now.',
+            ? copy.invalidOrExpiredError
+            : res.error === 'email_already_exists'
+              ? copy.emailAlreadyExistsError
+              : copy.genericError,
         );
         return;
       }
 
       storeCustomerAuth(res.data);
-      router.push('/channels');
+      router.push('/channels/wechat-personal');
     } catch {
-      setError('Unable to claim your account right now.');
+      setError(copy.genericError);
     } finally {
       setLoading(false);
     }
@@ -68,11 +73,9 @@ export default function ClaimPage() {
 
   return (
     <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">Shared channel access</p>
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">Claim your customer account</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">
-        Set a password to activate the account that was pre-provisioned from your first inbound message.
-      </p>
+      <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">{copy.eyebrow}</p>
+      <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
+      <p className="mt-3 text-sm leading-6 text-slate-600">{copy.description}</p>
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -83,21 +86,21 @@ export default function ClaimPage() {
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
         <div>
           <label htmlFor="token" className="mb-2 block text-sm font-medium text-slate-700">
-            Claim token
+            {copy.tokenLabel}
           </label>
           <input
             id="token"
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            placeholder="Paste the claim token from your email"
+            placeholder={copy.tokenPlaceholder}
             required
           />
         </div>
 
         <div>
           <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-            New password
+            {copy.passwordLabel}
           </label>
           <input
             id="password"
@@ -112,7 +115,7 @@ export default function ClaimPage() {
 
         <div>
           <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-slate-700">
-            Confirm password
+            {copy.confirmPasswordLabel}
           </label>
           <input
             id="confirmPassword"
@@ -130,14 +133,14 @@ export default function ClaimPage() {
           className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           disabled={loading}
         >
-          {loading ? 'Activating...' : 'Activate account'}
+          {loading ? copy.submitting : copy.submit}
         </button>
       </form>
 
       <p className="mt-6 text-sm text-slate-600">
-        Already claimed your account?{' '}
+        {copy.signInPrompt}{' '}
         <Link href="/auth/login" className="font-medium text-slate-950 underline underline-offset-4">
-          Sign in
+          {copy.signInLink}
         </Link>
       </p>
     </section>
