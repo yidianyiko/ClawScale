@@ -94,6 +94,7 @@ export default function AdminCustomersPage() {
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.customer}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.contactIdentifier}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.claimStatus}</th>
+                  <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.parkedInbounds}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.registered}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.firstSeen}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.agent}</th>
@@ -103,7 +104,7 @@ export default function AdminCustomersPage() {
               <tbody className="divide-y divide-gray-50">
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-5 py-8 text-center text-gray-500">
                       {copy.common.empty}
                     </td>
                   </tr>
@@ -119,6 +120,7 @@ export default function AdminCustomersPage() {
                         <div className="text-xs text-gray-400">{row.contactIdentifier.type}</div>
                       </td>
                       <td className="px-5 py-3.5 text-gray-600">{row.claimStatus}</td>
+                      <td className="px-5 py-3.5 text-gray-600">{row.parkedInboundCount}</td>
                       <td className="px-5 py-3.5 text-gray-600">{formatDateTime(row.registeredAt)}</td>
                       <td className="px-5 py-3.5 text-gray-600">
                         {row.firstSeenAt ? formatDateTime(row.firstSeenAt) : '—'}

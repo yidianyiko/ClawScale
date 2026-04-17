@@ -35,6 +35,7 @@ export type AdminCustomerRow = {
     disconnected: number;
     kinds: string[];
   };
+  parkedInboundCount: number;
 };
 
 export type AdminChannelRow = {
@@ -46,6 +47,26 @@ export type AdminChannelRow = {
   customerId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminSharedChannelRow = {
+  id: string;
+  name: string;
+  kind: string;
+  status: string;
+  ownershipKind: string;
+  customerId: string | null;
+  agent: {
+    id: string;
+    slug: string;
+    name: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminSharedChannelDetail = AdminSharedChannelRow & {
+  config: Record<string, unknown>;
 };
 
 export type AdminDeliveryRow = {
@@ -142,6 +163,7 @@ async function request<T>(
 export const adminApi = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
 };
 

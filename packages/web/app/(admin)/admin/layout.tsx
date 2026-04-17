@@ -20,6 +20,7 @@ import { cn } from '../../../lib/utils';
 const navIcons = {
   '/admin/customers': Users,
   '/admin/channels': Radio,
+  '/admin/shared-channels': Radio,
   '/admin/deliveries': Send,
   '/admin/agents': Bot,
   '/admin/admins': ShieldCheck,

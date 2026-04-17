@@ -6,6 +6,9 @@ const db = vi.hoisted(() => ({
     findMany: vi.fn(),
     count: vi.fn(),
   },
+  parkedInbound: {
+    findMany: vi.fn(),
+  },
 }));
 
 vi.mock('../db/index.js', () => ({ db }));
@@ -73,6 +76,9 @@ describe('admin customers route', () => {
       },
     ]);
     db.customer.count.mockResolvedValue(1);
+    db.parkedInbound.findMany.mockResolvedValue([
+      { payload: { customerId: 'cust_123' } },
+    ]);
 
     const app = new Hono();
     app.route('/api/admin/customers', adminCustomersRouter);
@@ -107,6 +113,7 @@ describe('admin customers route', () => {
               disconnected: 1,
               kinds: ['wechat_personal', 'whatsapp'],
             },
+            parkedInboundCount: 1,
           },
         ],
         total: 1,
@@ -121,6 +128,14 @@ describe('admin customers route', () => {
       take: 20,
     });
     expect(db.customer.count).toHaveBeenCalledWith();
+    expect(db.parkedInbound.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'queued',
+      },
+      select: {
+        payload: true,
+      },
+    });
   });
 
   it('rejects malformed paging params', async () => {
@@ -137,6 +152,7 @@ describe('admin customers route', () => {
     });
     expect(db.customer.findMany).not.toHaveBeenCalled();
     expect(db.customer.count).not.toHaveBeenCalled();
+    expect(db.parkedInbound.findMany).not.toHaveBeenCalled();
   });
 
   it('rejects unknown query params', async () => {
@@ -153,5 +169,6 @@ describe('admin customers route', () => {
     });
     expect(db.customer.findMany).not.toHaveBeenCalled();
     expect(db.customer.count).not.toHaveBeenCalled();
+    expect(db.parkedInbound.findMany).not.toHaveBeenCalled();
   });
 });

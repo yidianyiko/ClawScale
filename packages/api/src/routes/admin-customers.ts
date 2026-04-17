@@ -114,13 +114,30 @@ function buildContactIdentifier(row: {
   };
 }
 
+function readParkedCustomerId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const customerId = record['customerId'];
+  if (typeof customerId === 'string' && customerId.trim()) {
+    return customerId.trim();
+  }
+
+  const legacyCustomerId = record['customer_id'];
+  if (typeof legacyCustomerId === 'string' && legacyCustomerId.trim()) {
+    return legacyCustomerId.trim();
+  }
+
+  return null;
+}
+
 export const adminCustomersRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
     const url = new URL(c.req.url);
-    const parsedQuery = listQuerySchema.safeParse(
-      Object.fromEntries(url.searchParams.entries()),
-    );
+    const parsedQuery = listQuerySchema.safeParse(Object.fromEntries(url.searchParams.entries()));
 
     if (!parsedQuery.success) {
       return c.json(
@@ -136,7 +153,7 @@ export const adminCustomersRouter = new Hono()
     const limit = parsedQuery.data.limit ?? 50;
     const offset = parsedQuery.data.offset ?? 0;
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, parkedInbounds] = await Promise.all([
       db.customer.findMany({
         orderBy: { createdAt: 'desc' },
         select: customerSelect,
@@ -144,7 +161,25 @@ export const adminCustomersRouter = new Hono()
         take: limit,
       }),
       db.customer.count(),
+      db.parkedInbound.findMany({
+        where: {
+          status: 'queued',
+        },
+        select: {
+          payload: true,
+        },
+      }),
     ]);
+
+    const parkedInboundCounts = new Map<string, number>();
+    for (const row of parkedInbounds as Array<{ payload: unknown }>) {
+      const customerId = readParkedCustomerId(row.payload);
+      if (!customerId) {
+        continue;
+      }
+
+      parkedInboundCounts.set(customerId, (parkedInboundCounts.get(customerId) ?? 0) + 1);
+    }
 
     return c.json({
       ok: true,
@@ -176,6 +211,7 @@ export const adminCustomersRouter = new Hono()
               disconnected: row.channels.filter((channel) => channel.status === 'disconnected').length,
               kinds: channelKinds,
             },
+            parkedInboundCount: parkedInboundCounts.get(row.id) ?? 0,
           };
         }),
         total,

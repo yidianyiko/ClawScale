@@ -12,6 +12,7 @@ const adminMessages = {
       nav: [
         { href: '/admin/customers', label: 'Customers', exact: false },
         { href: '/admin/channels', label: 'Channels', exact: false },
+        { href: '/admin/shared-channels', label: 'Shared channels', exact: false },
         { href: '/admin/deliveries', label: 'Deliveries', exact: false },
         { href: '/admin/agents', label: 'Agents', exact: false },
         { href: '/admin/admins', label: 'Admins', exact: false },
@@ -51,6 +52,7 @@ const adminMessages = {
         customer: 'Customer',
         contactIdentifier: 'Contact identifier',
         claimStatus: 'Claim status',
+        parkedInbounds: 'Parked inbounds',
         registered: 'Registered',
         firstSeen: 'First seen',
         agent: 'Agent',
@@ -129,6 +131,31 @@ const adminMessages = {
         inactive: 'Inactive',
       },
     },
+    sharedChannels: {
+      title: 'Shared channels',
+      subtitle: 'Create, configure, and retire platform-owned shared channels.',
+      openCreate: 'Create shared channel',
+      createTitle: 'Create shared channel',
+      detailTitle: 'Shared channel',
+      fields: {
+        name: 'Name',
+        kind: 'Kind',
+        agentId: 'Agent ID',
+        config: 'Config JSON',
+      },
+      actions: {
+        save: 'Save changes',
+        retire: 'Retire shared channel',
+        back: 'Back to shared channels',
+      },
+      columns: {
+        name: 'Channel',
+        kind: 'Kind',
+        status: 'Status',
+        agent: 'Agent',
+        updated: 'Updated',
+      },
+    },
   },
   zh: {
     brand: {
@@ -141,6 +168,7 @@ const adminMessages = {
       nav: [
         { href: '/admin/customers', label: '客户', exact: false },
         { href: '/admin/channels', label: '渠道', exact: false },
+        { href: '/admin/shared-channels', label: '共享渠道', exact: false },
         { href: '/admin/deliveries', label: '投递', exact: false },
         { href: '/admin/agents', label: '代理', exact: false },
         { href: '/admin/admins', label: '管理员', exact: false },
@@ -180,6 +208,7 @@ const adminMessages = {
         customer: '客户',
         contactIdentifier: '联系标识',
         claimStatus: '认领状态',
+        parkedInbounds: '待处理入站',
         registered: '注册时间',
         firstSeen: '首次出现',
         agent: '代理',
@@ -258,8 +287,33 @@ const adminMessages = {
         inactive: '停用',
       },
     },
+    sharedChannels: {
+      title: '共享渠道',
+      subtitle: '创建、配置并退役平台级共享渠道。',
+      openCreate: '创建共享渠道',
+      createTitle: '创建共享渠道',
+      detailTitle: '共享渠道',
+      fields: {
+        name: '名称',
+        kind: '类型',
+        agentId: '代理 ID',
+        config: '配置 JSON',
+      },
+      actions: {
+        save: '保存修改',
+        retire: '退役共享渠道',
+        back: '返回共享渠道列表',
+      },
+      columns: {
+        name: '渠道',
+        kind: '类型',
+        status: '状态',
+        agent: '代理',
+        updated: '更新时间',
+      },
+    },
   },
-} satisfies Record<Locale, unknown>;
+} as const;
 
 export function getAdminCopy(locale: Locale) {
   return adminMessages[locale];

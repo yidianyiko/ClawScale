@@ -30,6 +30,7 @@ describe('AdminCustomersPage', () => {
               value: 'alice@example.com',
             },
             claimStatus: 'active',
+            parkedInboundCount: 2,
             registeredAt: '2026-04-16T09:00:00.000Z',
             firstSeenAt: '2026-04-15T08:00:00.000Z',
             agent: {
@@ -79,6 +80,7 @@ describe('AdminCustomersPage', () => {
                 value: 'alice@example.com',
               },
               claimStatus: 'active',
+              parkedInboundCount: 2,
               registeredAt: '2026-04-16T09:00:00.000Z',
               firstSeenAt: '2026-04-15T08:00:00.000Z',
               agent: {
@@ -138,11 +140,13 @@ describe('AdminCustomersPage', () => {
       expect(container.textContent).toContain('Customer');
       expect(container.textContent).toContain('Contact identifier');
       expect(container.textContent).toContain('Claim status');
+      expect(container.textContent).toContain('Parked inbounds');
       expect(container.textContent).toContain('Registered');
       expect(container.textContent).toContain('First seen');
       expect(container.textContent).toContain('Agent');
       expect(container.textContent).toContain('Channels');
       expect(container.textContent).toContain('alice@example.com');
+      expect(container.textContent).toContain('2');
       expect(container.textContent).toContain('telegram, whatsapp');
     });
   });
