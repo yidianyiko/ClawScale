@@ -17,12 +17,14 @@ const getUnifiedConversationIds = vi.hoisted(() => vi.fn());
 const bindEndUserToCokeAccount = vi.hoisted(() => vi.fn());
 const bindBusinessConversation = vi.hoisted(() => vi.fn());
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
+const provisionSharedChannelCustomer = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
 vi.mock('./clawscale-user.js', () => ({ getUnifiedConversationIds, bindEndUserToCokeAccount }));
 vi.mock('./business-conversation.js', () => ({ bindBusinessConversation }));
 vi.mock('./coke-account-access.js', () => ({ resolveCokeAccountAccess }));
+vi.mock('./shared-channel-provisioning.js', () => ({ provisionSharedChannelCustomer }));
 vi.mock('./clawscale-agent.js', () => ({
   buildSelectionMenu: vi.fn(() => 'menu'),
   runClawscaleAgent: vi.fn(),
@@ -38,6 +40,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
       status: 'connected',
       scope: 'tenant_shared',
       ownerClawscaleUserId: null,
@@ -117,6 +121,42 @@ describe('routeInboundMessage', () => {
       renewalUrl: 'https://coke.example/coke/renew',
     });
     getUnifiedConversationIds.mockResolvedValue(['conv_1', 'conv_2']);
+    provisionSharedChannelCustomer.mockResolvedValue({
+      customerId: 'ck_shared_1',
+      created: false,
+      parked: false,
+      provisionStatus: 'ready',
+    });
+  });
+
+  it('parks shared-channel inbound before legacy end-user routing when provisioning is not ready', async () => {
+    provisionSharedChannelCustomer.mockResolvedValueOnce({
+      customerId: 'ck_shared_1',
+      created: true,
+      parked: true,
+      provisionStatus: 'pending',
+    });
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: '+1 (415) 555-0100',
+      displayName: 'Alice',
+      text: 'hello',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(result).toBeNull();
+    expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        provider: 'whatsapp_business',
+        identityType: 'wa_id',
+        rawIdentityValue: '+1 (415) 555-0100',
+      }),
+    );
+    expect(db.tenant.findUnique).not.toHaveBeenCalled();
+    expect(db.endUser.findUnique).not.toHaveBeenCalled();
   });
 
   it('binds first-turn business conversation key returned by backend', async () => {
@@ -124,6 +164,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: null,
+      ownershipKind: 'customer',
+      agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -266,6 +308,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: 'cust_1',
+      ownershipKind: 'customer',
+      agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -302,6 +346,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: null,
+      ownershipKind: 'customer',
+      agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -365,6 +411,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: null,
+      ownershipKind: 'customer',
+      agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
@@ -439,6 +487,8 @@ describe('routeInboundMessage', () => {
       id: 'ch_1',
       tenantId: 'ten_1',
       customerId: 'cust_1',
+      ownershipKind: 'customer',
+      agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',

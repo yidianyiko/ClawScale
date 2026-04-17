@@ -19,6 +19,7 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
 import { bindBusinessConversation } from './business-conversation.js';
 import { resolveCokeAccountAccess } from './coke-account-access.js';
+import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
 import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
@@ -74,7 +75,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     select: {
       id: true,
       tenantId: true,
+      ownershipKind: true,
       customerId: true,
+      agentId: true,
       status: true,
       scope: true,
       ownerClawscaleUserId: true,
@@ -98,6 +101,30 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           cokeAccountId: channel.ownerClawscaleUser.cokeAccountId,
         }
       : null;
+
+  if (channel.ownershipKind === 'shared' && channel.agentId) {
+    const identityType =
+      platform === 'whatsapp' || platform === 'whatsapp_business' ? 'wa_id' : 'external_id';
+    const sharedChannelProvisioning = await provisionSharedChannelCustomer({
+      channelId: channel.id,
+      agentId: channel.agentId,
+      displayName,
+      provider: platform,
+      identityType,
+      rawIdentityValue: externalId,
+      payload: {
+        externalId,
+        displayName,
+        text,
+        ...(attachments ? { attachments } : {}),
+        ...(meta ? { meta } : {}),
+      },
+    });
+
+    if (sharedChannelProvisioning.parked || sharedChannelProvisioning.provisionStatus !== 'ready') {
+      return null;
+    }
+  }
 
   // 2. Load tenant settings
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
