@@ -101,6 +101,9 @@ describe('retired dashboard pages', () => {
       expect(container.textContent).toContain('Use the customer-facing Coke surfaces for live conversation review.');
     });
 
+    expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
+
     expect(apiGetMock).not.toHaveBeenCalled();
     expect(apiDeleteMock).not.toHaveBeenCalled();
     expect(getUserMock).not.toHaveBeenCalled();
@@ -116,6 +119,9 @@ describe('retired dashboard pages', () => {
       expect(container.textContent).toContain('Backend selection no longer happens in this dashboard.');
       expect(container.textContent).toContain('Routing now uses the active delivery configuration instead of dashboard-managed backends.');
     });
+
+    expect(container.querySelector('a[href="/admin/agents"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
 
     expect(apiGetMock).not.toHaveBeenCalled();
     expect(apiDeleteMock).not.toHaveBeenCalled();
@@ -134,6 +140,9 @@ describe('retired dashboard pages', () => {
       expect(container.textContent).toContain('Gateway-managed workflow automation has been removed.');
       expect(container.textContent).toContain('Use channel routing and downstream automation tools for new delivery flows.');
     });
+
+    expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
 
     expect(apiGetMock).not.toHaveBeenCalled();
     expect(apiDeleteMock).not.toHaveBeenCalled();

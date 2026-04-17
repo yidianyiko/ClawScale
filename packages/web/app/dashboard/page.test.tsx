@@ -88,8 +88,12 @@ describe('DashboardPage', () => {
       expect(container.textContent).toContain("Here's an overview of your chatbot.");
       expect(container.textContent).toContain('Total conversations');
       expect(container.textContent).toContain('Channels');
+      expect(container.textContent).toContain('Open the new admin console');
       expect(container.textContent).not.toContain('总对话数');
     });
+
+    expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
   });
 
   it('renders Chinese dashboard overview copy', async () => {
@@ -108,7 +112,11 @@ describe('DashboardPage', () => {
       expect(container.textContent).toContain('这里是你的聊天机器人工作区概览。');
       expect(container.textContent).toContain('总对话数');
       expect(container.textContent).toContain('工作流');
+      expect(container.textContent).toContain('打开新的管理后台');
       expect(container.textContent).not.toContain('Total conversations');
     });
+
+    expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
   });
 });

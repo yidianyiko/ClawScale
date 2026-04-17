@@ -40,6 +40,28 @@ export default function Dashboard() {
         <p className="text-gray-500 mt-1">{copy.home.overview}</p>
       </div>
 
+      <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
+        <p className="text-sm font-semibold text-amber-900">
+          {locale === 'zh'
+            ? '旧版工作台已冻结。打开新的管理后台查看客户、渠道和投递。'
+            : 'The legacy dashboard is frozen. Open the new admin console for customers, channels, and deliveries.'}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            href="/admin/customers"
+            className="inline-flex items-center rounded-lg bg-amber-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-950"
+          >
+            {locale === 'zh' ? '打开新的管理后台' : 'Open the new admin console'}
+          </Link>
+          <Link
+            href="/admin/channels"
+            className="inline-flex items-center rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition-colors hover:border-amber-400 hover:text-amber-950"
+          >
+            {locale === 'zh' ? '查看管理渠道' : 'Review admin channels'}
+          </Link>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
         <StatCard icon={<MessageSquare className="h-5 w-5 text-teal-500" />} label={copy.home.stats.totalConversations}
           value={stats?.totalConversations ?? '—'} sub={copy.home.stats.totalConversationsSub} />
