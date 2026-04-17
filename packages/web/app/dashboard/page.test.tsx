@@ -95,15 +95,26 @@ describe('DashboardPage', () => {
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
-    const customerLinks = Array.from(container.querySelectorAll('a[href="/admin/customers"]'));
-    const channelLinks = Array.from(container.querySelectorAll('a[href="/admin/channels"]'));
-    const deliveryLinks = Array.from(container.querySelectorAll('a[href="/admin/deliveries"]'));
+    const quickCards = Array.from(container.querySelectorAll('a.card'));
 
-    expect(customerLinks.some((link) => link.textContent?.includes('Customers'))).toBe(true);
-    expect(customerLinks.some((link) => link.textContent?.includes('Conversations'))).toBe(false);
-    expect(channelLinks.some((link) => link.textContent?.includes('Channels'))).toBe(true);
-    expect(deliveryLinks.some((link) => link.textContent?.includes('Deliveries'))).toBe(true);
-    expect(deliveryLinks.some((link) => link.textContent?.includes('Workflows'))).toBe(false);
+    expect(quickCards).toHaveLength(3);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/customers'
+      && card.textContent?.includes('Customers')
+      && card.textContent?.includes('Review customer accounts, claim state, and channel coverage.'),
+    )).toBe(true);
+    expect(quickCards.some((card) => card.textContent?.includes('Conversations'))).toBe(false);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/channels'
+      && card.textContent?.includes('Channels')
+      && card.textContent?.includes('Inspect platform channel status and routing health in the admin console.'),
+    )).toBe(true);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/deliveries'
+      && card.textContent?.includes('Deliveries')
+      && card.textContent?.includes('Review recent delivery failures and operational follow-up from the admin console.'),
+    )).toBe(true);
+    expect(quickCards.some((card) => card.textContent?.includes('Workflows'))).toBe(false);
     expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();
@@ -133,15 +144,26 @@ describe('DashboardPage', () => {
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
-    const customerLinks = Array.from(container.querySelectorAll('a[href="/admin/customers"]'));
-    const channelLinks = Array.from(container.querySelectorAll('a[href="/admin/channels"]'));
-    const deliveryLinks = Array.from(container.querySelectorAll('a[href="/admin/deliveries"]'));
+    const quickCards = Array.from(container.querySelectorAll('a.card'));
 
-    expect(customerLinks.some((link) => link.textContent?.includes('客户'))).toBe(true);
-    expect(customerLinks.some((link) => link.textContent?.includes('对话'))).toBe(false);
-    expect(channelLinks.some((link) => link.textContent?.includes('渠道'))).toBe(true);
-    expect(deliveryLinks.some((link) => link.textContent?.includes('投递'))).toBe(true);
-    expect(deliveryLinks.some((link) => link.textContent?.includes('工作流'))).toBe(false);
+    expect(quickCards).toHaveLength(3);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/customers'
+      && card.textContent?.includes('客户')
+      && card.textContent?.includes('查看客户账号、认领状态和渠道覆盖情况。'),
+    )).toBe(true);
+    expect(quickCards.some((card) => card.textContent?.includes('对话'))).toBe(false);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/channels'
+      && card.textContent?.includes('渠道')
+      && card.textContent?.includes('在管理后台检查平台渠道状态和路由健康。'),
+    )).toBe(true);
+    expect(quickCards.some((card) =>
+      card.getAttribute('href') === '/admin/deliveries'
+      && card.textContent?.includes('投递')
+      && card.textContent?.includes('在管理后台查看近期投递失败和后续处理。'),
+    )).toBe(true);
+    expect(quickCards.some((card) => card.textContent?.includes('工作流'))).toBe(false);
     expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();
