@@ -10,7 +10,7 @@ const getCokeUserMock = vi.hoisted(() => vi.fn());
 const clearCokeUserAuthMock = vi.hoisted(() => vi.fn());
 const getCokeUserWechatChannelStatusMock = vi.hoisted(() => vi.fn());
 const connectCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
-const deleteCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
+const archiveCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -43,14 +43,6 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
   needsCokeSubscriptionRenewal: (user: { subscription_active?: boolean } | null) => user?.subscription_active !== true,
 }));
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    delete: (...args: unknown[]) => deleteCokeUserWechatChannelMock(...args),
-    get: vi.fn(),
-    post: vi.fn(),
-  },
-}));
-
 vi.mock('../../../../lib/coke-user-wechat-channel', async () => {
   const actual = await vi.importActual<typeof import('../../../../lib/coke-user-wechat-channel')>(
     '../../../../lib/coke-user-wechat-channel',
@@ -58,6 +50,7 @@ vi.mock('../../../../lib/coke-user-wechat-channel', async () => {
 
   return {
     ...actual,
+    archiveCokeUserWechatChannel: () => archiveCokeUserWechatChannelMock(),
     connectCokeUserWechatChannel: () => connectCokeUserWechatChannelMock(),
     getCokeUserWechatChannelStatus: () => getCokeUserWechatChannelStatusMock(),
   };
@@ -205,7 +198,7 @@ describe('BindWechatPage archive action', () => {
     clearCokeUserAuthMock.mockReset();
     getCokeUserWechatChannelStatusMock.mockReset();
     connectCokeUserWechatChannelMock.mockReset();
-    deleteCokeUserWechatChannelMock.mockReset();
+    archiveCokeUserWechatChannelMock.mockReset();
 
     getCokeUserTokenMock.mockReturnValue('token');
     getCokeUserMock.mockReturnValue({
@@ -215,7 +208,10 @@ describe('BindWechatPage archive action', () => {
       subscription_active: true,
       subscription_expires_at: '2026-05-01T00:00:00.000Z',
     });
-    deleteCokeUserWechatChannelMock.mockResolvedValue(undefined);
+    archiveCokeUserWechatChannelMock.mockResolvedValue({
+      ok: true,
+      data: { status: 'archived' },
+    });
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -248,7 +244,7 @@ describe('BindWechatPage archive action', () => {
     archiveButton?.click();
     await waitForText(container, 'This WeChat channel is archived');
 
-    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
+    expect(archiveCokeUserWechatChannelMock).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('This WeChat channel is archived');
     expect(container.textContent).toContain('Create my WeChat channel again');
     expect(container.textContent).not.toContain('Reconnect or archive your channel');
@@ -266,7 +262,7 @@ describe('BindWechatPage concurrent mutation guard', () => {
     clearCokeUserAuthMock.mockReset();
     getCokeUserWechatChannelStatusMock.mockReset();
     connectCokeUserWechatChannelMock.mockReset();
-    deleteCokeUserWechatChannelMock.mockReset();
+    archiveCokeUserWechatChannelMock.mockReset();
 
     getCokeUserTokenMock.mockReturnValue('token');
     getCokeUserMock.mockReturnValue({
@@ -315,7 +311,7 @@ describe('BindWechatPage concurrent mutation guard', () => {
     archiveButton?.click();
 
     expect(connectCokeUserWechatChannelMock).toHaveBeenCalledTimes(1);
-    expect(deleteCokeUserWechatChannelMock).not.toHaveBeenCalled();
+    expect(archiveCokeUserWechatChannelMock).not.toHaveBeenCalled();
   });
 });
 
@@ -372,7 +368,7 @@ describe('BindWechatPage refresh ordering', () => {
     clearCokeUserAuthMock.mockReset();
     getCokeUserWechatChannelStatusMock.mockReset();
     connectCokeUserWechatChannelMock.mockReset();
-    deleteCokeUserWechatChannelMock.mockReset();
+    archiveCokeUserWechatChannelMock.mockReset();
     intervalCallbacks = [];
 
     vi.spyOn(window, 'setInterval').mockImplementation(((handler: TimerHandler) => {

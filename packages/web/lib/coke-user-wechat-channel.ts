@@ -1,5 +1,3 @@
-import type { ApiResponse } from '../../shared/src/types/api';
-import { cokeUserApi } from './coke-user-api';
 export type {
   CustomerWechatChannelState as CokeUserWechatChannelState,
   CustomerWechatChannelStatus as CokeUserWechatChannelStatus,
@@ -14,45 +12,30 @@ export {
   getCustomerWechatChannelViewModel as getCokeUserWechatChannelViewModel,
 } from './customer-wechat-channel';
 
-import type { CustomerWechatChannelState } from './customer-wechat-channel';
-
-function normalizeEmptyArchiveResponse(
-  response: ApiResponse<CustomerWechatChannelState> | undefined,
-): ApiResponse<CustomerWechatChannelState> {
-  if (response == null) {
-    return {
-      ok: true,
-      data: { status: 'archived' },
-    };
-  }
-
-  return response;
-}
+import {
+  archiveCustomerWechatChannel,
+  connectCustomerWechatChannel,
+  createCustomerWechatChannel,
+  disconnectCustomerWechatChannel,
+  getCustomerWechatChannelStatus,
+} from './customer-wechat-channel';
 
 export function createCokeUserWechatChannel() {
-  return cokeUserApi.post<ApiResponse<CustomerWechatChannelState>>('/api/customer/channels/wechat-personal');
+  return createCustomerWechatChannel();
 }
 
 export function connectCokeUserWechatChannel() {
-  return cokeUserApi.post<ApiResponse<CustomerWechatChannelState>>(
-    '/api/customer/channels/wechat-personal/connect',
-  );
+  return connectCustomerWechatChannel();
 }
 
 export function getCokeUserWechatChannelStatus() {
-  return cokeUserApi.get<ApiResponse<CustomerWechatChannelState>>(
-    '/api/customer/channels/wechat-personal/status',
-  );
+  return getCustomerWechatChannelStatus();
 }
 
 export function disconnectCokeUserWechatChannel() {
-  return cokeUserApi.post<ApiResponse<CustomerWechatChannelState>>(
-    '/api/customer/channels/wechat-personal/disconnect',
-  );
+  return disconnectCustomerWechatChannel();
 }
 
 export function archiveCokeUserWechatChannel() {
-  return cokeUserApi
-    .delete<ApiResponse<CustomerWechatChannelState> | undefined>('/api/customer/channels/wechat-personal')
-    .then(normalizeEmptyArchiveResponse);
+  return archiveCustomerWechatChannel();
 }
