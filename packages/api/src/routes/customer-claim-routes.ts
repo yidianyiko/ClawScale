@@ -11,7 +11,7 @@ const claimSchema = z.object({
 });
 
 function mapCustomerAuthError(error: unknown): {
-  status: 400 | 404;
+  status: 400 | 404 | 409;
   body: { ok: false; error: string };
 } {
   if (!(error instanceof CustomerAuthError)) {
@@ -23,6 +23,8 @@ function mapCustomerAuthError(error: unknown): {
       return { status: 400, body: { ok: false, error: error.code } };
     case 'account_not_found':
       return { status: 404, body: { ok: false, error: error.code } };
+    case 'email_already_exists':
+      return { status: 409, body: { ok: false, error: error.code } };
     default:
       throw error;
   }

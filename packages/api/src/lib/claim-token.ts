@@ -134,6 +134,24 @@ function buildStateFingerprint(updatedAt?: Date): string | undefined {
   return sha256Hex(updatedAt.toISOString());
 }
 
+function isUniqueConstraint(error: unknown, fieldName: string): boolean {
+  const prismaError = error as {
+    code?: string;
+    meta?: { target?: unknown };
+  };
+
+  if (prismaError.code !== 'P2002') {
+    return false;
+  }
+
+  const target = prismaError.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes(fieldName);
+  }
+
+  return target === fieldName;
+}
+
 async function findClaimOwnership(
   client: Pick<ClaimMembershipClient, 'membership'>,
   input: { customerId: string; identityId: string },
@@ -302,18 +320,26 @@ export async function completeCustomerClaim(
   const passwordHash = await hashPassword(input.password);
 
   await client.$transaction(async (tx) => {
-    const completed = await tx.identity.updateMany({
-      where: {
-        id: membership.identity.id,
-        claimStatus: 'pending',
-        ...(membership.identity.updatedAt ? { updatedAt: membership.identity.updatedAt } : {}),
-      },
-      data: {
-        email,
-        passwordHash,
-        claimStatus: 'active',
-      },
-    });
+    let completed;
+    try {
+      completed = await tx.identity.updateMany({
+        where: {
+          id: membership.identity.id,
+          claimStatus: 'pending',
+          ...(membership.identity.updatedAt ? { updatedAt: membership.identity.updatedAt } : {}),
+        },
+        data: {
+          email,
+          passwordHash,
+          claimStatus: 'active',
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraint(error, 'email')) {
+        throw new CustomerAuthError('email_already_exists');
+      }
+      throw error;
+    }
 
     if (completed.count === 0) {
       throw new CustomerAuthError('invalid_or_expired_token');

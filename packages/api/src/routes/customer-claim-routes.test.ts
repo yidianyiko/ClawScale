@@ -105,6 +105,66 @@ describe('customer claim routes', () => {
     });
   });
 
+
+  it('returns 409 when claim completion hits an existing email address', async () => {
+    const issueTx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({
+          updatedAt: new Date('2026-04-18T00:05:00.000Z'),
+        }),
+      },
+    };
+    const issueClient = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (client: typeof issueTx) => Promise<unknown>) => fn(issueTx)),
+    };
+    const issued = await issueClaimToken(issueClient as never, {
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      email: 'alice@example.com',
+    });
+
+    tx.identity.updateMany.mockRejectedValueOnce({
+      code: 'P2002',
+      meta: {
+        target: ['email'],
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const res = await app.request('/api/auth/claim', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: issued.token,
+        password: 'new-password123',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'email_already_exists',
+    });
+    expect(tx.customer.create).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid or expired claim tokens without creating a new customer', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-18T00:00:00.000Z'));

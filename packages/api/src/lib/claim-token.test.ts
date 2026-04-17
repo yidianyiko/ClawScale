@@ -293,6 +293,72 @@ describe('claim-token helpers', () => {
     });
   });
 
+
+  it('rejects completing a claim when the requested email is already taken', async () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const pendingAt = new Date('2026-04-18T00:05:00.000Z');
+    const issueTx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: pendingAt }),
+      },
+    };
+    const issueClient = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof issueTx) => Promise<unknown>) => fn(issueTx)),
+    };
+    const issued = await issueClaimToken(issueClient as never, {
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      email: 'alice@example.com',
+    });
+
+    const completeTx = {
+      identity: {
+        updateMany: vi.fn().mockRejectedValue({
+          code: 'P2002',
+          meta: {
+            target: ['email'],
+          },
+        }),
+      },
+    };
+    const completeClient = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'pending',
+            updatedAt: pendingAt,
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof completeTx) => Promise<unknown>) => fn(completeTx)),
+    };
+
+    await expect(
+      completeCustomerClaim(completeClient as never, {
+        token: issued.token,
+        password: 'new-password123',
+      }),
+    ).rejects.toMatchObject({ code: 'email_already_exists' });
+  });
+
   it('rejects completing a claim when a concurrent submission already consumed the token', async () => {
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
 
