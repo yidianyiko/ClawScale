@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import QRCode from 'qrcode';
 import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
@@ -80,6 +80,8 @@ export default function CustomerWechatPersonalPage() {
   const copy = messages.cokeUserPages.bindWechat;
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const compatibilityRedirect = searchParams.get('next') === 'renew' ? '/coke/renew' : null;
   const [channel, setChannel] = useState<CokeUserWechatChannelState | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [hasToken] = useState<boolean>(() => getCokeUserToken() != null);
@@ -164,6 +166,12 @@ export default function CustomerWechatPersonalPage() {
   }, [copy.errorCard.fallbackDescription, copy.loadFailure.title]);
 
   useEffect(() => {
+    if (compatibilityRedirect) {
+      router.replace(compatibilityRedirect);
+      setLoading(false);
+      return;
+    }
+
     if (!hasToken) {
       router.replace('/coke/login');
       setLoading(false);
@@ -176,7 +184,7 @@ export default function CustomerWechatPersonalPage() {
     }
 
     void refreshChannel();
-  }, [blockedAccessState, hasToken, refreshChannel, router]);
+  }, [blockedAccessState, compatibilityRedirect, hasToken, refreshChannel, router]);
 
   useEffect(() => {
     if (channel?.status !== 'pending' || !channel.connect_url) {
@@ -271,6 +279,10 @@ export default function CustomerWechatPersonalPage() {
 
   async function handleArchiveChannel() {
     await runAction('archive', () => archiveCokeUserWechatChannel());
+  }
+
+  if (compatibilityRedirect) {
+    return null;
   }
 
   if (!hasToken) {
