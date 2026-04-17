@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-type SearchParamsLike = URLSearchParams | ReadonlyURLSearchParams | null;
+type SearchParamsLike = { toString(): string } | null;
 
 export function buildLegacyRedirectPath(pathname: string, searchParams: SearchParamsLike) {
   const query = searchParams?.toString();
