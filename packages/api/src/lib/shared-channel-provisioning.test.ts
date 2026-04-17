@@ -172,6 +172,7 @@ describe('provisionSharedChannelCustomer', () => {
           authorization: 'Bearer secret-token',
           'content-type': 'application/json',
         }),
+        signal: expect.any(AbortSignal),
         body: JSON.stringify({
           customer_id: customerId,
           display_name: 'Alice',
@@ -285,6 +286,63 @@ describe('provisionSharedChannelCustomer', () => {
       identityValue: '14155550100',
       payload: expect.objectContaining({
         customerId: 'ck_existing',
+        externalId: '+1 (415) 555-0100',
+        text: 'hello',
+      }),
+    });
+  });
+
+  it('parks the first inbound when ready-state persistence fails after provisioning succeeds', async () => {
+    db.agentBinding.update
+      .mockRejectedValueOnce(new Error('binding write failed'))
+      .mockResolvedValueOnce({});
+
+    const result = await provisionSharedChannelCustomer({
+      channelId: 'ch_1',
+      agentId: 'agent_shared',
+      displayName: 'Alice',
+      provider: 'whatsapp_business',
+      identityType: 'wa_id',
+      rawIdentityValue: '+1 (415) 555-0100',
+      payload: {
+        externalId: '+1 (415) 555-0100',
+        text: 'hello',
+      },
+    });
+
+    const customerId = db.__tx.externalIdentity.upsert.mock.calls[0]?.[0]?.create?.customer?.create?.id;
+
+    expect(result).toEqual({
+      customerId,
+      created: true,
+      parked: true,
+      provisionStatus: 'pending',
+    });
+    expect(db.agentBinding.update).toHaveBeenNthCalledWith(1, {
+      where: { customerId },
+      data: expect.objectContaining({
+        provisionStatus: 'ready',
+        provisionAttempts: { increment: 1 },
+        provisionLastError: null,
+        provisionUpdatedAt: expect.any(Date),
+      }),
+    });
+    expect(db.agentBinding.update).toHaveBeenNthCalledWith(2, {
+      where: { customerId },
+      data: expect.objectContaining({
+        provisionStatus: 'pending',
+        provisionAttempts: { increment: 1 },
+        provisionLastError: expect.stringContaining('shared_channel_ready_update_failed:binding write failed'),
+        provisionUpdatedAt: expect.any(Date),
+      }),
+    });
+    expect(queueParkedInbound).toHaveBeenCalledWith({
+      channelId: 'ch_1',
+      provider: 'whatsapp_business',
+      identityType: 'wa_id',
+      identityValue: '14155550100',
+      payload: expect.objectContaining({
+        customerId,
         externalId: '+1 (415) 555-0100',
         text: 'hello',
       }),

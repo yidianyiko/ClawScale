@@ -66,8 +66,7 @@ function formatCombinedReplies(replies: ReplyEntry[]): string {
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
 
-  const platform = (meta?.platform as string) ?? 'unknown';
-  console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
+  const metadataPlatform = meta?.platform as string | undefined;
 
   // 1. Resolve channel + tenant
   const channel = await db.channel.findUnique({
@@ -75,6 +74,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     select: {
       id: true,
       tenantId: true,
+      type: true,
       ownershipKind: true,
       customerId: true,
       agentId: true,
@@ -90,6 +90,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     },
   });
   if (!channel || channel.status !== 'connected') return null;
+  const platform = metadataPlatform ?? channel.type ?? 'unknown';
+  console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
   const { tenantId } = channel;
   const personalChannelOwnership =
     channel.scope === 'personal' &&

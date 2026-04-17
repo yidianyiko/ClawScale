@@ -48,6 +48,7 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
+      type: 'whatsapp_business',
       customerId: null,
       ownershipKind: 'shared',
       agentId: 'agent_shared',
@@ -136,6 +137,26 @@ describe('routeInboundMessage', () => {
       parked: false,
       provisionStatus: 'ready',
     });
+  });
+
+  it('derives shared-channel provider from channel type when meta.platform is missing', async () => {
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: '+1 (415) 555-0100',
+      displayName: 'Alice',
+      text: 'hello',
+      meta: {},
+    });
+
+    expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        provider: 'whatsapp_business',
+        identityType: 'wa_id',
+        rawIdentityValue: '+1 (415) 555-0100',
+      }),
+    );
   });
 
   it('parks shared-channel inbound before legacy end-user routing when provisioning is not ready', async () => {

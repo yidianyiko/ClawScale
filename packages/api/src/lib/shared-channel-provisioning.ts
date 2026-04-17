@@ -135,6 +135,30 @@ async function resolveExistingCustomer(
   };
 }
 
+async function markProvisionPending(customerId: string, errorMessage: string): Promise<void> {
+  await db.agentBinding.update({
+    where: { customerId },
+    data: {
+      provisionStatus: 'pending',
+      provisionAttempts: { increment: 1 },
+      provisionLastError: errorMessage,
+      provisionUpdatedAt: new Date(),
+    },
+  });
+}
+
+async function markProvisionReady(customerId: string): Promise<void> {
+  await db.agentBinding.update({
+    where: { customerId },
+    data: {
+      provisionStatus: 'ready',
+      provisionAttempts: { increment: 1 },
+      provisionLastError: null,
+      provisionUpdatedAt: new Date(),
+    },
+  });
+}
+
 async function provisionSharedChannelAgent(
   agentId: string,
   customerId: string,
@@ -158,6 +182,7 @@ async function provisionSharedChannelAgent(
       authorization: `Bearer ${agent.authToken}`,
       'content-type': 'application/json',
     },
+    signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({
       customer_id: customerId,
       ...(buildDisplayName(displayName)
@@ -256,15 +281,20 @@ export async function provisionSharedChannelCustomer(
 
   try {
     await provisionSharedChannelAgent(input.agentId, customerId, input.displayName);
-    await db.agentBinding.update({
-      where: { customerId },
-      data: {
-        provisionStatus: 'ready',
-        provisionAttempts: { increment: 1 },
-        provisionLastError: null,
-        provisionUpdatedAt: new Date(),
-      },
-    });
+  } catch (error) {
+    await markProvisionPending(customerId, readErrorMessage(error));
+    await parkInbound(identity, input, customerId);
+
+    return {
+      customerId,
+      created: true,
+      parked: true,
+      provisionStatus: 'pending',
+    };
+  }
+
+  try {
+    await markProvisionReady(customerId);
 
     return {
       customerId,
@@ -273,15 +303,10 @@ export async function provisionSharedChannelCustomer(
       provisionStatus: 'ready',
     };
   } catch (error) {
-    await db.agentBinding.update({
-      where: { customerId },
-      data: {
-        provisionStatus: 'pending',
-        provisionAttempts: { increment: 1 },
-        provisionLastError: readErrorMessage(error),
-        provisionUpdatedAt: new Date(),
-      },
-    });
+    await markProvisionPending(
+      customerId,
+      `shared_channel_ready_update_failed:${readErrorMessage(error)}` ,
+    );
     await parkInbound(identity, input, customerId);
 
     return {
