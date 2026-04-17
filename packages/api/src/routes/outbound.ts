@@ -277,10 +277,18 @@ outboundRouter.post('/', async (c) => {
   if (!channel) {
     channel = await db.channel.findFirst({
       where: {
-        id: deliveryRoute.channelId,
-        tenantId: deliveryRoute.tenantId,
+        id: outboundDelivery.channelId,
+        tenantId: outboundDelivery.tenantId,
       },
     });
+    if (!channel && deliveryRoute.channelId !== outboundDelivery.channelId) {
+      channel = await db.channel.findFirst({
+        where: {
+          id: deliveryRoute.channelId,
+          tenantId: deliveryRoute.tenantId,
+        },
+      });
+    }
     if (!channel) {
       return c.json({ ok: false, error: 'channel_not_found' }, 404);
     }

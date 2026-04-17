@@ -98,6 +98,48 @@ describe('provisionSharedChannelCustomer', () => {
     expect(queueParkedInbound).not.toHaveBeenCalled();
   });
 
+  it('keeps terminal provisioning errors visible while parking the inbound', async () => {
+    db.agentBinding.findUnique.mockResolvedValueOnce({
+      customerId: 'ck_existing',
+      provisionStatus: 'error',
+      provisionLastError: 'agent offline',
+    });
+    db.__tx.externalIdentity.upsert.mockResolvedValueOnce({ customerId: 'ck_existing' });
+
+    await expect(
+      provisionSharedChannelCustomer({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        displayName: 'Alice',
+        provider: 'whatsapp_business',
+        identityType: 'wa_id',
+        rawIdentityValue: '+1 (415) 555-0100',
+        payload: {
+          externalId: '+1 (415) 555-0100',
+          text: 'hello',
+        },
+      }),
+    ).resolves.toEqual({
+      customerId: 'ck_existing',
+      created: false,
+      parked: true,
+      provisionStatus: 'error',
+    });
+
+    expect(queueParkedInbound).toHaveBeenCalledWith({
+      channelId: 'ch_1',
+      provider: 'whatsapp_business',
+      identityType: 'wa_id',
+      identityValue: '14155550100',
+      payload: expect.objectContaining({
+        customerId: 'ck_existing',
+        externalId: '+1 (415) 555-0100',
+        text: 'hello',
+      }),
+    });
+    expect(db.agentBinding.update).not.toHaveBeenCalled();
+  });
+
   it('creates the shared-channel platform graph on first inbound miss', async () => {
     const result = await provisionSharedChannelCustomer({
       channelId: 'ch_1',

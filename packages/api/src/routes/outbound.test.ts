@@ -321,6 +321,36 @@ describe('outbound router', () => {
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
   });
 
+  it('reclaims failed shared-channel deliveries through the stored shared channel id', async () => {
+    const body = makeBody();
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: normalizePayload(body),
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+    vi.mocked(resolveExactDeliveryRoute).mockResolvedValueOnce(movedRoute as never);
+    vi.mocked(db.channel.findFirst).mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === 'ch_1') {
+        return channel as never;
+      }
+
+      if (where.id === 'ch_2') {
+        return movedChannel as never;
+      }
+
+      return null as never;
+    });
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(200);
+    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
+    expect(deliverOutboundMessage).not.toHaveBeenCalledWith(movedChannel, 'wxid_1', 'hello');
+  });
+
   it('accepts customer_id as a compatibility alias', async () => {
     const body = makeBody({
       account_id: undefined,
