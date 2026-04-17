@@ -79,6 +79,13 @@ function getPlatformTenantId(): string {
   return process.env['COKE_PLATFORM_TENANT_ID'] ?? 'ten_1';
 }
 
+const activeSharedChannelWhere = {
+  ownershipKind: 'shared' as const,
+  status: {
+    not: 'archived' as const,
+  },
+};
+
 function serializeSharedChannel(
   row: {
     id: string;
@@ -115,7 +122,7 @@ async function readSharedChannel(id: string) {
     select: sharedChannelSelect,
   });
 
-  if (!channel || channel.ownershipKind !== 'shared') {
+  if (!channel || channel.ownershipKind !== 'shared' || channel.status === 'archived') {
     return null;
   }
 
@@ -144,18 +151,14 @@ export const adminSharedChannelsRouter = new Hono()
 
     const [rows, total] = await Promise.all([
       db.channel.findMany({
-        where: {
-          ownershipKind: 'shared',
-        },
+        where: activeSharedChannelWhere,
         select: sharedChannelSelect,
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,
       }),
       db.channel.count({
-        where: {
-          ownershipKind: 'shared',
-        },
+        where: activeSharedChannelWhere,
       }),
     ]);
 

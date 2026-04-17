@@ -148,6 +148,7 @@ const adminMessages = {
         retire: 'Retire shared channel',
         back: 'Back to shared channels',
       },
+      confirmRetire: 'Retire this shared channel?',
       columns: {
         name: 'Channel',
         kind: 'Kind',
@@ -304,6 +305,7 @@ const adminMessages = {
         retire: '退役共享渠道',
         back: '返回共享渠道列表',
       },
+      confirmRetire: '确认退役这个共享渠道？',
       columns: {
         name: '渠道',
         kind: '类型',

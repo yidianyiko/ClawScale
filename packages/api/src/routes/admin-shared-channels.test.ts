@@ -86,11 +86,17 @@ describe('admin shared channels route', () => {
       take: 20,
       where: {
         ownershipKind: 'shared',
+        status: {
+          not: 'archived',
+        },
       },
     });
     expect(db.channel.count).toHaveBeenCalledWith({
       where: {
         ownershipKind: 'shared',
+        status: {
+          not: 'archived',
+        },
       },
     });
   });
@@ -148,6 +154,34 @@ describe('admin shared channels route', () => {
       where: { id: 'ch_1' },
       select: expect.any(Object),
     });
+  });
+
+  it('hides retired shared channels from the detail route', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      name: 'Primary WhatsApp',
+      type: 'whatsapp',
+      status: 'archived',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {},
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_1');
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'shared_channel_not_found' });
   });
 
   it('creates a shared channel with dormant shared ownership metadata', async () => {

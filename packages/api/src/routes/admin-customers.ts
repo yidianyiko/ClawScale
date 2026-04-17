@@ -153,7 +153,7 @@ export const adminCustomersRouter = new Hono()
     const limit = parsedQuery.data.limit ?? 50;
     const offset = parsedQuery.data.offset ?? 0;
 
-    const [rows, total, parkedInbounds] = await Promise.all([
+    const [rows, total] = await Promise.all([
       db.customer.findMany({
         orderBy: { createdAt: 'desc' },
         select: customerSelect,
@@ -161,15 +161,33 @@ export const adminCustomersRouter = new Hono()
         take: limit,
       }),
       db.customer.count(),
-      db.parkedInbound.findMany({
-        where: {
-          status: 'queued',
-        },
-        select: {
-          payload: true,
-        },
-      }),
     ]);
+
+    const customerIds = rows.map((row) => row.id);
+    const parkedInbounds = customerIds.length
+      ? await db.parkedInbound.findMany({
+          where: {
+            status: 'queued',
+            OR: customerIds.flatMap((customerId) => [
+              {
+                payload: {
+                  path: ['customerId'],
+                  equals: customerId,
+                },
+              },
+              {
+                payload: {
+                  path: ['customer_id'],
+                  equals: customerId,
+                },
+              },
+            ]),
+          },
+          select: {
+            payload: true,
+          },
+        })
+      : [];
 
     const parkedInboundCounts = new Map<string, number>();
     for (const row of parkedInbounds as Array<{ payload: unknown }>) {

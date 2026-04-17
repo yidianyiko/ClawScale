@@ -109,7 +109,7 @@ export default function AdminSharedChannelDetailPage() {
   }
 
   async function handleRetire() {
-    if (!window.confirm(copy.admins.confirmRemove)) {
+    if (!window.confirm(copy.sharedChannels.confirmRetire)) {
       return;
     }
 

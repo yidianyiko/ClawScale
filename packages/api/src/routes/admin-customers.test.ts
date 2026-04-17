@@ -131,6 +131,20 @@ describe('admin customers route', () => {
     expect(db.parkedInbound.findMany).toHaveBeenCalledWith({
       where: {
         status: 'queued',
+        OR: [
+          {
+            payload: {
+              path: ['customerId'],
+              equals: 'cust_123',
+            },
+          },
+          {
+            payload: {
+              path: ['customer_id'],
+              equals: 'cust_123',
+            },
+          },
+        ],
       },
       select: {
         payload: true,
