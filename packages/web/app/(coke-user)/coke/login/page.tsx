@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+
 type LegacySearchParams = Record<string, string | string[] | undefined>;
 
 function buildRedirectPath(pathname: string, searchParams?: LegacySearchParams) {
