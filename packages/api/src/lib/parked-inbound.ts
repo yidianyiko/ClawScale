@@ -32,15 +32,6 @@ export interface DrainParkedInboundsInput {
   limit?: number;
 }
 
-function compareParkedInboundRows(left: ParkedInboundRecord, right: ParkedInboundRecord): number {
-  const createdAtDelta = left.createdAt.getTime() - right.createdAt.getTime();
-  if (createdAtDelta !== 0) {
-    return createdAtDelta;
-  }
-
-  return left.id.localeCompare(right.id);
-}
-
 export async function queueParkedInbound(
   input: QueueParkedInboundInput,
 ): Promise<ParkedInboundRecord> {
@@ -71,11 +62,10 @@ export async function drainParkedInbounds(
       ...(typeof input.limit === 'number' ? { take: input.limit } : {}),
     });
 
-    const orderedRows = [...rows].sort(compareParkedInboundRows);
     const drainedAt = new Date();
     const drainedRows: ParkedInboundRecord[] = [];
 
-    for (const row of orderedRows) {
+    for (const row of rows) {
       const drainedRow = await tx.parkedInbound.update({
         where: { id: row.id },
         data: {

@@ -62,7 +62,7 @@ describe('parked inbound helpers', () => {
     });
   });
 
-  it('drains parked inbound rows in arrival order', async () => {
+  it('drains parked inbound rows in query order', async () => {
     const older = {
       id: 'pi_1',
       channelId: 'ch_1',
@@ -94,7 +94,7 @@ describe('parked inbound helpers', () => {
 
     db.parkedInbound.findMany.mockResolvedValue([newer, older]);
     db.parkedInbound.update.mockImplementation(async ({ where }: { where: { id: string } }) => {
-      const row = where.id === older.id ? older : newer;
+      const row = where.id === newer.id ? newer : older;
       return {
         ...row,
         status: 'drained',
@@ -104,12 +104,12 @@ describe('parked inbound helpers', () => {
 
     await expect(drainParkedInbounds({ channelId: 'ch_1' })).resolves.toEqual([
       {
-        ...older,
+        ...newer,
         status: 'drained',
         drainedAt: new Date('2026-04-17T00:00:10.000Z'),
       },
       {
-        ...newer,
+        ...older,
         status: 'drained',
         drainedAt: new Date('2026-04-17T00:00:10.000Z'),
       },
@@ -123,8 +123,8 @@ describe('parked inbound helpers', () => {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     expect(db.parkedInbound.update.mock.calls.map(([args]: [any]) => args.where.id)).toEqual([
-      'pi_1',
       'pi_2',
+      'pi_1',
     ]);
   });
 });

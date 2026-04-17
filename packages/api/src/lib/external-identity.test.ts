@@ -34,6 +34,32 @@ describe('external identity helpers', () => {
     });
   });
 
+  it('rejects blank provider, identity type, or raw value', () => {
+    expect(() =>
+      normalizeExternalIdentity({
+        provider: '   ',
+        identityType: 'user_id',
+        rawValue: '123',
+      }),
+    ).toThrow('provider is required');
+
+    expect(() =>
+      normalizeExternalIdentity({
+        provider: 'telegram',
+        identityType: '   ',
+        rawValue: '123',
+      }),
+    ).toThrow('identityType is required');
+
+    expect(() =>
+      normalizeExternalIdentity({
+        provider: 'telegram',
+        identityType: 'user_id',
+        rawValue: '   ',
+      }),
+    ).toThrow('rawValue is required');
+  });
+
   it('builds the same unique lookup for values that normalize to the same row', () => {
     const lookupA = buildExternalIdentityUniqueWhere(
       normalizeExternalIdentity({

@@ -16,13 +16,24 @@ export interface ExternalIdentityUniqueWhere {
 
 const WHATSAPP_PROVIDERS = new Set(['whatsapp', 'whatsapp_business']);
 
-function normalizeProvider(provider: string): string {
-  return provider.trim().toLowerCase();
+function requireNonBlank(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    throw new Error(`${fieldName} is required`);
+  }
+
+  return trimmed;
 }
 
-function normalizeIdentityType(identityType: string): string {
-  return identityType.trim().toLowerCase();
+function normalizeProvider(provider: string): string {
+  return requireNonBlank(provider, 'provider').toLowerCase();
 }
+
+
+function normalizeIdentityType(identityType: string): string {
+  return requireNonBlank(identityType, 'identityType').toLowerCase();
+}
+
 
 function normalizeWhatsAppWaId(rawValue: string): string {
   const digitsOnly = rawValue.replace(/\D+/g, '');
@@ -34,7 +45,7 @@ export function normalizeExternalIdentity(
 ): NormalizedExternalIdentity {
   const provider = normalizeProvider(input.provider);
   const identityType = normalizeIdentityType(input.identityType);
-  const trimmedValue = input.rawValue.trim();
+  const trimmedValue = requireNonBlank(input.rawValue, 'rawValue');
 
   return {
     provider,
