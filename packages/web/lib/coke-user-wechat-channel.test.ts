@@ -117,7 +117,7 @@ describe('coke-user-wechat-channel api helpers', () => {
 
 describe('getCokeUserWechatChannelViewModel', () => {
   it('maps lifecycle states to the expected copy', () => {
-    const copy = messages.en.cokeUserPages.bindWechat.viewModel;
+    const copy = messages.en.customerPages.bindWechat.viewModel;
 
     expect(getCokeUserWechatChannelViewModel(null, copy)).toMatchObject({
       eyebrow: 'No channel yet',
