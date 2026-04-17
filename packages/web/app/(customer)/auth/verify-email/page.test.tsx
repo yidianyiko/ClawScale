@@ -7,6 +7,7 @@ const pushMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
 const postMock = vi.hoisted(() => vi.fn());
 const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
+const getCokeUserMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -23,6 +24,7 @@ vi.mock('../../../../lib/coke-user-api', () => ({
 
 vi.mock('../../../../lib/coke-user-auth', () => ({
   storeCokeUserAuth: (...args: unknown[]) => storeCokeUserAuthMock(...args),
+  getCokeUser: () => getCokeUserMock(),
 }));
 
 import CustomerVerifyEmailPage from './page';
@@ -42,6 +44,7 @@ describe('CustomerVerifyEmailPage', () => {
     replaceMock.mockReset();
     postMock.mockReset();
     storeCokeUserAuthMock.mockReset();
+    getCokeUserMock.mockReset();
     postMock.mockResolvedValue({
       ok: true,
       data: {
@@ -56,6 +59,15 @@ describe('CustomerVerifyEmailPage', () => {
           subscription_expires_at: null,
         },
       },
+    });
+    getCokeUserMock.mockReturnValue({
+      id: 'acct_1',
+      email: 'alice@example.com',
+      display_name: 'Alice',
+      email_verified: false,
+      status: 'normal',
+      subscription_active: false,
+      subscription_expires_at: null,
     });
     window.history.pushState({}, '', '/auth/verify-email?token=verify-token&email=alice@example.com');
 
@@ -130,8 +142,8 @@ describe('CustomerVerifyEmailPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('redirects to login recovery when the verification link is missing token or email', async () => {
-    window.history.pushState({}, '', '/auth/verify-email?email=alice@example.com');
+  it('uses the stored auth email to keep the registration handoff on a working recovery flow', async () => {
+    window.history.pushState({}, '', '/auth/verify-email');
 
     flushSync(() => {
       root.render(
@@ -144,14 +156,31 @@ describe('CustomerVerifyEmailPage', () => {
     await flushTicks(2);
 
     expect(postMock).not.toHaveBeenCalled();
-    expect(replaceMock).toHaveBeenCalledWith(
-      '/auth/login?email=alice%40example.com&verification=expired',
+    expect(container.textContent).toContain('Verify your email');
+    expect(container.textContent).toContain('Resend verification email');
+
+    const emailInput = container.querySelector('input#email') as HTMLInputElement | null;
+    expect(emailInput?.value).toBe('alice@example.com');
+
+    const resendButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Resend verification email'),
     );
-    expect(pushMock).not.toHaveBeenCalled();
+    expect(resendButton).toBeTruthy();
 
-    replaceMock.mockReset();
-    postMock.mockReset();
-    window.history.pushState({}, '', '/auth/verify-email?token=verify-token');
+    resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushTicks(2);
+
+    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+      email: 'alice@example.com',
+    });
+    expect(container.textContent).toContain('Verification email sent. Check your inbox.');
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('supports manual resend recovery when opened without query params and no stored auth email', async () => {
+    getCokeUserMock.mockReturnValue(null);
+    window.history.pushState({}, '', '/auth/verify-email');
 
     flushSync(() => {
       root.render(
@@ -164,7 +193,27 @@ describe('CustomerVerifyEmailPage', () => {
     await flushTicks(2);
 
     expect(postMock).not.toHaveBeenCalled();
-    expect(replaceMock).toHaveBeenCalledWith('/auth/login?verification=expired');
+
+    const emailInput = container.querySelector('input#email') as HTMLInputElement | null;
+    expect(emailInput?.value).toBe('');
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(emailInput, 'manual@example.com');
+    emailInput?.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const resendButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Resend verification email'),
+    );
+    expect(resendButton).toBeTruthy();
+
+    resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushTicks(2);
+
+    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+      email: 'manual@example.com',
+    });
+    expect(container.textContent).toContain('Verification email sent. Check your inbox.');
+    expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
