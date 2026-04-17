@@ -64,6 +64,49 @@ describe('AdminAdminsPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders an explicit load failure with retry instead of the empty state', async () => {
+    vi.mocked(adminApi.get)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'network_error',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: [
+          {
+            id: 'adm_123',
+            email: 'owner@example.com',
+            isActive: true,
+            createdAt: '2026-04-16T09:00:00.000Z',
+            updatedAt: '2026-04-16T10:00:00.000Z',
+          },
+        ],
+      });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminAdminsPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Error: network_error');
+      expect(container.querySelector('button[data-testid="retry-load"]')).toBeTruthy();
+      expect(container.textContent).not.toContain('No records found.');
+    });
+
+    (container.querySelector('button[data-testid="retry-load"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(adminApi.get)).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain('owner@example.com');
+    });
+  });
+
+
   it('adds and removes admin accounts', async () => {
     flushSync(() => {
       root.render(

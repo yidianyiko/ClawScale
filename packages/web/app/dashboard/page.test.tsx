@@ -88,6 +88,8 @@ describe('DashboardPage', () => {
       expect(container.textContent).toContain("Here's an overview of your chatbot.");
       expect(container.textContent).toContain('Total conversations');
       expect(container.textContent).toContain('Channels');
+      expect(container.textContent).toContain('The new admin console now owns customers, channels, and deliveries.');
+      expect(container.textContent).toContain('Other dashboard areas remain transitional during the migration.');
       expect(container.textContent).toContain('Open the new admin console');
       expect(container.textContent).not.toContain('总对话数');
     });
@@ -137,6 +139,8 @@ describe('DashboardPage', () => {
       expect(container.textContent).toContain('总对话数');
       expect(container.textContent).toContain('客户');
       expect(container.textContent).toContain('投递');
+      expect(container.textContent).toContain('新的管理后台现已负责客户、渠道和投递。');
+      expect(container.textContent).toContain('其他旧版工作台区域仍处于过渡阶段。');
       expect(container.textContent).toContain('打开新的管理后台');
       expect(container.textContent).not.toContain('Total conversations');
     });

@@ -25,6 +25,7 @@ export default function AdminCustomersPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -57,7 +58,7 @@ export default function AdminCustomersPage() {
     return () => {
       active = false;
     };
-  }, [offset]);
+  }, [offset, reloadKey]);
 
   return (
     <div className="p-8">
@@ -72,8 +73,18 @@ export default function AdminCustomersPage() {
             <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
           </div>
         ) : error ? (
-          <div className="px-5 py-6 text-sm text-red-600">
-            {copy.common.errorPrefix}: {error}
+          <div className="px-5 py-8">
+            <p className="text-sm text-red-600">
+              {copy.common.errorPrefix}: {error}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-4"
+              data-testid="retry-load"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              {copy.common.retry}
+            </button>
           </div>
         ) : (
           <>

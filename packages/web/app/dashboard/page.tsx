@@ -57,8 +57,8 @@ export default function Dashboard() {
       <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
         <p className="text-sm font-semibold text-amber-900">
           {locale === 'zh'
-            ? '旧版工作台已冻结。打开新的管理后台查看客户、渠道和投递。'
-            : 'The legacy dashboard is frozen. Open the new admin console for customers, channels, and deliveries.'}
+            ? '新的管理后台现已负责客户、渠道和投递。其他旧版工作台区域仍处于过渡阶段。'
+            : 'The new admin console now owns customers, channels, and deliveries. Other dashboard areas remain transitional during the migration.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link

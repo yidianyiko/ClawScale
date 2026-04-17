@@ -24,20 +24,28 @@ export default function AdminAdminsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
 
     async function loadAdmins() {
+      setLoading(true);
+      setLoadError('');
       const response = await adminApi.get<AdminAccountRecord[]>('/api/admin/admins');
       if (!active) {
         return;
       }
 
-      if (response.ok) {
-        setRows(response.data);
+      if (!response.ok) {
+        setRows([]);
+        setLoadError(response.error || copy.admins.genericError);
+        setLoading(false);
+        return;
       }
 
+      setRows(response.data);
       setLoading(false);
     }
 
@@ -45,7 +53,7 @@ export default function AdminAdminsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [copy.admins.genericError, reloadKey]);
 
   async function handleCreateAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -178,6 +186,20 @@ export default function AdminAdminsPage() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+          </div>
+        ) : loadError ? (
+          <div className="px-5 py-8">
+            <p className="text-sm text-red-600">
+              {copy.common.errorPrefix}: {loadError}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-4"
+              data-testid="retry-load"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              {copy.common.retry}
+            </button>
           </div>
         ) : (
           <table className="w-full text-sm">
