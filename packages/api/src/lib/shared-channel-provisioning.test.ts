@@ -238,6 +238,59 @@ describe('provisionSharedChannelCustomer', () => {
     expect(queueParkedInbound).not.toHaveBeenCalled();
   });
 
+  it('parks the concurrent loser until the winner finishes provisioning', async () => {
+    const uniqueConflict = {
+      code: 'P2002',
+      meta: {
+        target: ['provider', 'identityType', 'identityValue'],
+      },
+    };
+
+    db.agentBinding.findUnique.mockResolvedValueOnce({
+      customerId: 'ck_existing',
+      provisionStatus: 'pending',
+    });
+    db.$transaction.mockImplementationOnce(async (fn: (txClient: typeof db.__tx) => Promise<unknown>) => {
+      await expect(fn(db.__tx)).rejects.toEqual(uniqueConflict);
+      throw uniqueConflict;
+    });
+    db.__tx.externalIdentity.upsert.mockRejectedValueOnce(uniqueConflict);
+    db.externalIdentity.findUnique.mockResolvedValueOnce({ customerId: 'ck_existing' });
+
+    await expect(
+      provisionSharedChannelCustomer({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        displayName: 'Alice',
+        provider: 'whatsapp_business',
+        identityType: 'wa_id',
+        rawIdentityValue: '+1 (415) 555-0100',
+        payload: {
+          externalId: '+1 (415) 555-0100',
+          text: 'hello',
+        },
+      }),
+    ).resolves.toEqual({
+      customerId: 'ck_existing',
+      created: false,
+      parked: true,
+      provisionStatus: 'pending',
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(queueParkedInbound).toHaveBeenCalledWith({
+      channelId: 'ch_1',
+      provider: 'whatsapp_business',
+      identityType: 'wa_id',
+      identityValue: '14155550100',
+      payload: expect.objectContaining({
+        customerId: 'ck_existing',
+        externalId: '+1 (415) 555-0100',
+        text: 'hello',
+      }),
+    });
+  });
+
   it('parks the first inbound when shared-channel provisioning fails', async () => {
     fetchMock.mockRejectedValueOnce(new Error('network timeout'));
 

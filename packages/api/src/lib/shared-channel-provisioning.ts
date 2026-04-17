@@ -248,6 +248,8 @@ export async function provisionSharedChannelCustomer(
     return resolveExistingCustomer(winnerCustomerId, identity, input);
   }
 
+  // ExternalIdentity is lifetime-stable by normalized provider/type/value, so later hits
+  // reuse the mapped customer instead of provisioning a second owner graph.
   if (boundCustomerId !== customerId) {
     return resolveExistingCustomer(boundCustomerId, identity, input);
   }
