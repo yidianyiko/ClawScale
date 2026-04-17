@@ -16,11 +16,8 @@ describe('claim-token helpers', () => {
     const issuedAt = new Date('2026-04-18T00:05:00.000Z');
     const tx = {
       identity: {
-        update: vi.fn().mockResolvedValue({
-          id: 'idt_123',
-          claimStatus: 'pending',
-          updatedAt: issuedAt,
-        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: issuedAt }),
       },
     };
     const client = {
@@ -67,10 +64,21 @@ describe('claim-token helpers', () => {
         },
       },
     });
-    expect(tx.identity.update).toHaveBeenCalledWith({
-      where: { id: 'idt_123' },
+    expect(tx.identity.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'idt_123',
+        claimStatus: {
+          in: ['unclaimed', 'pending'],
+        },
+      },
       data: {
         claimStatus: 'pending',
+      },
+    });
+    expect(tx.identity.findUnique).toHaveBeenCalledWith({
+      where: { id: 'idt_123' },
+      select: {
+        updatedAt: true,
       },
     });
     expect(result).toEqual({
@@ -88,7 +96,8 @@ describe('claim-token helpers', () => {
 
     const tx = {
       identity: {
-        update: vi.fn(),
+        updateMany: vi.fn(),
+        findUnique: vi.fn(),
       },
     };
     const client = {
@@ -114,7 +123,54 @@ describe('claim-token helpers', () => {
         email: 'alice@example.com',
       }),
     ).rejects.toMatchObject({ code: 'claim_not_allowed' });
-    expect(tx.identity.update).not.toHaveBeenCalled();
+    expect(tx.identity.updateMany).not.toHaveBeenCalled();
+  });
+
+
+  it('rejects issuing a claim token when the identity becomes active before the pending transition commits', async () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const tx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn(),
+      },
+    };
+    const client = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof tx) => Promise<unknown>) => fn(tx)),
+    };
+
+    await expect(
+      issueClaimToken(client as never, {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        email: 'alice@example.com',
+      }),
+    ).rejects.toMatchObject({ code: 'claim_not_allowed' });
+    expect(tx.identity.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'idt_123',
+        claimStatus: {
+          in: ['unclaimed', 'pending'],
+        },
+      },
+      data: {
+        claimStatus: 'pending',
+      },
+    });
+    expect(tx.identity.findUnique).not.toHaveBeenCalled();
   });
 
   it('completing a claim writes credentials onto the existing customer and flips the claim active', async () => {
@@ -123,11 +179,8 @@ describe('claim-token helpers', () => {
     const pendingAt = new Date('2026-04-18T00:05:00.000Z');
     const issueTx = {
       identity: {
-        update: vi.fn().mockResolvedValue({
-          id: 'idt_123',
-          claimStatus: 'pending',
-          updatedAt: pendingAt,
-        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: pendingAt }),
       },
     };
     const issueClient = {

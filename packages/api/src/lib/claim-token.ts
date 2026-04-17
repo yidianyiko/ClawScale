@@ -74,6 +74,27 @@ interface ClaimMembershipClient {
         claimStatus: 'active' | 'unclaimed' | 'pending';
         updatedAt?: Date;
       }>;
+      updateMany(args: {
+        where: {
+          id: string;
+          claimStatus: {
+            in: Array<'unclaimed' | 'pending'>;
+          };
+        };
+        data: {
+          claimStatus: 'pending';
+        };
+      }): Promise<{
+        count: number;
+      }>;
+      findUnique(args: {
+        where: { id: string };
+        select: {
+          updatedAt: true;
+        };
+      }): Promise<{
+        updatedAt?: Date;
+      } | null>;
     };
   }) => Promise<T>): Promise<T>;
 }
@@ -219,10 +240,26 @@ export async function issueClaimToken(
   }
 
   const updated = await client.$transaction(async (tx) => {
-    return tx.identity.update({
-      where: { id: membership.identity.id },
+    const promoted = await tx.identity.updateMany({
+      where: {
+        id: membership.identity.id,
+        claimStatus: {
+          in: ['unclaimed', 'pending'],
+        },
+      },
       data: {
         claimStatus: 'pending',
+      },
+    });
+
+    if (promoted.count === 0) {
+      throw new CustomerAuthError('claim_not_allowed');
+    }
+
+    return tx.identity.findUnique({
+      where: { id: membership.identity.id },
+      select: {
+        updatedAt: true,
       },
     });
   });

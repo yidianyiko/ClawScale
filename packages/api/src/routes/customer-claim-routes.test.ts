@@ -54,9 +54,8 @@ describe('customer claim routes', () => {
   it('completes a claim and returns the active customer auth payload', async () => {
     const issueTx = {
       identity: {
-        update: vi.fn().mockResolvedValue({
-          id: 'idt_123',
-          claimStatus: 'pending',
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({
           updatedAt: new Date('2026-04-18T00:05:00.000Z'),
         }),
       },
@@ -116,9 +115,8 @@ describe('customer claim routes', () => {
 
     const issueTx = {
       identity: {
-        update: vi.fn().mockResolvedValue({
-          id: 'idt_123',
-          claimStatus: 'pending',
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({
           updatedAt: new Date('2026-04-18T00:00:00.000Z'),
         }),
       },
@@ -142,6 +140,18 @@ describe('customer claim routes', () => {
       customerId: 'ck_123',
       identityId: 'idt_123',
       email: 'alice@example.com',
+    });
+
+
+    db.membership.findFirst.mockResolvedValueOnce({
+      role: 'owner',
+      customer: { id: 'ck_123' },
+      identity: {
+        id: 'idt_123',
+        email: null,
+        claimStatus: 'pending',
+        updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+      },
     });
 
     vi.setSystemTime(new Date('2026-04-18T00:16:00.000Z'));
