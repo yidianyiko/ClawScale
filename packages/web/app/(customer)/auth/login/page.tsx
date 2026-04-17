@@ -86,7 +86,7 @@ export default function CustomerLoginPage() {
 
       if (res.data.user.subscription_active !== true) {
         setStatusMessage(copy.subscriptionRenewalRequired);
-        router.push('/coke/renew');
+        router.push('/channels/wechat-personal?next=renew');
         return;
       }
 

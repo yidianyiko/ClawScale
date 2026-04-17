@@ -42,7 +42,11 @@ export default function CustomerVerifyEmailPage() {
         }
 
         storeCokeUserAuth(res.data);
-        router.replace(res.data.user.subscription_active === false ? '/coke/renew' : '/channels/wechat-personal');
+        router.replace(
+          res.data.user.subscription_active === false
+            ? '/channels/wechat-personal?next=renew'
+            : '/channels/wechat-personal',
+        );
       } catch {
         if (!cancelled) {
           router.replace(`/auth/login?email=${encodeURIComponent(email)}&verification=retry`);

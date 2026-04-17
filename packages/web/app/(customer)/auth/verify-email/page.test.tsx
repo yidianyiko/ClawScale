@@ -92,7 +92,7 @@ describe('CustomerVerifyEmailPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('redirects to renew when the verified account has no active subscription', async () => {
+  it('routes renewal-required verification success through the neutral channel path', async () => {
     postMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -126,7 +126,7 @@ describe('CustomerVerifyEmailPage', () => {
         }),
       }),
     );
-    expect(replaceMock).toHaveBeenCalledWith('/coke/renew');
+    expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
     expect(pushMock).not.toHaveBeenCalled();
   });
 

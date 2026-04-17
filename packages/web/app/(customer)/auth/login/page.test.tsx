@@ -176,6 +176,39 @@ describe('CustomerLoginPage', () => {
     expect(container.querySelector('button[type="button"]')).toBeTruthy();
   });
 
+  it('routes renewal-required login success through the neutral channel path', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: false,
+          subscription_expires_at: null,
+        },
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerLoginPage />
+        </LocaleProvider>,
+      );
+    });
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
+    expect(pushMock).not.toHaveBeenCalledWith('/coke/renew');
+  });
+
   it('only shows the resend button in verification recovery state', () => {
     flushSync(() => {
       root.render(
