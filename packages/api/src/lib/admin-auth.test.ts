@@ -57,6 +57,43 @@ describe('admin-auth helpers', () => {
     });
   });
 
+  it('rejects customer credentials when no AdminAccount exists for that email', async () => {
+    const client = {
+      adminAccount: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+      membership: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            role: 'owner',
+            customer: {
+              id: 'ck_123',
+            },
+            identity: {
+              id: 'idt_123',
+              email: 'alice@example.com',
+              claimStatus: 'active',
+              passwordHash: await hashAdminPassword('password123'),
+            },
+          },
+        ]),
+      },
+    };
+
+    await expect(
+      authenticateAdmin(client as never, {
+        email: 'alice@example.com',
+        password: 'password123',
+      }),
+    ).rejects.toMatchObject({
+      code: 'invalid_credentials',
+    } satisfies Partial<AdminAuthError>);
+    expect(client.adminAccount.findUnique).toHaveBeenCalledWith({
+      where: { email: 'alice@example.com' },
+    });
+    expect(client.membership.findMany).not.toHaveBeenCalled();
+  });
+
   it('inactive admins cannot log in', async () => {
     const passwordHash = await hashAdminPassword('password123');
     const client = {
