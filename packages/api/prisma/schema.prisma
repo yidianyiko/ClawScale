@@ -88,6 +88,13 @@ enum AgentBindingProvisionStatus {
   error
 }
 
+enum ParkedInboundStatus {
+  queued
+  processing
+  drained
+  failed
+}
+
 enum ChannelOwnershipKind {
   customer
   shared
@@ -186,6 +193,7 @@ model Channel {
   sharedAgent        Agent?          @relation(fields: [agentId], references: [id], onDelete: Restrict)
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
   externalIdentities ExternalIdentity[]
+  parkedInbounds    ParkedInbound[]
   conversations     Conversation[]
   endUsers          EndUser[]
   deliveryRoutes    DeliveryRoute[]
@@ -369,6 +377,28 @@ model ExternalIdentity {
   @@unique([provider, identityType, identityValue])
   @@index([customerId])
   @@map("external_identities")
+}
+
+model ParkedInbound {
+  id            String             @id @default(uuid())
+  channelId     String             @map("channel_id")
+  provider      String
+  identityType  String             @map("identity_type")
+  identityValue String             @map("identity_value")
+  payload       Json
+  status        ParkedInboundStatus @default(queued)
+  attempts      Int                @default(0)
+  lastError     String?            @map("last_error")
+  drainedAt     DateTime?          @map("drained_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, identityType, identityValue])
+  @@map("parked_inbounds")
 }
 
 model Subscription {
