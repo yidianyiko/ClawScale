@@ -152,6 +152,18 @@ type CustomerPagesMessages = {
     eyebrow: string;
     title: string;
     description: string;
+    tokenLabel: string;
+    tokenPlaceholder: string;
+    passwordLabel: string;
+    confirmPasswordLabel: string;
+    submit: string;
+    submitting: string;
+    mismatchError: string;
+    invalidOrExpiredError: string;
+    emailAlreadyExistsError: string;
+    genericError: string;
+    signInPrompt: string;
+    signInLink: string;
   };
   channelsIndex: {
     eyebrow: string;

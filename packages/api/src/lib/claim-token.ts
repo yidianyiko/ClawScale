@@ -257,6 +257,8 @@ export async function issueClaimToken(
         claimStatus: {
           in: ['unclaimed', 'pending'],
         },
+        email: membership.identity.email,
+        ...(membership.identity.updatedAt ? { updatedAt: membership.identity.updatedAt } : {}),
       },
       data: {
         claimStatus: 'pending',

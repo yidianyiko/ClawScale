@@ -70,6 +70,8 @@ describe('claim-token helpers', () => {
         claimStatus: {
           in: ['unclaimed', 'pending'],
         },
+        email: null,
+        updatedAt: new Date('2026-04-18T00:00:00.000Z'),
       },
       data: {
         claimStatus: 'pending',
@@ -127,9 +129,10 @@ describe('claim-token helpers', () => {
   });
 
 
-  it('rejects issuing a claim token when the identity becomes active before the pending transition commits', async () => {
+  it('rejects issuing a claim token when the identity changes before the pending transition commits', async () => {
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
 
+    const priorUpdatedAt = new Date('2026-04-18T00:00:00.000Z');
     const tx = {
       identity: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -145,7 +148,7 @@ describe('claim-token helpers', () => {
             id: 'idt_123',
             email: null,
             claimStatus: 'unclaimed',
-            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+            updatedAt: priorUpdatedAt,
           },
         }),
       },
@@ -165,6 +168,8 @@ describe('claim-token helpers', () => {
         claimStatus: {
           in: ['unclaimed', 'pending'],
         },
+        email: null,
+        updatedAt: priorUpdatedAt,
       },
       data: {
         claimStatus: 'pending',
