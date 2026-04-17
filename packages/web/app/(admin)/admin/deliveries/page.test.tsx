@@ -66,4 +66,53 @@ describe('AdminDeliveriesPage', () => {
       expect(container.querySelector('button[aria-label="Next page"]')).toBeTruthy();
     });
   });
+
+  it('renders an explicit load failure with retry instead of the empty state', async () => {
+    vi.mocked(adminApi.get)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'network_error',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          rows: [
+            {
+              id: 'del_123',
+              tenantId: 'tenant_123',
+              channelId: 'chn_123',
+              idempotencyKey: 'idem_123',
+              status: 'failed',
+              error: 'remote_error',
+              createdAt: '2026-04-16T09:00:00.000Z',
+              updatedAt: '2026-04-16T10:00:00.000Z',
+            },
+          ],
+          total: 6,
+          limit: 10,
+          offset: 0,
+        },
+      });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminDeliveriesPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Error: network_error');
+      expect(container.querySelector('button[data-testid="retry-load"]')).toBeTruthy();
+      expect(container.textContent).not.toContain('No records found.');
+    });
+
+    (container.querySelector('button[data-testid="retry-load"]') as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(adminApi.get)).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain('idem_123');
+    });
+  });
 });

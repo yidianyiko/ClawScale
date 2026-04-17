@@ -32,6 +32,7 @@ vi.mock('next/image', () => ({
 }));
 
 vi.mock('../../../lib/admin-auth', () => ({
+  ADMIN_SESSION_CLEARED_EVENT: 'clawscale:admin-session-cleared',
   isAdminAuthenticated: () => isAdminAuthenticatedMock(),
   getStoredAdminSession: () => getStoredAdminSessionMock(),
   clearAdminSession: () => clearAdminSessionMock(),
@@ -104,5 +105,35 @@ describe('AdminLayout', () => {
     });
 
     expect(replaceMock).toHaveBeenCalledWith('/admin/login');
+  });
+
+  it('redirects authenticated admins after the session is invalidated post-mount', async () => {
+    isAdminAuthenticatedMock.mockReturnValue(true);
+    getStoredAdminSessionMock.mockReturnValue({
+      adminId: 'adm_123',
+      email: 'admin@example.com',
+      isActive: true,
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminLayout>
+            <div>admin body</div>
+          </AdminLayout>
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Customers');
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    window.dispatchEvent(new Event('clawscale:admin-session-cleared'));
+
+    await vi.waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith('/admin/login');
+    });
   });
 });

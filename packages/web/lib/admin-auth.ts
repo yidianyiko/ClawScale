@@ -10,6 +10,7 @@ export type AdminLoginResult = StoredAdminSession & {
 
 const ADMIN_TOKEN_KEY = 'cs_admin_token';
 const ADMIN_SESSION_KEY = 'cs_admin_session';
+export const ADMIN_SESSION_CLEARED_EVENT = 'clawscale:admin-session-cleared';
 
 export function storeAdminSession(result: AdminLoginResult): void {
   try {
@@ -33,6 +34,10 @@ export function clearAdminSession(): void {
     localStorage.removeItem(ADMIN_SESSION_KEY);
   } catch {
     // Ignore storage cleanup failures.
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ADMIN_SESSION_CLEARED_EVENT));
   }
 }
 

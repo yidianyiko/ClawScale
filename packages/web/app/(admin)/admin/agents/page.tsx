@@ -12,20 +12,29 @@ export default function AdminAgentsPage() {
   const copy = getAdminCopy(locale);
   const [agent, setAgent] = useState<AdminAgentRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
 
     async function loadAgent() {
+      setLoading(true);
+      setError('');
       const response = await adminApi.get<AdminAgentRecord>('/api/admin/agents');
       if (!active) {
         return;
       }
 
-      if (response.ok) {
-        setAgent(response.data);
+      if (!response.ok) {
+        setAgent(null);
+        setError(response.error);
+        setLoading(false);
+        return;
       }
 
+      setAgent(response.data);
+      setError('');
       setLoading(false);
     }
 
@@ -33,7 +42,7 @@ export default function AdminAgentsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   return (
     <div className="p-8">
@@ -46,6 +55,20 @@ export default function AdminAgentsPage() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+          </div>
+        ) : error ? (
+          <div>
+            <p className="text-sm text-red-600">
+              {copy.common.errorPrefix}: {error}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-4"
+              data-testid="retry-load"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              {copy.common.retry}
+            </button>
           </div>
         ) : !agent ? (
           <p className="text-sm text-gray-500">{copy.common.empty}</p>

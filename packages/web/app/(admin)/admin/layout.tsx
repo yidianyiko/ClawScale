@@ -8,7 +8,12 @@ import { Bot, LogOut, Radio, Send, ShieldCheck, Users } from 'lucide-react';
 import { LocaleSwitch } from '../../../components/locale-switch';
 import { useLocale } from '../../../components/locale-provider';
 import { adminApi } from '../../../lib/admin-api';
-import { clearAdminSession, getStoredAdminSession, isAdminAuthenticated } from '../../../lib/admin-auth';
+import {
+  ADMIN_SESSION_CLEARED_EVENT,
+  clearAdminSession,
+  getStoredAdminSession,
+  isAdminAuthenticated,
+} from '../../../lib/admin-auth';
 import { getAdminCopy } from '../../../lib/admin-copy';
 import { cn } from '../../../lib/utils';
 
@@ -41,6 +46,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     setReady(true);
+  }, [isLoginRoute, router]);
+
+  useEffect(() => {
+    if (isLoginRoute) {
+      return;
+    }
+
+    function handleSessionCleared() {
+      setReady(false);
+      router.replace('/admin/login');
+    }
+
+    window.addEventListener(ADMIN_SESSION_CLEARED_EVENT, handleSessionCleared);
+    return () => {
+      window.removeEventListener(ADMIN_SESSION_CLEARED_EVENT, handleSessionCleared);
+    };
   }, [isLoginRoute, router]);
 
   async function handleLogout() {

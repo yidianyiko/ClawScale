@@ -26,12 +26,15 @@ export default function AdminDeliveriesPage() {
   const [draftChannelId, setDraftChannelId] = useState('');
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
 
     async function loadDeliveries() {
       setLoading(true);
+      setError('');
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(offset),
@@ -52,9 +55,12 @@ export default function AdminDeliveriesPage() {
       if (!response.ok) {
         setRows([]);
         setTotal(0);
+        setError(response.error);
         setLoading(false);
         return;
       }
+
+      setError('');
 
       setRows(response.data.rows);
       setTotal(response.data.total);
@@ -65,7 +71,7 @@ export default function AdminDeliveriesPage() {
     return () => {
       active = false;
     };
-  }, [channelId, offset]);
+  }, [channelId, offset, reloadKey]);
 
   function applyFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,6 +121,20 @@ export default function AdminDeliveriesPage() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
+          </div>
+        ) : error ? (
+          <div className="px-5 py-8">
+            <p className="text-sm text-red-600">
+              {copy.common.errorPrefix}: {error}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary mt-4"
+              data-testid="retry-load"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              {copy.common.retry}
+            </button>
           </div>
         ) : (
           <>
