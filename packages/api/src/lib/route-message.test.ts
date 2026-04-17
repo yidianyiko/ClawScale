@@ -18,6 +18,7 @@ const bindEndUserToCokeAccount = vi.hoisted(() => vi.fn());
 const bindBusinessConversation = vi.hoisted(() => vi.fn());
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 const provisionSharedChannelCustomer = vi.hoisted(() => vi.fn());
+const createRouteBindingSnapshot = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
@@ -25,6 +26,14 @@ vi.mock('./clawscale-user.js', () => ({ getUnifiedConversationIds, bindEndUserTo
 vi.mock('./business-conversation.js', () => ({ bindBusinessConversation }));
 vi.mock('./coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('./shared-channel-provisioning.js', () => ({ provisionSharedChannelCustomer }));
+vi.mock('./route-binding.js', async () => {
+  const actual = await vi.importActual<typeof import('./route-binding.js')>('./route-binding.js');
+  createRouteBindingSnapshot.mockImplementation(actual.createRouteBindingSnapshot);
+  return {
+    ...actual,
+    createRouteBindingSnapshot,
+  };
+});
 vi.mock('./clawscale-agent.js', () => ({
   buildSelectionMenu: vi.fn(() => 'menu'),
   runClawscaleAgent: vi.fn(),
@@ -157,6 +166,60 @@ describe('routeInboundMessage', () => {
     );
     expect(db.tenant.findUnique).not.toHaveBeenCalled();
     expect(db.endUser.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('threads the provisioned shared-channel customerId into downstream routing metadata', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    generateReply.mockResolvedValueOnce({
+      text: 'bridge ok',
+      businessConversationKey: 'biz_conv_1',
+      outputId: 'out_1',
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello shared channel',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(createRouteBindingSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: 'ck_shared_1',
+      }),
+    );
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        customerId: 'ck_shared_1',
+        customer_id: 'ck_shared_1',
+      }),
+    );
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            customerId: 'ck_shared_1',
+            customer_id: 'ck_shared_1',
+          }),
+        }),
+      }),
+    );
   });
 
   it('binds first-turn business conversation key returned by backend', async () => {

@@ -102,6 +102,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         }
       : null;
 
+  let resolvedChannelCustomerId = channel.customerId ?? null;
+
   if (channel.ownershipKind === 'shared' && channel.agentId) {
     const identityType =
       platform === 'whatsapp' || platform === 'whatsapp_business' ? 'wa_id' : 'external_id';
@@ -124,6 +126,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     if (sharedChannelProvisioning.parked || sharedChannelProvisioning.provisionStatus !== 'ready') {
       return null;
     }
+    resolvedChannelCustomerId = sharedChannelProvisioning.customerId ?? resolvedChannelCustomerId;
   }
 
   // 2. Load tenant settings
@@ -232,7 +235,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     endUserId: endUser.id,
     externalEndUserId: endUser.externalId,
     cokeAccountId: resolvedCokeAccountId,
-    customerId: channel.customerId ?? null,
+    customerId: resolvedChannelCustomerId,
     gatewayConversationId: conversation.id,
     previousBusinessConversationKey: conversation.businessConversationKey ?? null,
     previousClawscaleUserId: conversation.clawscaleUserId ?? null,
@@ -248,8 +251,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       metadata: {
         ...(meta ?? {}),
         ...(personalChannelOwnership ?? {}),
-        ...(channel.customerId
-          ? { customerId: channel.customerId, customer_id: channel.customerId }
+        ...(resolvedChannelCustomerId
+          ? { customerId: resolvedChannelCustomerId, customer_id: resolvedChannelCustomerId }
           : {}),
         ...(resolvedCokeAccountId
           ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
@@ -293,7 +296,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     where: { tenantId, isActive: true },
     orderBy: { createdAt: 'asc' },
   });
-  const channelCustomerId = channel.customerId ?? null;
+  const channelCustomerId = resolvedChannelCustomerId;
 
   const replies: ReplyEntry[] = [];
 
