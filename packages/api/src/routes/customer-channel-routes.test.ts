@@ -3,8 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   verifyCustomerToken: vi.fn(),
+  verifyCokeToken: vi.fn(),
   getCustomerSession: vi.fn(),
+  cokeAccountFindUnique: vi.fn(),
+  resolveCokeAccountAccess: vi.fn(),
   ensureClawscaleUserForCustomer: vi.fn(),
+  ensureClawscaleUserForCokeAccount: vi.fn(),
   createOrReusePersonalWeChatChannel: vi.fn(),
   disconnectPersonalWeChatChannel: vi.fn(),
   archivePersonalWeChatChannel: vi.fn(),
@@ -19,6 +23,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/index.js', () => ({
   db: {
+    cokeAccount: {
+      findUnique: mocks.cokeAccountFindUnique,
+    },
     channel: {
       findMany: mocks.channelFindMany,
       update: mocks.channelUpdate,
@@ -38,8 +45,24 @@ vi.mock('../lib/customer-auth.js', async () => {
   };
 });
 
+vi.mock('../lib/coke-auth.js', async () => {
+  const actual = await vi.importActual<typeof import('../lib/coke-auth.js')>(
+    '../lib/coke-auth.js',
+  );
+
+  return {
+    ...actual,
+    verifyCokeToken: mocks.verifyCokeToken,
+  };
+});
+
+vi.mock('../lib/coke-account-access.js', () => ({
+  resolveCokeAccountAccess: mocks.resolveCokeAccountAccess,
+}));
+
 vi.mock('../lib/clawscale-user.js', () => ({
   ensureClawscaleUserForCustomer: mocks.ensureClawscaleUserForCustomer,
+  ensureClawscaleUserForCokeAccount: mocks.ensureClawscaleUserForCokeAccount,
 }));
 
 vi.mock('../lib/personal-wechat-channel.js', () => ({
@@ -70,12 +93,31 @@ describe('customerChannelRouter', () => {
       email: 'alice@example.com',
       tokenType: 'access',
     });
+    mocks.verifyCokeToken.mockImplementation(() => {
+      throw new Error('invalid_or_expired_token');
+    });
     mocks.getCustomerSession.mockResolvedValue({
       customerId: 'ck_customer_1',
       identityId: 'idt_1',
       claimStatus: 'active',
       email: 'alice@example.com',
       membershipRole: 'owner',
+    });
+    mocks.cokeAccountFindUnique.mockResolvedValue({
+      id: 'ck_customer_1',
+      email: 'alice@example.com',
+      displayName: 'Alice',
+      emailVerified: true,
+      status: 'normal',
+    });
+    mocks.resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
     });
     mocks.ensureClawscaleUserForCustomer.mockResolvedValue({
       tenantId: 'ten_1',
@@ -230,6 +272,103 @@ describe('customerChannelRouter', () => {
       data: {
         channel_id: 'ch_1',
         status: 'archived',
+        qr: null,
+        qr_url: null,
+      },
+    });
+  });
+
+  it('blocks customer-token connect when the compatibility account is suspended', async () => {
+    mocks.resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'suspended',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'account_suspended',
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
+
+    const res = await app.request('/api/customer/channels/wechat-personal/connect', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(403);
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
+    expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_suspended',
+    });
+  });
+
+  it('allows a legacy coke token to use the neutral channel path', async () => {
+    mocks.verifyCustomerToken.mockImplementationOnce(() => {
+      throw new Error('invalid_or_expired_token');
+    });
+    mocks.verifyCokeToken.mockReturnValueOnce({
+      sub: 'acct_legacy_1',
+      email: 'legacy@example.com',
+    });
+    mocks.cokeAccountFindUnique.mockResolvedValueOnce({
+      id: 'acct_legacy_1',
+      email: 'legacy@example.com',
+      displayName: 'Legacy User',
+      emailVerified: true,
+      status: 'normal',
+    });
+    mocks.resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_legacy',
+      clawscaleUserId: 'csu_legacy',
+      created: false,
+      ready: true,
+    });
+    mocks.channelFindMany.mockResolvedValueOnce([
+      {
+        id: 'ch_legacy',
+        type: 'wechat_personal',
+        scope: 'personal',
+        ownerClawscaleUserId: 'csu_legacy',
+        status: 'disconnected',
+        updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+      },
+    ]);
+
+    const app = new Hono();
+    app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
+
+    const res = await app.request('/api/customer/channels/wechat-personal/status', {
+      headers: {
+        authorization: 'Bearer legacy-coke-token',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'acct_legacy_1',
+      displayName: 'Legacy User',
+    });
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        channel_id: 'ch_legacy',
+        status: 'disconnected',
         qr: null,
         qr_url: null,
       },

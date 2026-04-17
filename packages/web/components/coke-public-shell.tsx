@@ -46,13 +46,13 @@ export function CokePublicShell({ children, className, contentClassName }: CokeP
           <div className="flex items-center gap-3">
             <LocaleSwitch />
             <Link
-              href="/coke/login"
+              href="/auth/login"
               className="inline-flex items-center rounded-full border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/5"
             >
               {messages.publicShell.cta.signIn}
             </Link>
             <Link
-              href="/coke/register"
+              href="/auth/register"
               className="inline-flex items-center rounded-full bg-teal-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-teal-300"
             >
               {messages.publicShell.cta.register}

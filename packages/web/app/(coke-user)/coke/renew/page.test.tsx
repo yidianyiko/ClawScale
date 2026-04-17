@@ -83,10 +83,10 @@ describe('RenewPage', () => {
 
     await Promise.resolve();
 
-    expect(replaceMock).toHaveBeenCalledWith('/coke/login?next=/coke/renew');
+    expect(replaceMock).toHaveBeenCalledWith('/auth/login?next=/coke/renew');
     expect(postMock).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain('Return to checkout when you are ready.');
-    expect(container.querySelector('a[href="/coke/login"]')).toBeNull();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeNull();
   });
 
   it('renders English renewal fallback copy when checkout setup fails', async () => {
@@ -106,6 +106,8 @@ describe('RenewPage', () => {
     expect(container.textContent).toContain('Unable to start renewal right now.');
     expect(container.textContent).toContain('Sign in');
     expect(container.textContent).toContain('Back to setup');
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
     expect(container.textContent).not.toContain('续订访问');
   });
 });

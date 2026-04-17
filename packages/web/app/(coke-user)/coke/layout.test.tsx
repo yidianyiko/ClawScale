@@ -40,11 +40,11 @@ describe('CokeUserLayout', () => {
       );
     });
 
-    expect(container.textContent).toContain('公开入口与个人账号流程');
-    expect(container.textContent).toContain('管理你的个人微信通道');
-    expect(container.textContent).toContain('进入你的个人 AI 工作区');
+    expect(container.textContent).toContain('管理订阅与 Coke 业务状态');
+    expect(container.textContent).toContain('管理 Coke 账单与交付状态');
+    expect(container.textContent).toContain('保持你的 Coke 服务处于启用状态');
     expect(container.textContent).toContain('EN');
     expect(container.textContent).toContain('中文');
-    expect(container.textContent).not.toContain('Public access and personal account flow');
+    expect(container.textContent).not.toContain('统一管理客户登录与通道接入');
   });
 });

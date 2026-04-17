@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cokeUserApi } from './coke-user-api';
+import {
+  archiveCustomerWechatChannel,
+  connectCustomerWechatChannel,
+  createCustomerWechatChannel,
+  disconnectCustomerWechatChannel,
+  getCustomerWechatChannelStatus,
+} from './customer-wechat-channel';
 import { messages } from './i18n';
 import {
   archiveCokeUserWechatChannel,
@@ -20,48 +26,128 @@ afterEach(() => {
 });
 
 describe('coke-user-wechat-channel api helpers', () => {
-  it('calls the personal channel create/connect/status/disconnect/archive endpoints', async () => {
-    const postSpy = vi.spyOn(cokeUserApi, 'post').mockResolvedValue({
+  it('does not leak neutral helper names through the coke compatibility module', async () => {
+    const cokeWechatModule = await import('./coke-user-wechat-channel');
+
+    expect(cokeWechatModule).not.toHaveProperty('createCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('connectCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('getCustomerWechatChannelStatus');
+    expect(cokeWechatModule).not.toHaveProperty('disconnectCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('archiveCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('getCustomerWechatChannelViewModel');
+  });
+
+  it('calls the neutral personal channel create/connect/status/disconnect/archive endpoints', async () => {
+    const { customerApi } = await import('./customer-api');
+    const customerPostSpy = vi.spyOn(customerApi, 'post').mockResolvedValue({
       ok: true,
       data: { status: 'missing' },
     } as never);
-    const getSpy = vi.spyOn(cokeUserApi, 'get').mockResolvedValue({
+    const customerGetSpy = vi.spyOn(customerApi, 'get').mockResolvedValue({
       ok: true,
       data: { status: 'missing' },
     } as never);
-    const deleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue({
+    const customerDeleteSpy = vi.spyOn(customerApi, 'delete').mockResolvedValue({
       ok: true,
       data: { status: 'archived' },
     } as never);
+    await createCustomerWechatChannel();
+    await connectCustomerWechatChannel();
+    await getCustomerWechatChannelStatus();
+    await disconnectCustomerWechatChannel();
+    await archiveCustomerWechatChannel();
 
-    await createCokeUserWechatChannel();
-    await connectCokeUserWechatChannel();
+    expect(customerPostSpy).toHaveBeenNthCalledWith(1, '/api/customer/channels/wechat-personal');
+    expect(customerPostSpy).toHaveBeenNthCalledWith(2, '/api/customer/channels/wechat-personal/connect');
+    expect(customerPostSpy).toHaveBeenNthCalledWith(3, '/api/customer/channels/wechat-personal/disconnect');
+    expect(customerGetSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal/status');
+    expect(customerDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
+  });
+
+  it('prefers the stored customer token for the coke compatibility channel wrapper', async () => {
+    process.env['NEXT_PUBLIC_API_URL'] = 'https://gateway.example.com';
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: vi.fn((key: string) => {
+            if (key === 'customer_token') return 'customer-token';
+            if (key === 'coke_user_token') return 'legacy-token';
+            return null;
+          }),
+        },
+      },
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ ok: true, data: { status: 'missing' } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
     await getCokeUserWechatChannelStatus();
-    await disconnectCokeUserWechatChannel();
-    await archiveCokeUserWechatChannel();
 
-    expect(postSpy).toHaveBeenNthCalledWith(1, '/api/coke/wechat-channel');
-    expect(postSpy).toHaveBeenNthCalledWith(2, '/api/coke/wechat-channel/connect');
-    expect(postSpy).toHaveBeenNthCalledWith(3, '/api/coke/wechat-channel/disconnect');
-    expect(getSpy).toHaveBeenCalledWith('/api/coke/wechat-channel/status');
-    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gateway.example.com/api/customer/channels/wechat-personal/status',
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer customer-token',
+        },
+        body: undefined,
+      },
+    );
+  });
+
+  it('falls back to the coke token when no customer token is present', async () => {
+    process.env['NEXT_PUBLIC_API_URL'] = 'https://gateway.example.com';
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: vi.fn((key: string) => (key === 'coke_user_token' ? 'legacy-token' : null)),
+        },
+      },
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => JSON.stringify({ ok: true, data: { status: 'missing' } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    await getCokeUserWechatChannelStatus();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gateway.example.com/api/customer/channels/wechat-personal/status',
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer legacy-token',
+        },
+        body: undefined,
+      },
+    );
   });
 
   it('normalizes an empty archive success into an archived channel state', async () => {
-    const deleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue(undefined as never);
+    const { customerApi } = await import('./customer-api');
+    const customerDeleteSpy = vi.spyOn(customerApi, 'delete').mockResolvedValue(undefined as never);
 
-    await expect(archiveCokeUserWechatChannel()).resolves.toEqual({
+    await expect(archiveCustomerWechatChannel()).resolves.toEqual({
       ok: true,
       data: { status: 'archived' },
     });
 
-    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
+    expect(customerDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
   });
 });
 
 describe('getCokeUserWechatChannelViewModel', () => {
   it('maps lifecycle states to the expected copy', () => {
-    const copy = messages.en.cokeUserPages.bindWechat.viewModel;
+    const copy = messages.en.customerPages.bindWechat.viewModel;
 
     expect(getCokeUserWechatChannelViewModel(null, copy)).toMatchObject({
       eyebrow: 'No channel yet',

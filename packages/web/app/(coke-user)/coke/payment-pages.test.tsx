@@ -41,6 +41,7 @@ describe('Coke payment pages', () => {
 
     expect(container.textContent).toContain('Payment complete');
     expect(container.textContent).toContain('Go to WeChat setup');
+    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
     expect(container.textContent).not.toContain('支付完成');
   });
 
@@ -55,6 +56,7 @@ describe('Coke payment pages', () => {
 
     expect(container.textContent).toContain('支付已取消');
     expect(container.textContent).toContain('重新发起续费');
+    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Payment canceled');
   });
 });

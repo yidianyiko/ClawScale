@@ -52,6 +52,198 @@ type BindWechatViewModelMessages = {
   };
 };
 
+type CustomerLayoutMessages = {
+  brandName: string;
+  brandTagline: string;
+  navLabel: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  secondaryBody: string;
+};
+
+type CokeUserLayoutMessages = CustomerLayoutMessages;
+
+type CustomerPagesMessages = {
+  login: {
+    eyebrow: string;
+    heroTitle: string;
+    heroBody: string;
+    heroSecondaryBody: string;
+    backToHomepage: string;
+    title: string;
+    description: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    passwordLabel: string;
+    passwordPlaceholder: string;
+    submit: string;
+    submitting: string;
+    forgotPasswordPrompt: string;
+    forgotPasswordLink: string;
+    registerPrompt: string;
+    registerLink: string;
+    suspendedError: string;
+    emailVerificationRequired: string;
+    subscriptionRenewalRequired: string;
+    success: string;
+    genericError: string;
+    verificationRecoveryTitle: string;
+    verificationRecoveryDescription: string;
+    verificationRetryDescription: string;
+    resendVerificationEmail: string;
+    resendingVerificationEmail: string;
+    resendVerificationSuccess: string;
+    resendVerificationError: string;
+  };
+  register: {
+    eyebrow: string;
+    heroTitle: string;
+    heroBody: string;
+    heroSecondaryBody: string;
+    backToHomepage: string;
+    title: string;
+    description: string;
+    displayNameLabel: string;
+    displayNamePlaceholder: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    passwordLabel: string;
+    passwordPlaceholder: string;
+    submit: string;
+    submitting: string;
+    signInPrompt: string;
+    signInLink: string;
+    genericError: string;
+  };
+  forgotPassword: {
+    title: string;
+    description: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    submit: string;
+    submitting: string;
+    success: string;
+    backToSignInPrompt: string;
+    backToSignInLink: string;
+    genericError: string;
+  };
+  resetPassword: {
+    title: string;
+    description: string;
+    tokenLabel: string;
+    tokenPlaceholder: string;
+    passwordLabel: string;
+    confirmPasswordLabel: string;
+    submit: string;
+    submitting: string;
+    mismatchError: string;
+    success: string;
+    requestNewLinkPrompt: string;
+    requestNewLinkLink: string;
+    genericError: string;
+  };
+  verifyEmail: {
+    title: string;
+    description: string;
+    verifyingDescription: string;
+  };
+  claim: {
+    eyebrow: string;
+    title: string;
+    description: string;
+  };
+  channelsIndex: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    wechatPersonalTitle: string;
+    wechatPersonalDescription: string;
+  };
+  bindWechat: {
+    blocked: {
+      accessEyebrow: string;
+      suspendedTitle: string;
+      suspendedDescription: string;
+      prerequisitesTitle: string;
+      prerequisitesDescription: string;
+      verifyEmail: string;
+      renewSubscription: string;
+    };
+    loadFailure: {
+      title: string;
+    };
+    loading: {
+      title: string;
+      description: string;
+    };
+    statusDescriptions: {
+      missing: string;
+      archived: string;
+      disconnected: string;
+    };
+    qr: {
+      imageAlt: string;
+      preparing: string;
+      expiresPrefix: string;
+      activeSuffix: string;
+    };
+    connectedCard: {
+      eyebrow: string;
+      descriptionWithIdentity: string;
+      descriptionWithoutIdentity: string;
+      accountOwnershipSuffix: string;
+    };
+    errorCard: {
+      eyebrow: string;
+      fallbackDescription: string;
+    };
+    nextSteps: {
+      title: string;
+      missing: string;
+      disconnected: string;
+      pending: string;
+      connected: string;
+      error: string;
+      archived: string;
+    };
+    busyActions: {
+      create: string;
+      connect: string;
+      refresh: string;
+      disconnect: string;
+      reconnect: string;
+      archive: string;
+    };
+    accountPrompt: string;
+    createAccount: string;
+    viewModel: BindWechatViewModelMessages;
+  };
+};
+
+type CokeUserPagesMessages = {
+  renew: {
+    title: string;
+    preparing: string;
+    ready: string;
+    signIn: string;
+    backToSetup: string;
+    genericError: string;
+  };
+  paymentSuccess: {
+    title: string;
+    description: string;
+    primaryCta: string;
+    secondaryCta: string;
+  };
+  paymentCancel: {
+    title: string;
+    description: string;
+    primaryCta: string;
+    secondaryCta: string;
+  };
+};
+
 export type LocaleMessages = {
   common: {
     languageLabel: string;
@@ -109,179 +301,10 @@ export type LocaleMessages = {
       secondaryCta: string;
     };
   };
-  cokeUserLayout: {
-    brandName: string;
-    brandTagline: string;
-    navLabel: string;
-    eyebrow: string;
-    title: string;
-    body: string;
-    secondaryBody: string;
-  };
-  cokeUserPages: {
-    login: {
-      eyebrow: string;
-      heroTitle: string;
-      heroBody: string;
-      heroSecondaryBody: string;
-      backToHomepage: string;
-      title: string;
-      description: string;
-      emailLabel: string;
-      emailPlaceholder: string;
-      passwordLabel: string;
-      passwordPlaceholder: string;
-      submit: string;
-      submitting: string;
-      forgotPasswordPrompt: string;
-      forgotPasswordLink: string;
-      registerPrompt: string;
-      registerLink: string;
-      suspendedError: string;
-      emailVerificationRequired: string;
-      subscriptionRenewalRequired: string;
-      success: string;
-      genericError: string;
-      verificationRecoveryTitle: string;
-      verificationRecoveryDescription: string;
-      verificationRetryDescription: string;
-      resendVerificationEmail: string;
-      resendingVerificationEmail: string;
-      resendVerificationSuccess: string;
-      resendVerificationError: string;
-    };
-    register: {
-      eyebrow: string;
-      heroTitle: string;
-      heroBody: string;
-      heroSecondaryBody: string;
-      backToHomepage: string;
-      title: string;
-      description: string;
-      displayNameLabel: string;
-      displayNamePlaceholder: string;
-      emailLabel: string;
-      emailPlaceholder: string;
-      passwordLabel: string;
-      passwordPlaceholder: string;
-      submit: string;
-      submitting: string;
-      signInPrompt: string;
-      signInLink: string;
-      genericError: string;
-    };
-    forgotPassword: {
-      title: string;
-      description: string;
-      emailLabel: string;
-      emailPlaceholder: string;
-      submit: string;
-      submitting: string;
-      success: string;
-      backToSignInPrompt: string;
-      backToSignInLink: string;
-      genericError: string;
-    };
-    resetPassword: {
-      title: string;
-      description: string;
-      tokenLabel: string;
-      tokenPlaceholder: string;
-      passwordLabel: string;
-      confirmPasswordLabel: string;
-      submit: string;
-      submitting: string;
-      mismatchError: string;
-      success: string;
-      requestNewLinkPrompt: string;
-      requestNewLinkLink: string;
-      genericError: string;
-    };
-    verifyEmail: {
-      title: string;
-      description: string;
-      verifyingDescription: string;
-    };
-    renew: {
-      title: string;
-      preparing: string;
-      ready: string;
-      signIn: string;
-      backToSetup: string;
-      genericError: string;
-    };
-    paymentSuccess: {
-      title: string;
-      description: string;
-      primaryCta: string;
-      secondaryCta: string;
-    };
-    paymentCancel: {
-      title: string;
-      description: string;
-      primaryCta: string;
-      secondaryCta: string;
-    };
-    bindWechat: {
-      blocked: {
-        accessEyebrow: string;
-        suspendedTitle: string;
-        suspendedDescription: string;
-        prerequisitesTitle: string;
-        prerequisitesDescription: string;
-        verifyEmail: string;
-        renewSubscription: string;
-      };
-      loadFailure: {
-        title: string;
-      };
-      loading: {
-        title: string;
-        description: string;
-      };
-      statusDescriptions: {
-        missing: string;
-        archived: string;
-        disconnected: string;
-      };
-      qr: {
-        imageAlt: string;
-        preparing: string;
-        expiresPrefix: string;
-        activeSuffix: string;
-      };
-      connectedCard: {
-        eyebrow: string;
-        descriptionWithIdentity: string;
-        descriptionWithoutIdentity: string;
-        accountOwnershipSuffix: string;
-      };
-      errorCard: {
-        eyebrow: string;
-        fallbackDescription: string;
-      };
-      nextSteps: {
-        title: string;
-        missing: string;
-        disconnected: string;
-        pending: string;
-        connected: string;
-        error: string;
-        archived: string;
-      };
-      busyActions: {
-        create: string;
-        connect: string;
-        refresh: string;
-        disconnect: string;
-        reconnect: string;
-        archive: string;
-      };
-      accountPrompt: string;
-      createAccount: string;
-      viewModel: BindWechatViewModelMessages;
-    };
-  };
+  customerLayout: CustomerLayoutMessages;
+  cokeUserLayout: CokeUserLayoutMessages;
+  customerPages: CustomerPagesMessages;
+  cokeUserPages: CokeUserPagesMessages;
 };
 
 export type MessagesCatalog = Record<Locale, LocaleMessages>;
@@ -382,16 +405,25 @@ export const messages: MessagesCatalog = {
         secondaryCta: 'Existing account',
       },
     },
+    customerLayout: {
+      brandName: 'Coke AI',
+      brandTagline: 'Unified customer auth and channel access',
+      navLabel: 'Handle sign-in, verification, and personal WeChat access',
+      eyebrow: 'Customer Account',
+      title: 'Enter your customer workspace',
+      body: 'Use the neutral customer routes for sign-in, registration, password recovery, email verification, and personal WeChat setup.',
+      secondaryBody: 'Legacy /coke/* generic routes stay in place as compatibility redirects until every internal caller moves.',
+    },
     cokeUserLayout: {
       brandName: 'Coke AI',
-      brandTagline: 'Public access and personal account flow',
-      navLabel: 'Manage your personal WeChat channel',
-      eyebrow: 'Coke Account',
-      title: 'Access your personal AI workspace',
-      body: 'Start from the public homepage, verify your email, and continue into your personal WeChat channel workflow.',
-      secondaryBody: 'This account flow keeps your personal access, subscription status, and channel setup in one place.',
+      brandTagline: 'Subscription and Coke business management',
+      navLabel: 'Manage Coke billing and delivery state',
+      eyebrow: 'Coke Workspace',
+      title: 'Keep your Coke service active',
+      body: 'Handle renewal, payment follow-up, and the business-side steps that still stay under Coke-specific routes.',
+      secondaryBody: 'Generic sign-in, recovery, and customer channel setup now live under the neutral customer routes.',
     },
-    cokeUserPages: {
+    customerPages: {
       login: {
         eyebrow: 'Sign in',
         heroTitle: 'Return to your Coke account',
@@ -426,7 +458,7 @@ export const messages: MessagesCatalog = {
         resendingVerificationEmail: 'Sending verification email...',
         resendVerificationSuccess: 'Verification email sent. Check your inbox.',
         resendVerificationError: 'Unable to resend the verification email right now.',
-    },
+      },
       register: {
         eyebrow: 'Register',
         heroTitle: 'Create your Coke account',
@@ -481,27 +513,17 @@ export const messages: MessagesCatalog = {
         description: 'We are preparing your secure email verification.',
         verifyingDescription: 'Verifying your email link now...',
       },
-      renew: {
-        title: 'Renew your access',
-        preparing: 'Preparing your renewal checkout...',
-        ready: 'Return to checkout when you are ready.',
-        signIn: 'Sign in',
-        backToSetup: 'Back to setup',
-        genericError: 'Unable to start renewal right now.',
+      claim: {
+        eyebrow: 'Reserved route',
+        title: 'Claim access is coming soon',
+        description: 'Use the sign-in or registration flow for now.',
       },
-      paymentSuccess: {
-        title: 'Payment complete',
-        description:
-          'Your renewal payment was received. Return to your account to finish connecting WeChat.',
-        primaryCta: 'Go to WeChat setup',
-        secondaryCta: 'Check renewal',
-      },
-      paymentCancel: {
-        title: 'Payment canceled',
-        description:
-          'The checkout flow was canceled before payment completed. You can try again when you are ready.',
-        primaryCta: 'Restart renewal',
-        secondaryCta: 'Back to setup',
+      channelsIndex: {
+        eyebrow: 'Phase 1 channels',
+        title: 'Customer channels',
+        description: 'Manage the customer channel surfaces that are available in the neutral ClawScale shell today.',
+        wechatPersonalTitle: 'Personal WeChat',
+        wechatPersonalDescription: 'Connect, reconnect, or archive your personal WeChat channel.',
       },
       bindWechat: {
         blocked: {
@@ -610,6 +632,30 @@ export const messages: MessagesCatalog = {
         },
       },
     },
+    cokeUserPages: {
+      renew: {
+        title: 'Renew your access',
+        preparing: 'Preparing your renewal checkout...',
+        ready: 'Return to checkout when you are ready.',
+        signIn: 'Sign in',
+        backToSetup: 'Back to setup',
+        genericError: 'Unable to start renewal right now.',
+      },
+      paymentSuccess: {
+        title: 'Payment complete',
+        description:
+          'Your renewal payment was received. Return to your account to finish connecting WeChat.',
+        primaryCta: 'Go to WeChat setup',
+        secondaryCta: 'Check renewal',
+      },
+      paymentCancel: {
+        title: 'Payment canceled',
+        description:
+          'The checkout flow was canceled before payment completed. You can try again when you are ready.',
+        primaryCta: 'Restart renewal',
+        secondaryCta: 'Back to setup',
+      },
+    },
   },
   zh: {
     common: {
@@ -698,16 +744,25 @@ export const messages: MessagesCatalog = {
         secondaryCta: '已有账号',
       },
     },
+    customerLayout: {
+      brandName: 'Coke AI',
+      brandTagline: '统一管理客户登录与通道接入',
+      navLabel: '处理登录、验证与个人微信接入',
+      eyebrow: '客户账号',
+      title: '进入你的客户工作区',
+      body: '在中立的 customer 路由下完成登录、注册、密码找回、邮箱验证和个人微信接入。',
+      secondaryBody: '旧的 /coke/* 通用入口会暂时保留为兼容跳转，直到所有内部调用都迁移完成。',
+    },
     cokeUserLayout: {
       brandName: 'Coke AI',
-      brandTagline: '公开入口与个人账号流程',
-      navLabel: '管理你的个人微信通道',
-      eyebrow: 'Coke 账号',
-      title: '进入你的个人 AI 工作区',
-      body: '从官网入口注册、验证邮箱后，再继续进入你的个人微信绑定与后续管理流程。',
-      secondaryBody: '这里会统一承接账号访问、订阅状态和个人微信通道设置。',
+      brandTagline: '管理订阅与 Coke 业务状态',
+      navLabel: '管理 Coke 账单与交付状态',
+      eyebrow: 'Coke 工作区',
+      title: '保持你的 Coke 服务处于启用状态',
+      body: '在这里处理续费、支付后续动作，以及仍然保留在 Coke 专属路由下的业务步骤。',
+      secondaryBody: '通用登录、找回访问和客户通道设置现在都放在中立的 customer 路由下。',
     },
-    cokeUserPages: {
+    customerPages: {
       login: {
         eyebrow: '登录',
         heroTitle: '返回你的 Coke 账号',
@@ -738,7 +793,7 @@ export const messages: MessagesCatalog = {
         resendingVerificationEmail: '正在发送验证邮件...',
         resendVerificationSuccess: '验证邮件已发送，请查收邮箱。',
         resendVerificationError: '暂时无法重新发送验证邮件，请稍后再试。',
-    },
+      },
       register: {
         eyebrow: '注册',
         heroTitle: '创建你的 Coke 账号',
@@ -791,25 +846,17 @@ export const messages: MessagesCatalog = {
         description: '我们正在为你准备安全的邮箱验证。',
         verifyingDescription: '正在验证你的邮箱链接...',
       },
-      renew: {
-        title: '续订访问权限',
-        preparing: '正在准备续费结账流程...',
-        ready: '准备好后可重新进入结账流程。',
-        signIn: '登录',
-        backToSetup: '返回设置',
-        genericError: '暂时无法发起续费，请稍后再试。',
+      claim: {
+        eyebrow: '预留路由',
+        title: '认领入口即将开放',
+        description: '目前请先使用登录或注册流程。',
       },
-      paymentSuccess: {
-        title: '支付完成',
-        description: '我们已收到你的续费付款。返回账号后即可继续完成微信连接。',
-        primaryCta: '前往微信设置',
-        secondaryCta: '检查续费状态',
-      },
-      paymentCancel: {
-        title: '支付已取消',
-        description: '结账流程在付款完成前已取消。准备好后你可以再次尝试。',
-        primaryCta: '重新发起续费',
-        secondaryCta: '返回设置',
+      channelsIndex: {
+        eyebrow: '第一阶段通道',
+        title: '客户通道',
+        description: '管理当前已经迁移到中立 ClawScale 客户壳层中的通道入口。',
+        wechatPersonalTitle: '个人微信',
+        wechatPersonalDescription: '连接、重新连接或归档你的个人微信通道。',
       },
       bindWechat: {
         blocked: {
@@ -908,6 +955,28 @@ export const messages: MessagesCatalog = {
             primaryActionLabel: '重新创建我的微信通道',
           },
         },
+      },
+    },
+    cokeUserPages: {
+      renew: {
+        title: '续订访问权限',
+        preparing: '正在准备续费结账流程...',
+        ready: '准备好后可重新进入结账流程。',
+        signIn: '登录',
+        backToSetup: '返回设置',
+        genericError: '暂时无法发起续费，请稍后再试。',
+      },
+      paymentSuccess: {
+        title: '支付完成',
+        description: '我们已收到你的续费付款。返回账号后即可继续完成微信连接。',
+        primaryCta: '前往微信设置',
+        secondaryCta: '检查续费状态',
+      },
+      paymentCancel: {
+        title: '支付已取消',
+        description: '结账流程在付款完成前已取消。准备好后你可以再次尝试。',
+        primaryCta: '重新发起续费',
+        secondaryCta: '返回设置',
       },
     },
   },

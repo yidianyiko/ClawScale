@@ -17,6 +17,8 @@ import {
   CustomerAuthError,
   authenticateCustomer,
   registerCustomer,
+  signCustomerToken,
+  type CustomerAuthResult,
 } from '../lib/customer-auth.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 
@@ -57,6 +59,20 @@ type CompatibilityCokeAccount = {
   status: 'normal' | 'suspended';
   passwordHash: string | null;
 };
+
+function withCompatibilityCustomerAuth<T extends { token: string; user: object }>(
+  data: T,
+  customerAuth: CustomerAuthResult | null,
+): T & { customerAuth?: CustomerAuthResult } {
+  if (!customerAuth) {
+    return data;
+  }
+
+  return {
+    ...data,
+    customerAuth,
+  };
+}
 
 function applyDeprecationHeaders(c: Context, successorPath: string): void {
   c.header('Deprecation', 'true');
@@ -143,6 +159,47 @@ async function loadCompatibilityCokeAccount(
   return account;
 }
 
+async function loadCompatibilityCustomerAuth(customerId: string): Promise<CustomerAuthResult | null> {
+  const membership = await db.membership.findFirst({
+    where: {
+      customerId,
+      role: 'owner',
+    },
+    include: {
+      customer: {
+        select: {
+          id: true,
+        },
+      },
+      identity: {
+        select: {
+          id: true,
+          email: true,
+          claimStatus: true,
+        },
+      },
+    },
+  });
+
+  const email = membership?.identity.email?.trim();
+  if (!membership || !email) {
+    return null;
+  }
+
+  return {
+    customerId: membership.customer.id,
+    identityId: membership.identity.id,
+    claimStatus: membership.identity.claimStatus,
+    email,
+    membershipRole: membership.role,
+    token: signCustomerToken({
+      customerId: membership.customer.id,
+      identityId: membership.identity.id,
+      email,
+    }),
+  };
+}
+
 async function authenticateLegacyCokeAccount(input: {
   email: string;
   password: string;
@@ -226,10 +283,13 @@ export const cokeAuthRouter = new Hono()
       return c.json(
         {
           ok: true,
-          data: {
-            token: signCokeToken({ sub: result.customerId, email: result.email }),
-            user: serializeCokeAccount(compatibilityAccount),
-          },
+          data: withCompatibilityCustomerAuth(
+            {
+              token: signCokeToken({ sub: result.customerId, email: result.email }),
+              user: serializeCokeAccount(compatibilityAccount),
+            },
+            result,
+          ),
         },
         201,
       );
@@ -266,10 +326,13 @@ export const cokeAuthRouter = new Hono()
 
       return c.json({
         ok: true,
-        data: {
-          token: signCokeToken({ sub: result.customerId, email: result.email }),
-          user: withSubscriptionState(serializeCokeAccount(account), access),
-        },
+        data: withCompatibilityCustomerAuth(
+          {
+            token: signCokeToken({ sub: result.customerId, email: result.email }),
+            user: withSubscriptionState(serializeCokeAccount(account), access),
+          },
+          result,
+        ),
       });
     } catch (error) {
       if (error instanceof CustomerAuthError && error.code === 'invalid_credentials') {
@@ -356,13 +419,17 @@ export const cokeAuthRouter = new Hono()
         displayName: updatedAccount.displayName,
       },
     });
+    const customerAuth = await loadCompatibilityCustomerAuth(updatedAccount.id);
 
     return c.json({
       ok: true,
-      data: {
-        token: signCokeToken({ sub: updatedAccount.id, email: updatedAccount.email }),
-        user: withSubscriptionState(serializeCokeAccount(updatedAccount), access),
-      },
+      data: withCompatibilityCustomerAuth(
+        {
+          token: signCokeToken({ sub: updatedAccount.id, email: updatedAccount.email }),
+          user: withSubscriptionState(serializeCokeAccount(updatedAccount), access),
+        },
+        customerAuth,
+      ),
     });
   })
   .post('/verify-email/resend', zValidator('json', emailOnlySchema), async (c) => {

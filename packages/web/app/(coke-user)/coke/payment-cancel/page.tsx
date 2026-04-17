@@ -19,7 +19,7 @@ export default function PaymentCancelPage() {
           {copy.primaryCta}
         </Link>
         <Link
-          href="/coke/bind-wechat"
+          href="/channels/wechat-personal"
           className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
         >
           {copy.secondaryCta}
