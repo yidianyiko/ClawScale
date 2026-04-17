@@ -11,6 +11,10 @@ import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-use
 
 type VerificationRecoveryReason = 'expired' | 'retry' | null;
 
+function isSafeInternalNext(next: string | null): next is string {
+  return next != null && next.startsWith('/') && !next.startsWith('//');
+}
+
 export default function CustomerLoginPage() {
   const { messages } = useLocale();
   const copy = messages.cokeUserPages.login;
@@ -93,7 +97,7 @@ export default function CustomerLoginPage() {
       setStatusMessage(copy.success);
       const next =
         typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
-      router.push(next && next.startsWith('/coke/') ? next : '/channels/wechat-personal');
+      router.push(isSafeInternalNext(next) ? next : '/channels/wechat-personal');
     } catch {
       setError(copy.genericError);
     } finally {

@@ -209,6 +209,73 @@ describe('CustomerLoginPage', () => {
     expect(pushMock).not.toHaveBeenCalledWith('/coke/renew');
   });
 
+  it('preserves a safe neutral internal next destination after login', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+    window.history.replaceState({}, '', '/auth/login?next=%2Fchannels%2Fwechat-personal%3Fsource%3Dauth');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerLoginPage />
+        </LocaleProvider>,
+      );
+    });
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal?source=auth');
+  });
+
+  it('falls back to the neutral default when next is an unsafe external target', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+    window.history.replaceState({}, '', '/auth/login?next=https%3A%2F%2Fevil.example%2Fphish');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerLoginPage />
+        </LocaleProvider>,
+      );
+    });
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
+    expect(pushMock).not.toHaveBeenCalledWith('https://evil.example/phish');
+  });
+
   it('only shows the resend button in verification recovery state', () => {
     flushSync(() => {
       root.render(
