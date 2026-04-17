@@ -4,6 +4,9 @@ import type { InboundMessage } from '../lib/route-message.js';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 
+const SHARED_CHANNEL_PROVISION_RETRY_THRESHOLD = 3;
+const SHARED_CHANNEL_PROVISION_TIMEOUT_MS = 15_000;
+
 export interface ReplayParkedInboundsSummary {
   scanned: number;
   replayed: number;
@@ -27,6 +30,17 @@ interface ReplayablePayload {
   text?: string;
   attachments?: InboundMessage['attachments'];
   meta?: InboundMessage['meta'];
+}
+
+interface AgentBindingRow {
+  customerId: string;
+  agentId: string;
+  provisionStatus: 'pending' | 'ready' | 'error';
+  provisionAttempts: number;
+  provisionLastError: string | null;
+  customer: {
+    displayName: string | null;
+  } | null;
 }
 
 function isMainModule(): boolean {
@@ -74,10 +88,6 @@ function readDisplayName(payload: ReplayablePayload): string | undefined {
   return readString(payload.displayName) ?? readString(payload.display_name);
 }
 
-function isReadyBinding(binding: { provisionStatus?: string } | null | undefined): boolean {
-  return binding?.provisionStatus === 'ready';
-}
-
 async function markParkedInboundDrained(id: string): Promise<void> {
   await db.parkedInbound.update({
     where: { id },
@@ -86,6 +96,107 @@ async function markParkedInboundDrained(id: string): Promise<void> {
       drainedAt: new Date(),
     },
   });
+}
+
+async function readReplayBinding(customerId: string): Promise<AgentBindingRow | null> {
+  return db.agentBinding.findUnique({
+    where: { customerId },
+    select: {
+      customerId: true,
+      agentId: true,
+      provisionStatus: true,
+      provisionAttempts: true,
+      provisionLastError: true,
+      customer: {
+        select: {
+          displayName: true,
+        },
+      },
+    },
+  }) as Promise<AgentBindingRow | null>;
+}
+
+async function markBindingStatus(
+  customerId: string,
+  status: 'pending' | 'ready' | 'error',
+  errorMessage: string | null,
+): Promise<void> {
+  await db.agentBinding.update({
+    where: { customerId },
+    data: {
+      provisionStatus: status,
+      provisionAttempts: { increment: 1 },
+      provisionLastError: errorMessage,
+      provisionUpdatedAt: new Date(),
+    },
+  });
+}
+
+async function retrySharedChannelProvision(binding: AgentBindingRow): Promise<AgentBindingRow> {
+  const agent = await db.agent.findUnique({
+    where: { id: binding.agentId },
+    select: {
+      endpoint: true,
+      authToken: true,
+    },
+  });
+
+  if (!agent) {
+    const message = `shared_channel_agent_not_found:${binding.agentId}`;
+    await markBindingStatus(binding.customerId, 'error', message);
+    return {
+      ...binding,
+      provisionStatus: 'error',
+      provisionAttempts: binding.provisionAttempts + 1,
+      provisionLastError: message,
+    };
+  }
+
+  try {
+    const response = await fetch(agent.endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${agent.authToken}`,
+        'content-type': 'application/json',
+      },
+      signal: AbortSignal.timeout(SHARED_CHANNEL_PROVISION_TIMEOUT_MS),
+      body: JSON.stringify({
+        customer_id: binding.customerId,
+        ...(readString(binding.customer?.displayName) ? { display_name: binding.customer?.displayName } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`shared_channel_agent_provision_failed:${response.status}`);
+    }
+
+    await markBindingStatus(binding.customerId, 'ready', null);
+    return {
+      ...binding,
+      provisionStatus: 'ready',
+      provisionAttempts: binding.provisionAttempts + 1,
+      provisionLastError: null,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error && error.message.trim()
+      ? error.message
+      : 'shared_channel_provision_replay_failed';
+    const nextAttempts = binding.provisionAttempts + 1;
+    const nextStatus = nextAttempts >= SHARED_CHANNEL_PROVISION_RETRY_THRESHOLD ? 'error' : 'pending';
+    await markBindingStatus(binding.customerId, nextStatus, errorMessage);
+    return {
+      ...binding,
+      provisionStatus: nextStatus,
+      provisionAttempts: nextAttempts,
+      provisionLastError: errorMessage,
+    };
+  }
+}
+
+function pushTerminalError(summary: ReplayParkedInboundsSummary, customerId: string, errorMessage: string | null | undefined) {
+  summary.terminalErrors.push(
+    `agent_binding_terminal_error:${customerId}:${errorMessage ?? 'unknown'}`,
+  );
 }
 
 export async function replayParkedInbounds(
@@ -109,29 +220,32 @@ export async function replayParkedInbounds(
   for (const row of rows as ReplayParkedInboundRow[]) {
     const payload = readReplayablePayload(row.payload);
     const customerId = readCustomerId(payload);
-    const externalId = readExternalId(payload);
-    const text = readString(payload.text);
 
-    if (!customerId || !externalId || !text) {
+    if (!customerId) {
       summary.skipped += 1;
       continue;
     }
 
-    const binding = await db.agentBinding.findUnique({
-      where: { customerId },
-      select: {
-        provisionStatus: true,
-        provisionLastError: true,
-      },
-    });
-
-    if (!isReadyBinding(binding)) {
+    let binding = await readReplayBinding(customerId);
+    if (!binding) {
       summary.skipped += 1;
-      if (binding?.provisionStatus === 'error') {
-        summary.terminalErrors.push(
-          `agent_binding_terminal_error:${customerId}:${binding.provisionLastError ?? 'unknown'}`,
-        );
-      }
+      continue;
+    }
+
+    if (binding.provisionStatus === 'pending') {
+      binding = await retrySharedChannelProvision(binding);
+    }
+
+    if (binding.provisionStatus === 'error') {
+      summary.skipped += 1;
+      pushTerminalError(summary, customerId, binding.provisionLastError);
+      continue;
+    }
+
+    const externalId = readExternalId(payload);
+    const text = readString(payload.text);
+    if (!externalId || !text) {
+      summary.skipped += 1;
       continue;
     }
 

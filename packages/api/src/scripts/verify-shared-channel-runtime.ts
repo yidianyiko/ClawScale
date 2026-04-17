@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { db } from '../db/index.js';
 
 export interface SharedChannelRuntimeVerificationSummary {
+  deliveryPathAssumptions: string[];
   counts: {
     queuedParkedInbounds: number;
     readyBindings: number;
@@ -29,6 +30,12 @@ interface ReplayablePayload {
   customerId?: string;
   customer_id?: string;
 }
+
+const DELIVERY_PATH_ASSUMPTIONS = [
+  'delivery_route_truth_is_clawscale_owned',
+  'exact_delivery_route_channel_id_is_authoritative',
+  'failed_shared_channel_reclaims_do_not_reroute_to_a_different_channel',
+] as const;
 
 function isMainModule(): boolean {
   const entryPoint = process.argv[1];
@@ -98,6 +105,7 @@ export async function verifySharedChannelRuntime(
   );
 
   const summary: SharedChannelRuntimeVerificationSummary = {
+    deliveryPathAssumptions: [...DELIVERY_PATH_ASSUMPTIONS],
     counts: {
       queuedParkedInbounds: parkedInbounds.length,
       readyBindings: 0,
