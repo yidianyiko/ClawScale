@@ -36,6 +36,7 @@ export const adminAuthRouter = new Hono()
       return c.json(failure.body, failure.status);
     }
   })
+  // JWT auth is stateless here; logout only acknowledges client-side token discard.
   .post('/logout', requireAdminAuth, async (c) => {
     c.status(200);
     return c.json({ ok: true, data: null });
