@@ -220,6 +220,124 @@ describe('replayParkedInbounds', () => {
     expect(db.parkedInbound.update).not.toHaveBeenCalled();
   });
 
+
+  it('retries pending bindings only once per customer during a single replay run', async () => {
+    db.parkedInbound.findMany.mockResolvedValueOnce([
+      {
+        id: 'pi_pending_1',
+        channelId: 'ch_1',
+        payload: {
+          customerId: 'ck_pending',
+          externalId: 'wxid_pending_1',
+          displayName: 'Pending',
+          text: 'hello pending 1',
+        },
+      },
+      {
+        id: 'pi_pending_2',
+        channelId: 'ch_1',
+        payload: {
+          customerId: 'ck_pending',
+          externalId: 'wxid_pending_2',
+          displayName: 'Pending',
+          text: 'hello pending 2',
+        },
+      },
+    ]);
+    db.agentBinding.findUnique.mockResolvedValueOnce({
+      customerId: 'ck_pending',
+      agentId: 'agent_shared',
+      provisionStatus: 'pending',
+      provisionAttempts: 1,
+      provisionLastError: 'still provisioning',
+      customer: { displayName: 'Pending' },
+    });
+    fetchMock.mockRejectedValueOnce(new Error('temporary timeout'));
+
+    const summary = await replayParkedInbounds();
+
+    expect(summary).toEqual({
+      scanned: 2,
+      replayed: 0,
+      skipped: 2,
+      terminalErrors: [],
+    });
+    expect(db.agentBinding.findUnique).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+    expect(db.parkedInbound.update).not.toHaveBeenCalled();
+  });
+
+  it('continues replaying later rows after a row-level routing failure', async () => {
+    db.parkedInbound.findMany.mockResolvedValueOnce([
+      {
+        id: 'pi_erroring',
+        channelId: 'ch_1',
+        payload: {
+          customerId: 'ck_erroring',
+          externalId: 'wxid_erroring',
+          displayName: 'Erroring',
+          text: 'hello erroring',
+        },
+      },
+      {
+        id: 'pi_ready',
+        channelId: 'ch_1',
+        payload: {
+          customerId: 'ck_ready',
+          externalId: 'wxid_ready',
+          displayName: 'Ready',
+          text: 'hello ready',
+        },
+      },
+    ]);
+    db.agentBinding.findUnique.mockImplementation(async ({ where }: { where: { customerId: string } }) => {
+      if (where.customerId === 'ck_erroring') {
+        return {
+          customerId: 'ck_erroring',
+          agentId: 'agent_shared',
+          provisionStatus: 'ready',
+          provisionAttempts: 1,
+          provisionLastError: null,
+          customer: { displayName: 'Erroring' },
+        };
+      }
+
+      if (where.customerId === 'ck_ready') {
+        return {
+          customerId: 'ck_ready',
+          agentId: 'agent_shared',
+          provisionStatus: 'ready',
+          provisionAttempts: 1,
+          provisionLastError: null,
+          customer: { displayName: 'Ready' },
+        };
+      }
+
+      return null;
+    });
+    routeInboundMessage
+      .mockRejectedValueOnce(new Error('route exploded'))
+      .mockResolvedValueOnce({ conversationId: 'conv_2', reply: 'ok' });
+
+    const summary = await replayParkedInbounds();
+
+    expect(summary).toEqual({
+      scanned: 2,
+      replayed: 1,
+      skipped: 1,
+      terminalErrors: ['parked_inbound_replay_error:pi_erroring:route exploded'],
+    });
+    expect(db.parkedInbound.update).toHaveBeenCalledTimes(1);
+    expect(db.parkedInbound.update).toHaveBeenCalledWith({
+      where: { id: 'pi_ready' },
+      data: {
+        status: 'drained',
+        drainedAt: expect.any(Date),
+      },
+    });
+  });
+
   it('promotes repeated replay failures to terminal error after the retry threshold', async () => {
     db.parkedInbound.findMany.mockResolvedValueOnce([
       {

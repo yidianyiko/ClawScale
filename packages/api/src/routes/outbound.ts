@@ -311,38 +311,6 @@ outboundRouter.post('/', async (c) => {
     }
   }
 
-  if (!deliveryRoute) {
-    try {
-      deliveryRoute = await resolveExactDeliveryRoute({
-        cokeAccountId: body.customer_id,
-        businessConversationKey: body.business_conversation_key,
-      });
-    } catch (error) {
-      if (!isMissingDeliveryRouteError(error)) {
-        throw error;
-      }
-      const context =
-        error instanceof DeliveryRouteResolutionError
-          ? error.context
-          : (error.context ?? {
-              cokeAccountId: body.customer_id,
-              businessConversationKey: body.business_conversation_key,
-            });
-
-      return c.json(
-        {
-          ok: false,
-          error: 'missing_delivery_route',
-          context: {
-            coke_account_id: context.cokeAccountId,
-            business_conversation_key: context.businessConversationKey,
-          },
-        },
-        404,
-      );
-    }
-  }
-
   if (outboundDelivery && shouldReclaimFailed) {
     // Preserve the exact delivery target from the original resolution; failed reclaims
     // must not reroute to a different channel or peer.

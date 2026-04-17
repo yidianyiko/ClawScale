@@ -248,7 +248,7 @@ describe('outbound router', () => {
     expect(db.outboundDelivery.create).not.toHaveBeenCalled();
   });
 
-  it('does not reclaim failed key when route lookup fails, preventing pending wedge on retries', async () => {
+  it('does not reclaim failed key when the stored delivery target is missing, preventing pending wedge on retries', async () => {
     const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
       id: 'outbound_1',
@@ -270,16 +270,13 @@ describe('outbound router', () => {
     const first = await postOutbound(body);
     const second = await postOutbound(body);
 
-    expect(first.status).toBe(404);
-    expect(second.status).toBe(404);
+    expect(first.status).toBe(409);
+    expect(second.status).toBe(409);
     await expect(first.json()).resolves.toEqual({
       ok: false,
-      error: 'missing_delivery_route',
-      context: {
-        coke_account_id: 'acct_1',
-        business_conversation_key: 'biz_conv_1',
-      },
+      error: 'stored_delivery_target_missing',
     });
+    expect(resolveExactDeliveryRoute).not.toHaveBeenCalled();
     expect(db.outboundDelivery.updateMany).not.toHaveBeenCalled();
   });
 
@@ -340,7 +337,6 @@ describe('outbound router', () => {
       channelId: 'ch_1',
       idempotencyKey: 'idem_1',
     } as never);
-    vi.mocked(resolveExactDeliveryRoute).mockResolvedValueOnce(movedRoute as never);
     vi.mocked(db.channel.findFirst).mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === 'ch_1') {
         return channel as never;
@@ -356,6 +352,7 @@ describe('outbound router', () => {
     const res = await postOutbound(body);
 
     expect(res.status).toBe(200);
+    expect(resolveExactDeliveryRoute).not.toHaveBeenCalled();
     expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', 'hello');
     expect(deliverOutboundMessage).not.toHaveBeenCalledWith(movedChannel, 'wxid_2', 'hello');
   });
@@ -374,7 +371,6 @@ describe('outbound router', () => {
       channelId: 'ch_1',
       idempotencyKey: 'idem_1',
     } as never);
-    vi.mocked(resolveExactDeliveryRoute).mockResolvedValueOnce(movedRoute as never);
     vi.mocked(db.channel.findFirst).mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === 'ch_2') {
         return movedChannel as never;

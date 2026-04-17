@@ -199,6 +199,13 @@ function pushTerminalError(summary: ReplayParkedInboundsSummary, customerId: str
   );
 }
 
+function pushRowError(summary: ReplayParkedInboundsSummary, rowId: string, error: unknown) {
+  const errorMessage = error instanceof Error && error.message.trim()
+    ? error.message
+    : 'unknown';
+  summary.terminalErrors.push(`parked_inbound_replay_error:${rowId}:${errorMessage}`);
+}
+
 export async function replayParkedInbounds(
   input: { limit?: number } = {},
 ): Promise<ReplayParkedInboundsSummary> {
@@ -216,68 +223,91 @@ export async function replayParkedInbounds(
     skipped: 0,
     terminalErrors: [],
   };
+  const bindingCache = new Map<string, AgentBindingRow | null>();
+  const retriedPendingCustomers = new Set<string>();
+
+  const readCachedReplayBinding = async (customerId: string): Promise<AgentBindingRow | null> => {
+    if (!bindingCache.has(customerId)) {
+      bindingCache.set(customerId, await readReplayBinding(customerId));
+    }
+
+    const binding = bindingCache.get(customerId) ?? null;
+    if (!binding) {
+      return null;
+    }
+
+    if (binding.provisionStatus !== 'pending' || retriedPendingCustomers.has(customerId)) {
+      return binding;
+    }
+
+    retriedPendingCustomers.add(customerId);
+    const nextBinding = await retrySharedChannelProvision(binding);
+    bindingCache.set(customerId, nextBinding);
+    return nextBinding;
+  };
 
   for (const row of rows as ReplayParkedInboundRow[]) {
-    const payload = readReplayablePayload(row.payload);
-    const customerId = readCustomerId(payload);
+    try {
+      const payload = readReplayablePayload(row.payload);
+      const customerId = readCustomerId(payload);
 
-    if (!customerId) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    let binding = await readReplayBinding(customerId);
-    if (!binding) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    if (binding.provisionStatus === 'pending') {
-      binding = await retrySharedChannelProvision(binding);
-    }
-
-    if (binding.provisionStatus !== 'ready') {
-      summary.skipped += 1;
-      if (binding.provisionStatus === 'error') {
-        pushTerminalError(summary, customerId, binding.provisionLastError);
+      if (!customerId) {
+        summary.skipped += 1;
+        continue;
       }
-      continue;
-    }
 
-    const externalId = readExternalId(payload);
-    const text = readString(payload.text);
-    if (!externalId || !text) {
+      const binding = await readCachedReplayBinding(customerId);
+      if (!binding) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      if (binding.provisionStatus !== 'ready') {
+        summary.skipped += 1;
+        if (binding.provisionStatus === 'error') {
+          pushTerminalError(summary, customerId, binding.provisionLastError);
+        }
+        continue;
+      }
+
+      const externalId = readExternalId(payload);
+      const text = readString(payload.text);
+      if (!externalId || !text) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      const message: InboundMessage = {
+        channelId: row.channelId,
+        externalId,
+        text,
+      };
+
+      const displayName = readDisplayName(payload);
+      if (displayName) {
+        message.displayName = displayName;
+      }
+
+      if (payload.attachments) {
+        message.attachments = payload.attachments;
+      }
+
+      if (payload.meta) {
+        message.meta = payload.meta;
+      }
+
+      const result = await routeInboundMessage(message);
+      if (!result) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      await markParkedInboundDrained(row.id);
+      summary.replayed += 1;
+    } catch (error) {
       summary.skipped += 1;
-      continue;
+      pushRowError(summary, row.id, error);
     }
-
-    const message: InboundMessage = {
-      channelId: row.channelId,
-      externalId,
-      text,
-    };
-
-    const displayName = readDisplayName(payload);
-    if (displayName) {
-      message.displayName = displayName;
-    }
-
-    if (payload.attachments) {
-      message.attachments = payload.attachments;
-    }
-
-    if (payload.meta) {
-      message.meta = payload.meta;
-    }
-
-    const result = await routeInboundMessage(message);
-    if (!result) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    await markParkedInboundDrained(row.id);
-    summary.replayed += 1;
   }
 
   return summary;
