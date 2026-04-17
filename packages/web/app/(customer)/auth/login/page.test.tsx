@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { storeCustomerAuth } from '../../../../lib/customer-auth';
 
 const pushMock = vi.hoisted(() => vi.fn());
 
@@ -31,6 +32,10 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
   storeCokeUserAuth: vi.fn(),
 }));
 
+vi.mock('../../../../lib/customer-auth', () => ({
+  storeCustomerAuth: vi.fn(),
+}));
+
 import CustomerLoginPage from './page';
 
 describe('CustomerLoginPage', () => {
@@ -42,6 +47,7 @@ describe('CustomerLoginPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
     vi.mocked(cokeUserApi.post).mockReset();
+    vi.mocked(storeCustomerAuth).mockReset();
     window.history.replaceState({}, '', '/auth/login');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -207,6 +213,54 @@ describe('CustomerLoginPage', () => {
 
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
     expect(pushMock).not.toHaveBeenCalledWith('/coke/renew');
+  });
+
+  it('stores the neutral customer session before routing to the channel surface', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_1',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          membershipRole: 'owner',
+        },
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerLoginPage />
+        </LocaleProvider>,
+      );
+    });
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith({
+      token: 'customer-token',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'active',
+      membershipRole: 'owner',
+    });
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 
   it('preserves a safe neutral internal next destination after login', async () => {

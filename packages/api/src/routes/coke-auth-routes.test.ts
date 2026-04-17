@@ -40,6 +40,7 @@ const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 const verifyCokeToken = vi.hoisted(() => vi.fn());
 const registerCustomer = vi.hoisted(() => vi.fn());
 const authenticateCustomer = vi.hoisted(() => vi.fn());
+const signCustomerToken = vi.hoisted(() => vi.fn(() => 'customer-session-token'));
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/clawscale-user.js', () => ({
@@ -56,6 +57,7 @@ vi.mock('../lib/customer-auth.js', async () => {
     ...actual,
     registerCustomer,
     authenticateCustomer,
+    signCustomerToken,
   };
 });
 vi.mock('../lib/coke-auth.js', async () => {
@@ -196,6 +198,14 @@ describe('coke auth routes', () => {
           email_verified: false,
           status: 'normal',
         },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          claimStatus: 'active',
+          email: 'alice@example.com',
+          membershipRole: 'owner',
+        },
       },
     });
   });
@@ -237,6 +247,14 @@ describe('coke auth routes', () => {
           display_name: 'Alice',
           email_verified: false,
           status: 'normal',
+        },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          claimStatus: 'active',
+          email: 'alice@example.com',
+          membershipRole: 'owner',
         },
       },
     });
@@ -320,6 +338,14 @@ describe('coke auth routes', () => {
           status: 'normal',
           subscription_active: true,
           subscription_expires_at: '2026-05-10T00:00:00.000Z',
+        },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          claimStatus: 'active',
+          email: 'alice@example.com',
+          membershipRole: 'owner',
         },
       },
     });
@@ -461,6 +487,14 @@ describe('coke auth routes', () => {
           status: 'normal',
           subscription_active: true,
           subscription_expires_at: '2026-05-10T00:00:00.000Z',
+        },
+        customerAuth: {
+          token: 'customer-session-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          claimStatus: 'active',
+          email: 'alice@example.com',
+          membershipRole: 'owner',
         },
       },
     });

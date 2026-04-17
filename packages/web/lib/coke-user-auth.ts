@@ -1,3 +1,5 @@
+import type { CustomerAuthResult } from './customer-auth';
+
 const TOKEN_KEY = 'coke_user_token';
 const USER_KEY = 'coke_user_profile';
 
@@ -14,6 +16,7 @@ export interface CokeUser {
 export interface CokeAuthResult {
   token: string;
   user: CokeUser;
+  customerAuth?: CustomerAuthResult;
 }
 
 function getStorage(): Storage | null {

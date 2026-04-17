@@ -7,6 +7,7 @@ const pushMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
 const postMock = vi.hoisted(() => vi.fn());
 const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
+const storeCustomerAuthMock = vi.hoisted(() => vi.fn());
 const getCokeUserMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
@@ -27,6 +28,10 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
   getCokeUser: () => getCokeUserMock(),
 }));
 
+vi.mock('../../../../lib/customer-auth', () => ({
+  storeCustomerAuth: (...args: unknown[]) => storeCustomerAuthMock(...args),
+}));
+
 import CustomerVerifyEmailPage from './page';
 
 async function flushTicks(count: number) {
@@ -44,6 +49,7 @@ describe('CustomerVerifyEmailPage', () => {
     replaceMock.mockReset();
     postMock.mockReset();
     storeCokeUserAuthMock.mockReset();
+    storeCustomerAuthMock.mockReset();
     getCokeUserMock.mockReset();
     postMock.mockResolvedValue({
       ok: true,
@@ -57,6 +63,14 @@ describe('CustomerVerifyEmailPage', () => {
           status: 'normal',
           subscription_active: true,
           subscription_expires_at: null,
+        },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          membershipRole: 'owner',
         },
       },
     });
@@ -97,6 +111,14 @@ describe('CustomerVerifyEmailPage', () => {
       token: 'verify-token',
       email: 'alice@example.com',
     });
+    expect(storeCustomerAuthMock).toHaveBeenCalledWith({
+      token: 'customer-token',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'active',
+      membershipRole: 'owner',
+    });
     expect(container.querySelector('input#token')).toBeNull();
     expect(container.querySelector('input#email')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
@@ -118,6 +140,14 @@ describe('CustomerVerifyEmailPage', () => {
           subscription_active: false,
           subscription_expires_at: null,
         },
+        customerAuth: {
+          token: 'customer-token',
+          customerId: 'ck_1',
+          identityId: 'idt_1',
+          email: 'alice@example.com',
+          claimStatus: 'active',
+          membershipRole: 'owner',
+        },
       },
     });
 
@@ -138,6 +168,14 @@ describe('CustomerVerifyEmailPage', () => {
         }),
       }),
     );
+    expect(storeCustomerAuthMock).toHaveBeenCalledWith({
+      token: 'customer-token',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'active',
+      membershipRole: 'owner',
+    });
     expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
     expect(pushMock).not.toHaveBeenCalled();
   });

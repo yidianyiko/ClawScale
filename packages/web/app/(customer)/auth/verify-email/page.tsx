@@ -6,6 +6,7 @@ import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { getCokeUser, storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
+import { storeCustomerAuth } from '../../../../lib/customer-auth';
 
 type RecoveryReason = 'manual' | 'expired' | 'retry';
 
@@ -52,6 +53,9 @@ export default function CustomerVerifyEmailPage() {
         }
 
         storeCokeUserAuth(res.data);
+        if (res.data.customerAuth) {
+          storeCustomerAuth(res.data.customerAuth);
+        }
         router.replace(
           res.data.user.subscription_active === false
             ? '/channels/wechat-personal?next=renew'
