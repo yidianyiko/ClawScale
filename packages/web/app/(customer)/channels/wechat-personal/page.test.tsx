@@ -9,6 +9,7 @@ const replaceMock = vi.hoisted(() => vi.fn());
 const getCokeUserTokenMock = vi.hoisted(() => vi.fn());
 const getCokeUserMock = vi.hoisted(() => vi.fn());
 const clearCokeUserAuthMock = vi.hoisted(() => vi.fn());
+const clearCustomerAuthMock = vi.hoisted(() => vi.fn());
 const getCokeUserWechatChannelStatusMock = vi.hoisted(() => vi.fn());
 const connectCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
 const archiveCokeUserWechatChannelMock = vi.hoisted(() => vi.fn());
@@ -43,6 +44,10 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
   isCokeUserSuspended: (user: { status?: string } | null) => user?.status === 'suspended',
   needsCokeEmailVerification: (user: { email_verified?: boolean } | null) => user?.email_verified !== true,
   needsCokeSubscriptionRenewal: (user: { subscription_active?: boolean } | null) => user?.subscription_active !== true,
+}));
+
+vi.mock('../../../../lib/customer-auth', () => ({
+  clearCustomerAuth: () => clearCustomerAuthMock(),
 }));
 
 vi.mock('../../../../lib/coke-user-wechat-channel', async () => {
@@ -109,6 +114,7 @@ describe('CustomerWechatPersonalPage renewal compatibility', () => {
     getCokeUserTokenMock.mockReset();
     getCokeUserMock.mockReset();
     clearCokeUserAuthMock.mockReset();
+    clearCustomerAuthMock.mockReset();
     getCokeUserWechatChannelStatusMock.mockReset();
 
     searchParamsMock.mockReturnValue(new URLSearchParams('next=renew'));
@@ -186,6 +192,56 @@ describe('CustomerWechatPersonalPage initial load failure', () => {
     expect(container.textContent).toContain('Retry');
     expect(container.textContent).not.toContain('Reconnect');
     expect(container.textContent).not.toContain('Archive channel');
+  });
+});
+
+describe('CustomerWechatPersonalPage sign out', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    clearCustomerAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    searchParamsMock.mockReturnValue(new URLSearchParams());
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: false,
+      status: 'normal',
+      subscription_active: false,
+      subscription_expires_at: null,
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('clears both auth stores when signing out from the blocked state', async () => {
+    renderWithLocale(root, 'en');
+    await flushTicks(2);
+
+    const signOutButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Sign out'),
+    );
+    expect(signOutButton).toBeTruthy();
+
+    signOutButton?.click();
+
+    expect(clearCokeUserAuthMock).toHaveBeenCalledTimes(1);
+    expect(clearCustomerAuthMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).toHaveBeenCalledWith('/auth/login');
   });
 });
 

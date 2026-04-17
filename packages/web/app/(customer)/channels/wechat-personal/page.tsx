@@ -16,6 +16,7 @@ import {
   needsCokeSubscriptionRenewal,
   type CokeUser,
 } from '../../../../lib/coke-user-auth';
+import { clearCustomerAuth } from '../../../../lib/customer-auth';
 import {
   archiveCokeUserWechatChannel,
   connectCokeUserWechatChannel,
@@ -217,6 +218,7 @@ export default function CustomerWechatPersonalPage() {
 
   function handleSignOut() {
     clearCokeUserAuth();
+    clearCustomerAuth();
     router.replace('/auth/login');
   }
 
