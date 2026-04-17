@@ -10,6 +10,10 @@ const migrationPath = resolve(
   process.cwd(),
   'prisma/migrations/20260416010000_platformization_identity_schema/migration.sql',
 );
+const parkedInboundMigrationPath = resolve(
+  process.cwd(),
+  'prisma/migrations/20260418010000_parked_inbound_runtime_support/migration.sql',
+);
 
 function getModelBlock(schema: string, modelName: string) {
   const match = schema.match(new RegExp(`model ${modelName} \\{[\\s\\S]*?\\n\\}`, 'm'));
@@ -113,6 +117,9 @@ describe('platformization migration guard', () => {
     const compactMigration = migration.replace(/\s+/g, ' ');
 
     expect(compactMigration).toContain('agents_is_default_true_key');
+
+    const parkedInboundMigration = readFileSync(parkedInboundMigrationPath, 'utf8');
+    const compactParkedInboundMigration = parkedInboundMigration.replace(/\s+/g, ' ');
     expect(compactMigration).toContain('channels_ownership_kind_check');
     expect(compactMigration).toContain('channels_customer_kind_active_key');
     expect(compactMigration).toContain('memberships_identity_id_idx');
@@ -151,5 +158,11 @@ describe('platformization migration guard', () => {
     expect(compactMigration).toContain(
       'FOREIGN KEY ("agent_id") REFERENCES "agents"("id") ON DELETE RESTRICT ON UPDATE CASCADE',
     );
+    expect(compactParkedInboundMigration).toContain(`CREATE TYPE "ParkedInboundStatus" AS ENUM ('queued', 'processing', 'drained', 'failed')`);
+    expect(compactParkedInboundMigration).toContain('CREATE TABLE IF NOT EXISTS "parked_inbounds"');
+    expect(compactParkedInboundMigration).toContain('"payload" JSONB NOT NULL');
+    expect(compactParkedInboundMigration).toContain('FOREIGN KEY ("channel_id") REFERENCES "channels"("id") ON DELETE CASCADE ON UPDATE CASCADE');
+    expect(compactParkedInboundMigration).toContain('CREATE INDEX IF NOT EXISTS "parked_inbounds_status_created_at_idx"');
+    expect(compactParkedInboundMigration).toContain('CREATE INDEX IF NOT EXISTS "parked_inbounds_provider_identity_type_identity_value_idx"');
   });
 });
