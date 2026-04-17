@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCustomerAuth } from '../../../../lib/customer-auth';
+import { clearCustomerAuth, storeCustomerAuth } from '../../../../lib/customer-auth';
 
 const pushMock = vi.hoisted(() => vi.fn());
 
@@ -34,6 +34,7 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
 
 vi.mock('../../../../lib/customer-auth', () => ({
   storeCustomerAuth: vi.fn(),
+  clearCustomerAuth: vi.fn(),
 }));
 
 import CustomerLoginPage from './page';
@@ -48,6 +49,7 @@ describe('CustomerLoginPage', () => {
     pushMock.mockReset();
     vi.mocked(cokeUserApi.post).mockReset();
     vi.mocked(storeCustomerAuth).mockReset();
+    vi.mocked(clearCustomerAuth).mockReset();
     window.history.replaceState({}, '', '/auth/login');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -260,6 +262,40 @@ describe('CustomerLoginPage', () => {
       claimStatus: 'active',
       membershipRole: 'owner',
     });
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
+  });
+
+  it('clears stale customer auth when legacy-only login succeeds', async () => {
+    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_legacy_1',
+          email: 'legacy@example.com',
+          display_name: 'Legacy User',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerLoginPage />
+        </LocaleProvider>,
+      );
+    });
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(vi.mocked(clearCustomerAuth)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(storeCustomerAuth)).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 

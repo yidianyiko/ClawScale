@@ -8,6 +8,7 @@ const replaceMock = vi.hoisted(() => vi.fn());
 const postMock = vi.hoisted(() => vi.fn());
 const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
 const storeCustomerAuthMock = vi.hoisted(() => vi.fn());
+const clearCustomerAuthMock = vi.hoisted(() => vi.fn());
 const getCokeUserMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
 
 vi.mock('../../../../lib/customer-auth', () => ({
   storeCustomerAuth: (...args: unknown[]) => storeCustomerAuthMock(...args),
+  clearCustomerAuth: (...args: unknown[]) => clearCustomerAuthMock(...args),
 }));
 
 import CustomerVerifyEmailPage from './page';
@@ -50,6 +52,7 @@ describe('CustomerVerifyEmailPage', () => {
     postMock.mockReset();
     storeCokeUserAuthMock.mockReset();
     storeCustomerAuthMock.mockReset();
+    clearCustomerAuthMock.mockReset();
     getCokeUserMock.mockReset();
     postMock.mockResolvedValue({
       ok: true,
@@ -178,6 +181,39 @@ describe('CustomerVerifyEmailPage', () => {
     });
     expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('clears stale customer auth when legacy-only verification succeeds', async () => {
+    postMock.mockReset();
+    postMock.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'auth-token',
+        user: {
+          id: 'acct_legacy_1',
+          email: 'legacy@example.com',
+          display_name: 'Legacy User',
+          email_verified: true,
+          status: 'normal',
+          subscription_active: true,
+          subscription_expires_at: null,
+        },
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerVerifyEmailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await flushTicks(2);
+
+    expect(clearCustomerAuthMock).toHaveBeenCalled();
+    expect(storeCustomerAuthMock).not.toHaveBeenCalled();
+    expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 
   it('uses the stored auth email to keep the registration handoff on a working recovery flow', async () => {

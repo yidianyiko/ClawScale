@@ -8,7 +8,7 @@ import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
-import { storeCustomerAuth } from '../../../../lib/customer-auth';
+import { clearCustomerAuth, storeCustomerAuth } from '../../../../lib/customer-auth';
 
 export default function CustomerRegisterPage() {
   const { messages } = useLocale();
@@ -40,6 +40,8 @@ export default function CustomerRegisterPage() {
       storeCokeUserAuth(res.data);
       if (res.data.customerAuth) {
         storeCustomerAuth(res.data.customerAuth);
+      } else {
+        clearCustomerAuth();
       }
       router.push('/auth/verify-email');
     } catch {

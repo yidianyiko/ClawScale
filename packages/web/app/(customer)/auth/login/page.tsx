@@ -8,7 +8,7 @@ import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
 import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
-import { storeCustomerAuth } from '../../../../lib/customer-auth';
+import { clearCustomerAuth, storeCustomerAuth } from '../../../../lib/customer-auth';
 
 type VerificationRecoveryReason = 'expired' | 'retry' | null;
 
@@ -79,6 +79,8 @@ export default function CustomerLoginPage() {
       storeCokeUserAuth(res.data);
       if (res.data.customerAuth) {
         storeCustomerAuth(res.data.customerAuth);
+      } else {
+        clearCustomerAuth();
       }
 
       if (res.data.user.status === 'suspended') {

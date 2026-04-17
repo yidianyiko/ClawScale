@@ -4,14 +4,33 @@ export type {
   CustomerWechatChannelViewModel as CokeUserWechatChannelViewModel,
 } from './customer-wechat-channel';
 
+import type { ApiResponse } from '../../shared/src/types/api';
+import { getCokeUserToken } from './coke-user-auth';
 import {
-  archiveCustomerWechatChannel,
-  connectCustomerWechatChannel,
-  createCustomerWechatChannel,
-  disconnectCustomerWechatChannel,
+  type CustomerWechatChannelState,
   getCustomerWechatChannelViewModel,
-  getCustomerWechatChannelStatus,
 } from './customer-wechat-channel';
+import { createCustomerApiClient } from './customer-api';
+import { getCustomerToken } from './customer-auth';
+
+function getCokeCompatibilityChannelToken(): string | null {
+  return getCustomerToken() ?? getCokeUserToken();
+}
+
+const cokeChannelCompatibilityApi = createCustomerApiClient(getCokeCompatibilityChannelToken);
+
+function normalizeEmptyArchiveResponse(
+  response: ApiResponse<CustomerWechatChannelState> | undefined,
+): ApiResponse<CustomerWechatChannelState> {
+  if (response == null) {
+    return {
+      ok: true,
+      data: { status: 'archived' },
+    };
+  }
+
+  return response;
+}
 
 export function getCokeUserWechatChannelViewModel(
   ...args: Parameters<typeof getCustomerWechatChannelViewModel>
@@ -20,21 +39,31 @@ export function getCokeUserWechatChannelViewModel(
 }
 
 export function createCokeUserWechatChannel() {
-  return createCustomerWechatChannel();
+  return cokeChannelCompatibilityApi.post<ApiResponse<CustomerWechatChannelState>>(
+    '/api/customer/channels/wechat-personal',
+  );
 }
 
 export function connectCokeUserWechatChannel() {
-  return connectCustomerWechatChannel();
+  return cokeChannelCompatibilityApi.post<ApiResponse<CustomerWechatChannelState>>(
+    '/api/customer/channels/wechat-personal/connect',
+  );
 }
 
 export function getCokeUserWechatChannelStatus() {
-  return getCustomerWechatChannelStatus();
+  return cokeChannelCompatibilityApi.get<ApiResponse<CustomerWechatChannelState>>(
+    '/api/customer/channels/wechat-personal/status',
+  );
 }
 
 export function disconnectCokeUserWechatChannel() {
-  return disconnectCustomerWechatChannel();
+  return cokeChannelCompatibilityApi.post<ApiResponse<CustomerWechatChannelState>>(
+    '/api/customer/channels/wechat-personal/disconnect',
+  );
 }
 
 export function archiveCokeUserWechatChannel() {
-  return archiveCustomerWechatChannel();
+  return cokeChannelCompatibilityApi
+    .delete<ApiResponse<CustomerWechatChannelState> | undefined>('/api/customer/channels/wechat-personal')
+    .then(normalizeEmptyArchiveResponse);
 }
