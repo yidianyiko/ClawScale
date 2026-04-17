@@ -1,52 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushSync } from 'react-dom';
-import { createRoot, type Root } from 'react-dom/client';
-import type { ReactNode } from 'react';
-import { LocaleProvider } from '../../../../components/locale-provider';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('next/link', () => ({
-  default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+const redirectMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    post: vi.fn(),
-  },
+vi.mock('next/navigation', () => ({
+  redirect: redirectMock,
 }));
 
 import ForgotPasswordPage from './page';
 
 describe('ForgotPasswordPage', () => {
-  let container: HTMLDivElement;
-  let root: Root;
-
   beforeEach(() => {
-    container = document.createElement('div');
-    document.body.appendChild(container);
-    root = createRoot(container);
+    redirectMock.mockReset();
   });
 
-  afterEach(() => {
-    root.unmount();
-    container.remove();
-  });
+  it('redirects /coke/forgot-password to /auth/forgot-password', async () => {
+    await ForgotPasswordPage({});
 
-  it('renders English recovery copy from the locale catalog', () => {
-    flushSync(() => {
-      root.render(
-        <LocaleProvider initialLocale="en">
-          <ForgotPasswordPage />
-        </LocaleProvider>,
-      );
-    });
-
-    expect(container.textContent).toContain('Forgot your password');
-    expect(container.textContent).toContain('Send reset link');
-    expect(container.textContent).toContain('Remembered your password?');
-    expect(container.textContent).not.toContain('忘记密码');
+    expect(redirectMock).toHaveBeenCalledWith('/auth/forgot-password');
   });
 });

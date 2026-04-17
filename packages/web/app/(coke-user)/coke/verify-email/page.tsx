@@ -1,70 +1,33 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
-import { useLocale } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
+type LegacySearchParams = Record<string, string | string[] | undefined>;
 
-export default function VerifyEmailPage() {
-  const { messages } = useLocale();
-  const copy = messages.cokeUserPages.verifyEmail;
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
+function buildRedirectPath(pathname: string, searchParams?: LegacySearchParams) {
+  const params = new URLSearchParams();
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token')?.trim() ?? '';
-    const email = params.get('email')?.trim() ?? '';
-
-    if (!token || !email) {
-      router.replace(email ? `/coke/login?email=${encodeURIComponent(email)}&verification=expired` : '/coke/login?verification=expired');
-      return;
-    }
-
-    let cancelled = false;
-
-    async function verifyEmailLink() {
-      try {
-        const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/verify-email', {
-          token,
-          email,
-        });
-
-        if (cancelled) return;
-
-        if (!res.ok) {
-          router.replace(`/coke/login?email=${encodeURIComponent(email)}&verification=expired`);
-          return;
+  if (searchParams) {
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          params.append(key, entry);
         }
+        continue;
+      }
 
-        storeCokeUserAuth(res.data);
-        router.replace(res.data.user.subscription_active === false ? '/coke/renew' : '/coke/bind-wechat');
-      } catch {
-        if (!cancelled) {
-          router.replace(`/coke/login?email=${encodeURIComponent(email)}&verification=retry`);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      if (value !== undefined) {
+        params.set(key, value);
       }
     }
+  }
 
-    void verifyEmailLink();
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
 
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  return (
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">
-        {loading ? copy.verifyingDescription : copy.description}
-      </p>
-    </section>
-  );
+export default async function VerifyEmailPage({
+  searchParams,
+}: {
+  searchParams?: Promise<LegacySearchParams>;
+}) {
+  redirect(buildRedirectPath('/auth/verify-email', searchParams ? await searchParams : undefined));
 }
