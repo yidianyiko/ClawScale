@@ -3,6 +3,41 @@ import { db } from '../db/index.js';
 import { DEFAULT_COKE_AGENT_SLUG } from '../lib/platformization-migration.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
+type AgentBindingProvisionStatus = 'ready' | 'pending' | 'error';
+
+function deriveLastHandshakeHealth(
+  binding:
+    | {
+        provisionStatus: AgentBindingProvisionStatus;
+        provisionUpdatedAt: Date;
+      }
+    | undefined,
+) {
+  if (!binding) {
+    return {
+      status: 'unknown',
+      source: 'agent_binding_provision_status',
+      observedAt: null,
+    } as const;
+  }
+
+  // Phase 1 has no dedicated handshake-health persistence. We derive the
+  // operational signal from the latest Coke agent binding state instead:
+  // ready -> healthy, pending -> pending, error -> error.
+  const status =
+    binding.provisionStatus === 'ready'
+      ? 'healthy'
+      : binding.provisionStatus === 'pending'
+        ? 'pending'
+        : 'error';
+
+  return {
+    status,
+    source: 'agent_binding_provision_status',
+    observedAt: binding.provisionUpdatedAt.toISOString(),
+  } as const;
+}
+
 export const adminAgentsRouter = new Hono()
   .use('*', requireAdminAuth)
   .get('/', async (c) => {
@@ -19,6 +54,16 @@ export const adminAgentsRouter = new Hono()
         isDefault: true,
         createdAt: true,
         updatedAt: true,
+        bindings: {
+          orderBy: {
+            provisionUpdatedAt: 'desc',
+          },
+          take: 1,
+          select: {
+            provisionStatus: true,
+            provisionUpdatedAt: true,
+          },
+        },
       },
       orderBy: [
         { isDefault: 'desc' },
@@ -39,7 +84,7 @@ export const adminAgentsRouter = new Hono()
         endpoint: agent.endpoint,
         tokenConfigured: Boolean(agent.authToken),
         isDefault: agent.isDefault,
-        lastHandshakeHealth: null,
+        lastHandshakeHealth: deriveLastHandshakeHealth(agent.bindings[0]),
         createdAt: agent.createdAt.toISOString(),
         updatedAt: agent.updatedAt.toISOString(),
       },
