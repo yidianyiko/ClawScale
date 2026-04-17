@@ -1,16 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearCokeUserAuth,
-  getCokeUserSession,
   getCokeUser,
   getCokeUserToken,
-  loginCokeUser,
-  registerCokeUser,
-  requestCokeUserPasswordReset,
-  resendCokeUserVerification,
-  resetCokeUserPassword,
   storeCokeUserAuth,
-  verifyCokeUserEmail,
 } from './coke-user-auth';
 import {
   clearCustomerAuth,
@@ -48,6 +41,33 @@ describe('coke user auth storage', () => {
     clearCokeUserAuth();
     expect(getCokeUserToken()).toBeNull();
     expect(getCokeUser()).toBeNull();
+  });
+
+  it('stays on the legacy coke storage contract and does not read neutral customer session keys', () => {
+    storeCustomerAuth({
+      token: 'customer-token',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'active',
+      membershipRole: 'owner',
+    });
+
+    expect(getCokeUserToken()).toBeNull();
+    expect(getCokeUser()).toBeNull();
+  });
+
+  it('does not expose split-brain auth route wrappers from the legacy coke auth module', async () => {
+    const cokeUserAuthModule = await import('./coke-user-auth');
+
+    expect(cokeUserAuthModule).not.toHaveProperty('registerCokeUser');
+    expect(cokeUserAuthModule).not.toHaveProperty('loginCokeUser');
+    expect(cokeUserAuthModule).not.toHaveProperty('verifyCokeUserEmail');
+    expect(cokeUserAuthModule).not.toHaveProperty('resendCokeUserVerification');
+    expect(cokeUserAuthModule).not.toHaveProperty('requestCokeUserPasswordReset');
+    expect(cokeUserAuthModule).not.toHaveProperty('resetCokeUserPassword');
+    expect(cokeUserAuthModule).not.toHaveProperty('getCokeUserSession');
+    expect(cokeUserAuthModule).not.toHaveProperty('fetchCokeUserSession');
   });
 });
 
@@ -126,44 +146,5 @@ describe('customer auth api helpers', () => {
       password: 'password123',
     });
     expect(get).toHaveBeenCalledWith('/api/auth/me');
-  });
-
-  it('keeps coke auth network helpers as temporary wrappers over the neutral auth routes', async () => {
-    const customerAuth = await import('./customer-auth');
-    const registerSpy = vi.spyOn(customerAuth, 'registerCustomer').mockResolvedValue({} as never);
-    const loginSpy = vi.spyOn(customerAuth, 'loginCustomer').mockResolvedValue({} as never);
-    const verifySpy = vi.spyOn(customerAuth, 'verifyCustomerEmail').mockResolvedValue({} as never);
-    const resendSpy = vi.spyOn(customerAuth, 'resendCustomerVerification').mockResolvedValue({} as never);
-    const forgotSpy = vi.spyOn(customerAuth, 'requestCustomerPasswordReset').mockResolvedValue({} as never);
-    const resetSpy = vi.spyOn(customerAuth, 'resetCustomerPassword').mockResolvedValue({} as never);
-    const sessionValue = {
-      customerId: 'ck_1',
-      identityId: 'idt_1',
-      email: 'alice@example.com',
-      claimStatus: 'active',
-      membershipRole: 'owner',
-    } as const;
-    vi.spyOn(customerAuth, 'getStoredCustomerSession').mockReturnValue(sessionValue);
-
-    const registerInput = { displayName: 'Alice', email: 'alice@example.com', password: 'password123' };
-    const loginInput = { email: 'alice@example.com', password: 'password123' };
-    const verifyInput = { email: 'alice@example.com', token: 'verify-token' };
-    const forgotInput = { email: 'alice@example.com' };
-    const resetInput = { token: 'reset-token', password: 'password123' };
-
-    await registerCokeUser(registerInput);
-    await loginCokeUser(loginInput);
-    await verifyCokeUserEmail(verifyInput);
-    await resendCokeUserVerification(forgotInput);
-    await requestCokeUserPasswordReset(forgotInput);
-    await resetCokeUserPassword(resetInput);
-
-    expect(getCokeUserSession()).toEqual(sessionValue);
-    expect(registerSpy).toHaveBeenCalledWith(registerInput);
-    expect(loginSpy).toHaveBeenCalledWith(loginInput);
-    expect(verifySpy).toHaveBeenCalledWith(verifyInput);
-    expect(resendSpy).toHaveBeenCalledWith(forgotInput);
-    expect(forgotSpy).toHaveBeenCalledWith(forgotInput);
-    expect(resetSpy).toHaveBeenCalledWith(resetInput);
   });
 });

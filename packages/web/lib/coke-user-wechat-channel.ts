@@ -3,22 +3,21 @@ export type {
   CustomerWechatChannelStatus as CokeUserWechatChannelStatus,
   CustomerWechatChannelViewModel as CokeUserWechatChannelViewModel,
 } from './customer-wechat-channel';
-export {
-  archiveCustomerWechatChannel,
-  connectCustomerWechatChannel,
-  createCustomerWechatChannel,
-  disconnectCustomerWechatChannel,
-  getCustomerWechatChannelStatus,
-  getCustomerWechatChannelViewModel as getCokeUserWechatChannelViewModel,
-} from './customer-wechat-channel';
 
 import {
   archiveCustomerWechatChannel,
   connectCustomerWechatChannel,
   createCustomerWechatChannel,
   disconnectCustomerWechatChannel,
+  getCustomerWechatChannelViewModel,
   getCustomerWechatChannelStatus,
 } from './customer-wechat-channel';
+
+export function getCokeUserWechatChannelViewModel(
+  ...args: Parameters<typeof getCustomerWechatChannelViewModel>
+) {
+  return getCustomerWechatChannelViewModel(...args);
+}
 
 export function createCokeUserWechatChannel() {
   return createCustomerWechatChannel();

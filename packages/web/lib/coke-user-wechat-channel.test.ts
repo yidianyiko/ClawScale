@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { customerApi } from './customer-api';
+import {
+  archiveCustomerWechatChannel,
+  connectCustomerWechatChannel,
+  createCustomerWechatChannel,
+  disconnectCustomerWechatChannel,
+  getCustomerWechatChannelStatus,
+} from './customer-wechat-channel';
 import { messages } from './i18n';
 import {
   archiveCokeUserWechatChannel,
-  archiveCustomerWechatChannel,
   connectCokeUserWechatChannel,
-  connectCustomerWechatChannel,
   createCokeUserWechatChannel,
-  createCustomerWechatChannel,
   disconnectCokeUserWechatChannel,
-  disconnectCustomerWechatChannel,
-  getCustomerWechatChannelStatus,
   getCokeUserWechatChannelStatus,
   getCokeUserWechatChannelViewModel,
 } from './coke-user-wechat-channel';
@@ -25,6 +27,17 @@ afterEach(() => {
 });
 
 describe('coke-user-wechat-channel api helpers', () => {
+  it('does not leak neutral helper names through the coke compatibility module', async () => {
+    const cokeWechatModule = await import('./coke-user-wechat-channel');
+
+    expect(cokeWechatModule).not.toHaveProperty('createCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('connectCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('getCustomerWechatChannelStatus');
+    expect(cokeWechatModule).not.toHaveProperty('disconnectCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('archiveCustomerWechatChannel');
+    expect(cokeWechatModule).not.toHaveProperty('getCustomerWechatChannelViewModel');
+  });
+
   it('delegates the coke wrapper helpers to the neutral customer helper module', async () => {
     vi.resetModules();
 
