@@ -173,6 +173,42 @@ describe('claim-token helpers', () => {
     expect(tx.identity.findUnique).not.toHaveBeenCalled();
   });
 
+
+  it('rejects issuing a claim token when the claimed identity disappears after the pending transition', async () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const tx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const client = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof tx) => Promise<unknown>) => fn(tx)),
+    };
+
+    await expect(
+      issueClaimToken(client as never, {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        email: 'alice@example.com',
+      }),
+    ).rejects.toMatchObject({ code: 'account_not_found' });
+    expect(tx.identity.findUnique).toHaveBeenCalledOnce();
+  });
+
   it('completing a claim writes credentials onto the existing customer and flips the claim active', async () => {
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
 
@@ -206,11 +242,7 @@ describe('claim-token helpers', () => {
 
     const completeTx = {
       identity: {
-        update: vi.fn().mockResolvedValue({
-          id: 'idt_123',
-          email: 'alice@example.com',
-          claimStatus: 'active',
-        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const completeClient = {
@@ -234,8 +266,12 @@ describe('claim-token helpers', () => {
       password: 'new-password123',
     });
 
-    expect(completeTx.identity.update).toHaveBeenCalledWith({
-      where: { id: 'idt_123' },
+    expect(completeTx.identity.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'idt_123',
+        claimStatus: 'pending',
+        updatedAt: pendingAt,
+      },
       data: {
         email: 'alice@example.com',
         passwordHash: expect.any(String),
@@ -254,6 +290,78 @@ describe('claim-token helpers', () => {
       sub: 'ck_123',
       identityId: 'idt_123',
       email: 'alice@example.com',
+    });
+  });
+
+  it('rejects completing a claim when a concurrent submission already consumed the token', async () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const pendingAt = new Date('2026-04-18T00:05:00.000Z');
+    const issueTx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: pendingAt }),
+      },
+    };
+    const issueClient = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof issueTx) => Promise<unknown>) => fn(issueTx)),
+    };
+    const issued = await issueClaimToken(issueClient as never, {
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      email: 'alice@example.com',
+    });
+
+    const completeTx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const completeClient = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'pending',
+            updatedAt: pendingAt,
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof completeTx) => Promise<unknown>) => fn(completeTx)),
+    };
+
+    await expect(
+      completeCustomerClaim(completeClient as never, {
+        token: issued.token,
+        password: 'new-password123',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_or_expired_token' });
+    expect(completeTx.identity.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'idt_123',
+        claimStatus: 'pending',
+        updatedAt: pendingAt,
+      },
+      data: {
+        email: 'alice@example.com',
+        passwordHash: expect.any(String),
+        claimStatus: 'active',
+      },
     });
   });
 });

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 
 const tx = vi.hoisted(() => ({
   identity: {
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
   customer: {
     create: vi.fn(),
@@ -28,11 +28,7 @@ describe('customer claim routes', () => {
     vi.useRealTimers();
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
     db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx));
-    tx.identity.update.mockResolvedValue({
-      id: 'idt_123',
-      email: 'alice@example.com',
-      claimStatus: 'active',
-    });
+    tx.identity.updateMany.mockResolvedValue({ count: 1 });
     db.membership.findFirst.mockResolvedValue({
       role: 'owner',
       customer: { id: 'ck_123' },
@@ -176,6 +172,6 @@ describe('customer claim routes', () => {
       error: 'invalid_or_expired_token',
     });
     expect(tx.customer.create).not.toHaveBeenCalled();
-    expect(tx.identity.update).not.toHaveBeenCalled();
+    expect(tx.identity.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -75,15 +75,8 @@ interface ClaimMembershipClient {
         updatedAt?: Date;
       }>;
       updateMany(args: {
-        where: {
-          id: string;
-          claimStatus: {
-            in: Array<'unclaimed' | 'pending'>;
-          };
-        };
-        data: {
-          claimStatus: 'pending';
-        };
+        where: Record<string, unknown>;
+        data: Record<string, unknown>;
       }): Promise<{
         count: number;
       }>;
@@ -264,6 +257,10 @@ export async function issueClaimToken(
     });
   });
 
+  if (!updated) {
+    throw new CustomerAuthError('account_not_found');
+  }
+
   return {
     customerId: membership.customer.id,
     identityId: membership.identity.id,
@@ -305,14 +302,22 @@ export async function completeCustomerClaim(
   const passwordHash = await hashPassword(input.password);
 
   await client.$transaction(async (tx) => {
-    await tx.identity.update({
-      where: { id: membership.identity.id },
+    const completed = await tx.identity.updateMany({
+      where: {
+        id: membership.identity.id,
+        claimStatus: 'pending',
+        ...(membership.identity.updatedAt ? { updatedAt: membership.identity.updatedAt } : {}),
+      },
       data: {
         email,
         passwordHash,
         claimStatus: 'active',
       },
     });
+
+    if (completed.count === 0) {
+      throw new CustomerAuthError('invalid_or_expired_token');
+    }
   });
 
   return buildCustomerAuthResult({
