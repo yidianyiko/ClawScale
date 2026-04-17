@@ -126,6 +126,10 @@ describe('i18n helpers', () => {
       'Verifying your email link now...',
     );
     expect(messages.zh.customerPages.verifyEmail.verifyingDescription).toBe('正在验证你的邮箱链接...');
+    expect(messages.en.customerPages.channelsIndex.title).toBeDefined();
+    expect(messages.zh.customerPages.channelsIndex.title).toBeDefined();
+    expect(messages.en.customerPages.claim.title).toBeDefined();
+    expect(messages.zh.customerPages.claim.title).toBeDefined();
     expect(messages.en.cokeUserLayout.title).toBeDefined();
     expect(messages.zh.cokeUserLayout.title).toBeDefined();
     expect(messages.en.cokeUserPages.renew.title).toBeDefined();

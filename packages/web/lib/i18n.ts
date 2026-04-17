@@ -148,6 +148,18 @@ type CustomerPagesMessages = {
     description: string;
     verifyingDescription: string;
   };
+  claim: {
+    eyebrow: string;
+    title: string;
+    description: string;
+  };
+  channelsIndex: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    wechatPersonalTitle: string;
+    wechatPersonalDescription: string;
+  };
   bindWechat: {
     blocked: {
       accessEyebrow: string;
@@ -501,6 +513,18 @@ export const messages: MessagesCatalog = {
         description: 'We are preparing your secure email verification.',
         verifyingDescription: 'Verifying your email link now...',
       },
+      claim: {
+        eyebrow: 'Reserved route',
+        title: 'Claim access is coming soon',
+        description: 'Use the sign-in or registration flow for now.',
+      },
+      channelsIndex: {
+        eyebrow: 'Phase 1 channels',
+        title: 'Customer channels',
+        description: 'Manage the customer channel surfaces that are available in the neutral ClawScale shell today.',
+        wechatPersonalTitle: 'Personal WeChat',
+        wechatPersonalDescription: 'Connect, reconnect, or archive your personal WeChat channel.',
+      },
       bindWechat: {
         blocked: {
           accessEyebrow: 'Account access',
@@ -821,6 +845,18 @@ export const messages: MessagesCatalog = {
         title: '验证邮箱',
         description: '我们正在为你准备安全的邮箱验证。',
         verifyingDescription: '正在验证你的邮箱链接...',
+      },
+      claim: {
+        eyebrow: '预留路由',
+        title: '认领入口即将开放',
+        description: '目前请先使用登录或注册流程。',
+      },
+      channelsIndex: {
+        eyebrow: '第一阶段通道',
+        title: '客户通道',
+        description: '管理当前已经迁移到中立 ClawScale 客户壳层中的通道入口。',
+        wechatPersonalTitle: '个人微信',
+        wechatPersonalDescription: '连接、重新连接或归档你的个人微信通道。',
       },
       bindWechat: {
         blocked: {
