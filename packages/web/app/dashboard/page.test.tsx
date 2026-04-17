@@ -95,6 +95,15 @@ describe('DashboardPage', () => {
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
+    const customerLinks = Array.from(container.querySelectorAll('a[href="/admin/customers"]'));
+    const channelLinks = Array.from(container.querySelectorAll('a[href="/admin/channels"]'));
+    const deliveryLinks = Array.from(container.querySelectorAll('a[href="/admin/deliveries"]'));
+
+    expect(customerLinks.some((link) => link.textContent?.includes('Customers'))).toBe(true);
+    expect(customerLinks.some((link) => link.textContent?.includes('Conversations'))).toBe(false);
+    expect(channelLinks.some((link) => link.textContent?.includes('Channels'))).toBe(true);
+    expect(deliveryLinks.some((link) => link.textContent?.includes('Deliveries'))).toBe(true);
+    expect(deliveryLinks.some((link) => link.textContent?.includes('Workflows'))).toBe(false);
     expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();
@@ -115,7 +124,8 @@ describe('DashboardPage', () => {
       expect(container.textContent).toContain('欢迎回到 Acme');
       expect(container.textContent).toContain('这里是你的聊天机器人工作区概览。');
       expect(container.textContent).toContain('总对话数');
-      expect(container.textContent).toContain('工作流');
+      expect(container.textContent).toContain('客户');
+      expect(container.textContent).toContain('投递');
       expect(container.textContent).toContain('打开新的管理后台');
       expect(container.textContent).not.toContain('Total conversations');
     });
@@ -123,6 +133,15 @@ describe('DashboardPage', () => {
     expect(container.querySelector('a[href="/admin/customers"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/channels"]')).not.toBeNull();
     expect(container.querySelector('a[href="/admin/deliveries"]')).not.toBeNull();
+    const customerLinks = Array.from(container.querySelectorAll('a[href="/admin/customers"]'));
+    const channelLinks = Array.from(container.querySelectorAll('a[href="/admin/channels"]'));
+    const deliveryLinks = Array.from(container.querySelectorAll('a[href="/admin/deliveries"]'));
+
+    expect(customerLinks.some((link) => link.textContent?.includes('客户'))).toBe(true);
+    expect(customerLinks.some((link) => link.textContent?.includes('对话'))).toBe(false);
+    expect(channelLinks.some((link) => link.textContent?.includes('渠道'))).toBe(true);
+    expect(deliveryLinks.some((link) => link.textContent?.includes('投递'))).toBe(true);
+    expect(deliveryLinks.some((link) => link.textContent?.includes('工作流'))).toBe(false);
     expect(container.querySelector('a[href="/dashboard/conversations"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/channels"]')).toBeNull();
     expect(container.querySelector('a[href="/dashboard/workflows"]')).toBeNull();

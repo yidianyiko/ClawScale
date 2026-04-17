@@ -19,12 +19,26 @@ interface Stats {
 
 interface ChannelRow { id: string; name: string; type: string; status: string }
 
+const adminHandoffCards = {
+  en: [
+    { to: '/admin/customers', title: 'Customers', desc: 'Review customer accounts, claim state, and channel coverage.' },
+    { to: '/admin/channels', title: 'Channels', desc: 'Inspect platform channel status and routing health in the admin console.' },
+    { to: '/admin/deliveries', title: 'Deliveries', desc: 'Review recent delivery failures and operational follow-up from the admin console.' },
+  ],
+  zh: [
+    { to: '/admin/customers', title: '客户', desc: '查看客户账号、认领状态和渠道覆盖情况。' },
+    { to: '/admin/channels', title: '渠道', desc: '在管理后台检查平台渠道状态和路由健康。' },
+    { to: '/admin/deliveries', title: '投递', desc: '在管理后台查看近期投递失败和后续处理。' },
+  ],
+} as const;
+
 export default function Dashboard() {
   const tenant = getTenant();
   const { locale } = useLocale();
   const [stats, setStats] = useState<Stats | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const copy = getDashboardCopy(locale);
+  const handoffCards = adminHandoffCards[locale];
 
   useEffect(() => {
     api.get<ApiResponse<Stats>>('/api/tenant/stats').then((r) => { if (r.ok) setStats(r.data); });
@@ -76,14 +90,14 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <QuickCard to="/admin/customers" title={copy.home.quickCards.conversations.title}
-          desc={copy.home.quickCards.conversations.desc}
-          icon={<MessageSquare className="h-5 w-5" />} />
-        <QuickCard to="/admin/channels" title={copy.home.quickCards.channels.title}
-          desc={copy.home.quickCards.channels.desc}
+        <QuickCard to={handoffCards[0].to} title={handoffCards[0].title}
+          desc={handoffCards[0].desc}
+          icon={<Users className="h-5 w-5" />} />
+        <QuickCard to={handoffCards[1].to} title={handoffCards[1].title}
+          desc={handoffCards[1].desc}
           icon={<Radio className="h-5 w-5" />} />
-        <QuickCard to="/admin/deliveries" title={copy.home.quickCards.workflows.title}
-          desc={copy.home.quickCards.workflows.desc}
+        <QuickCard to={handoffCards[2].to} title={handoffCards[2].title}
+          desc={handoffCards[2].desc}
           icon={<Zap className="h-5 w-5" />} />
       </div>
     </div>
