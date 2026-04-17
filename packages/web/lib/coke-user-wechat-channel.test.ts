@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { customerApi } from './customer-api';
 import { cokeUserApi } from './coke-user-api';
 import { messages } from './i18n';
 import {
   archiveCokeUserWechatChannel,
+  archiveCustomerWechatChannel,
   connectCokeUserWechatChannel,
+  connectCustomerWechatChannel,
   createCokeUserWechatChannel,
+  createCustomerWechatChannel,
   disconnectCokeUserWechatChannel,
+  disconnectCustomerWechatChannel,
+  getCustomerWechatChannelStatus,
   getCokeUserWechatChannelStatus,
   getCokeUserWechatChannelViewModel,
 } from './coke-user-wechat-channel';
@@ -20,19 +26,37 @@ afterEach(() => {
 });
 
 describe('coke-user-wechat-channel api helpers', () => {
-  it('calls the personal channel create/connect/status/disconnect/archive endpoints', async () => {
-    const postSpy = vi.spyOn(cokeUserApi, 'post').mockResolvedValue({
+  it('calls the neutral personal channel create/connect/status/disconnect/archive endpoints', async () => {
+    const customerPostSpy = vi.spyOn(customerApi, 'post').mockResolvedValue({
       ok: true,
       data: { status: 'missing' },
     } as never);
-    const getSpy = vi.spyOn(cokeUserApi, 'get').mockResolvedValue({
+    const customerGetSpy = vi.spyOn(customerApi, 'get').mockResolvedValue({
       ok: true,
       data: { status: 'missing' },
     } as never);
-    const deleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue({
+    const customerDeleteSpy = vi.spyOn(customerApi, 'delete').mockResolvedValue({
       ok: true,
       data: { status: 'archived' },
     } as never);
+    const cokePostSpy = vi.spyOn(cokeUserApi, 'post').mockResolvedValue({
+      ok: true,
+      data: { status: 'missing' },
+    } as never);
+    const cokeGetSpy = vi.spyOn(cokeUserApi, 'get').mockResolvedValue({
+      ok: true,
+      data: { status: 'missing' },
+    } as never);
+    const cokeDeleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue({
+      ok: true,
+      data: { status: 'archived' },
+    } as never);
+
+    await createCustomerWechatChannel();
+    await connectCustomerWechatChannel();
+    await getCustomerWechatChannelStatus();
+    await disconnectCustomerWechatChannel();
+    await archiveCustomerWechatChannel();
 
     await createCokeUserWechatChannel();
     await connectCokeUserWechatChannel();
@@ -40,22 +64,35 @@ describe('coke-user-wechat-channel api helpers', () => {
     await disconnectCokeUserWechatChannel();
     await archiveCokeUserWechatChannel();
 
-    expect(postSpy).toHaveBeenNthCalledWith(1, '/api/coke/wechat-channel');
-    expect(postSpy).toHaveBeenNthCalledWith(2, '/api/coke/wechat-channel/connect');
-    expect(postSpy).toHaveBeenNthCalledWith(3, '/api/coke/wechat-channel/disconnect');
-    expect(getSpy).toHaveBeenCalledWith('/api/coke/wechat-channel/status');
-    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
+    expect(customerPostSpy).toHaveBeenNthCalledWith(1, '/api/customer/channels/wechat-personal');
+    expect(customerPostSpy).toHaveBeenNthCalledWith(2, '/api/customer/channels/wechat-personal/connect');
+    expect(customerPostSpy).toHaveBeenNthCalledWith(3, '/api/customer/channels/wechat-personal/disconnect');
+    expect(customerGetSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal/status');
+    expect(customerDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
+
+    expect(cokePostSpy).toHaveBeenNthCalledWith(1, '/api/customer/channels/wechat-personal');
+    expect(cokePostSpy).toHaveBeenNthCalledWith(2, '/api/customer/channels/wechat-personal/connect');
+    expect(cokePostSpy).toHaveBeenNthCalledWith(3, '/api/customer/channels/wechat-personal/disconnect');
+    expect(cokeGetSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal/status');
+    expect(cokeDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
   });
 
   it('normalizes an empty archive success into an archived channel state', async () => {
-    const deleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue(undefined as never);
+    const customerDeleteSpy = vi.spyOn(customerApi, 'delete').mockResolvedValue(undefined as never);
+    const cokeDeleteSpy = vi.spyOn(cokeUserApi, 'delete').mockResolvedValue(undefined as never);
+
+    await expect(archiveCustomerWechatChannel()).resolves.toEqual({
+      ok: true,
+      data: { status: 'archived' },
+    });
 
     await expect(archiveCokeUserWechatChannel()).resolves.toEqual({
       ok: true,
       data: { status: 'archived' },
     });
 
-    expect(deleteSpy).toHaveBeenCalledWith('/api/coke/wechat-channel');
+    expect(customerDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
+    expect(cokeDeleteSpy).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
   });
 });
 

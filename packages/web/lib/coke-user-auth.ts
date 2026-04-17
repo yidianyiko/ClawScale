@@ -1,3 +1,22 @@
+import {
+  getStoredCustomerSession,
+  getCustomerSession,
+  loginCustomer,
+  registerCustomer,
+  requestCustomerPasswordReset,
+  resendCustomerVerification,
+  resetCustomerPassword,
+  verifyCustomerEmail,
+  type CustomerAuthMessageResult,
+  type CustomerAuthResult as NeutralCustomerAuthResult,
+  type CustomerEmailInput,
+  type CustomerSession,
+  type LoginCustomerInput,
+  type RegisterCustomerInput,
+  type ResetCustomerPasswordInput,
+  type VerifyCustomerEmailInput,
+} from './customer-auth';
+
 const TOKEN_KEY = 'coke_user_token';
 const USER_KEY = 'coke_user_profile';
 
@@ -70,4 +89,59 @@ export function needsCokeEmailVerification(user: CokeUser | null): boolean {
 
 export function needsCokeSubscriptionRenewal(user: CokeUser | null): boolean {
   return user?.subscription_active !== true;
+}
+
+export type CokeUserSession = CustomerSession;
+export type CokeUserAuthApiResult = NeutralCustomerAuthResult;
+export type CokeUserAuthMessageResult = CustomerAuthMessageResult;
+export type RegisterCokeUserInput = RegisterCustomerInput;
+export type LoginCokeUserInput = LoginCustomerInput;
+export type VerifyCokeUserEmailInput = VerifyCustomerEmailInput;
+export type CokeUserEmailInput = CustomerEmailInput;
+export type ResetCokeUserPasswordInput = ResetCustomerPasswordInput;
+
+export function registerCokeUser(
+  input: RegisterCokeUserInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthApiResult>> {
+  return registerCustomer(input);
+}
+
+export function loginCokeUser(
+  input: LoginCokeUserInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthApiResult>> {
+  return loginCustomer(input);
+}
+
+export function verifyCokeUserEmail(
+  input: VerifyCokeUserEmailInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthApiResult>> {
+  return verifyCustomerEmail(input);
+}
+
+export function resendCokeUserVerification(
+  input: CokeUserEmailInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthMessageResult>> {
+  return resendCustomerVerification(input);
+}
+
+export function requestCokeUserPasswordReset(
+  input: CokeUserEmailInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthMessageResult>> {
+  return requestCustomerPasswordReset(input);
+}
+
+export function resetCokeUserPassword(
+  input: ResetCokeUserPasswordInput,
+): Promise<import('../../shared/src/types/api').ApiResponse<CokeUserAuthMessageResult>> {
+  return resetCustomerPassword(input);
+}
+
+export function getCokeUserSession(): CokeUserSession | null {
+  return getStoredCustomerSession();
+}
+
+export function fetchCokeUserSession(): Promise<
+  import('../../shared/src/types/api').ApiResponse<CokeUserSession>
+> {
+  return getCustomerSession();
 }

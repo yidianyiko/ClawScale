@@ -248,7 +248,7 @@ describe('BindWechatPage archive action', () => {
     archiveButton?.click();
     await waitForText(container, 'This WeChat channel is archived');
 
-    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/api/coke/wechat-channel');
+    expect(deleteCokeUserWechatChannelMock).toHaveBeenCalledWith('/api/customer/channels/wechat-personal');
     expect(container.textContent).toContain('This WeChat channel is archived');
     expect(container.textContent).toContain('Create my WeChat channel again');
     expect(container.textContent).not.toContain('Reconnect or archive your channel');
