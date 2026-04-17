@@ -27,15 +27,21 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const copy = getAdminCopy(locale);
   const admin = getStoredAdminSession();
+  const isLoginRoute = pathname === '/admin/login';
 
   useEffect(() => {
+    if (isLoginRoute) {
+      setReady(true);
+      return;
+    }
+
     if (!isAdminAuthenticated()) {
       router.replace('/admin/login');
       return;
     }
 
     setReady(true);
-  }, [router]);
+  }, [isLoginRoute, router]);
 
   async function handleLogout() {
     await adminApi.post<null>('/api/admin/logout');
@@ -45,6 +51,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   if (!ready) {
     return null;
+  }
+
+  if (isLoginRoute) {
+    return <>{children}</>;
   }
 
   return (

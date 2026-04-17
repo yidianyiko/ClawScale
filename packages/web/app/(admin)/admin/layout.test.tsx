@@ -9,13 +9,14 @@ const pushMock = vi.hoisted(() => vi.fn());
 const isAdminAuthenticatedMock = vi.hoisted(() => vi.fn());
 const getStoredAdminSessionMock = vi.hoisted(() => vi.fn());
 const clearAdminSessionMock = vi.hoisted(() => vi.fn());
+const pathnameMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     replace: replaceMock,
     push: pushMock,
   }),
-  usePathname: () => '/admin/customers',
+  usePathname: () => pathnameMock(),
 }));
 
 vi.mock('next/link', () => ({
@@ -34,9 +35,17 @@ vi.mock('../../../lib/admin-auth', () => ({
   isAdminAuthenticated: () => isAdminAuthenticatedMock(),
   getStoredAdminSession: () => getStoredAdminSessionMock(),
   clearAdminSession: () => clearAdminSessionMock(),
+  storeAdminSession: vi.fn(),
+}));
+
+vi.mock('../../../lib/admin-api', () => ({
+  adminApi: {
+    post: vi.fn(),
+  },
 }));
 
 import AdminLayout from './layout';
+import AdminLoginPage from './login/page';
 
 describe('AdminLayout', () => {
   let container: HTMLDivElement;
@@ -48,6 +57,8 @@ describe('AdminLayout', () => {
     isAdminAuthenticatedMock.mockReset();
     getStoredAdminSessionMock.mockReset();
     clearAdminSessionMock.mockReset();
+    pathnameMock.mockReset();
+    pathnameMock.mockReturnValue('/admin/customers');
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -56,6 +67,27 @@ describe('AdminLayout', () => {
   afterEach(() => {
     root.unmount();
     container.remove();
+  });
+
+  it('allows logged-out admins to reach the login page when the route composes through the admin layout', async () => {
+    isAdminAuthenticatedMock.mockReturnValue(false);
+    pathnameMock.mockReturnValue('/admin/login');
+
+    await flushSync(async () => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminLayout>
+            <AdminLoginPage />
+          </AdminLayout>
+        </LocaleProvider>,
+      );
+    });
+
+    expect(replaceMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(container.querySelector('form')).toBeTruthy();
+      expect(container.textContent).toContain('Admin sign in');
+    });
   });
 
   it('redirects unauthenticated admins to /admin/login', async () => {
