@@ -162,7 +162,9 @@ export const cokePaymentRouter = new Hono()
       return c.json({ ok: true });
     }
 
-    const customerId = session.metadata?.customerId?.trim();
+    const customerId =
+      session.metadata?.customerId?.trim() ||
+      session.metadata?.cokeAccountId?.trim();
     if (!customerId) {
       return c.json({ ok: true });
     }

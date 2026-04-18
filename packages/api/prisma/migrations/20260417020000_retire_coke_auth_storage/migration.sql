@@ -1,6 +1,3 @@
-ALTER TABLE "clawscale_users"
-  DROP CONSTRAINT "clawscale_users_coke_account_id_fkey";
-
 ALTER TABLE "subscriptions"
   ADD COLUMN "customer_id" TEXT;
 
@@ -11,25 +8,9 @@ WHERE "customer_id" IS NULL;
 ALTER TABLE "subscriptions"
   ALTER COLUMN "customer_id" SET NOT NULL;
 
-ALTER TABLE "subscriptions"
-  DROP CONSTRAINT "subscriptions_coke_account_id_fkey";
-
 CREATE INDEX "subscriptions_customer_id_idx" ON "subscriptions"("customer_id");
 CREATE INDEX "subscriptions_customer_id_expires_at_idx" ON "subscriptions"("customer_id", "expires_at");
 
 ALTER TABLE "subscriptions"
   ADD CONSTRAINT "subscriptions_customer_id_fkey"
   FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "clawscale_users"
-  ADD CONSTRAINT "clawscale_users_coke_account_id_fkey"
-  FOREIGN KEY ("coke_account_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-DROP INDEX "subscriptions_coke_account_id_idx";
-DROP INDEX "subscriptions_coke_account_id_expires_at_idx";
-
-ALTER TABLE "subscriptions"
-  DROP COLUMN "coke_account_id";
-
-DROP TABLE "verify_tokens";
-DROP TABLE "coke_accounts";

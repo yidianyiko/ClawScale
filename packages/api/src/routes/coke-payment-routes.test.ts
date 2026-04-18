@@ -257,6 +257,72 @@ describe('coke payment routes', () => {
     });
   });
 
+  it('accepts legacy Stripe metadata.cokeAccountId during the transition window', async () => {
+    stripeConstructEvent.mockReturnValue({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_test_legacy',
+          payment_status: 'paid',
+          created: 1712707200,
+          amount_total: 1299,
+          currency: 'usd',
+          metadata: {
+            cokeAccountId: 'acct_1',
+          },
+        },
+      },
+    });
+    db.$queryRaw.mockResolvedValue([{ id: 'acct_1' }]);
+    db.subscription.findFirst.mockResolvedValue({
+      expiresAt: new Date('2026-05-10T00:00:00.000Z'),
+    });
+    calculateStackedAccessWindow.mockReturnValue({
+      startsAt: '2026-05-10T00:00:00.000Z',
+      expiresAt: '2026-06-09T00:00:00.000Z',
+    });
+    db.subscription.create.mockResolvedValue({ id: 'sub_1' });
+
+    const tx = {
+      $queryRaw: db.$queryRaw,
+      subscription: db.subscription,
+    };
+    db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) =>
+      fn(tx),
+    );
+
+    const app = new Hono();
+    app.route('/api/coke', cokePaymentRouter);
+
+    const res = await app.request('/api/coke/stripe-webhook', {
+      method: 'POST',
+      headers: {
+        'stripe-signature': 'sig_test_123',
+      },
+      body: JSON.stringify({
+        id: 'evt_legacy',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.$transaction).toHaveBeenCalledOnce();
+    expect(db.subscription.findFirst).toHaveBeenCalledWith({
+      where: { customerId: 'acct_1' },
+      orderBy: [{ expiresAt: 'desc' }],
+      select: { expiresAt: true },
+    });
+    expect(db.subscription.create).toHaveBeenCalledWith({
+      data: {
+        customerId: 'acct_1',
+        stripeSessionId: 'cs_test_legacy',
+        amountPaid: 1299,
+        currency: 'usd',
+        startsAt: new Date('2026-05-10T00:00:00.000Z'),
+        expiresAt: new Date('2026-06-09T00:00:00.000Z'),
+      },
+    });
+  });
+
   it('swallows duplicate Stripe session webhook inserts', async () => {
     stripeConstructEvent.mockReturnValue({
       type: 'checkout.session.completed',
