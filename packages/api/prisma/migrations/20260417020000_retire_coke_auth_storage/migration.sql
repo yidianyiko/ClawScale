@@ -8,6 +8,9 @@ WHERE "customer_id" IS NULL;
 ALTER TABLE "subscriptions"
   ALTER COLUMN "customer_id" SET NOT NULL;
 
+ALTER TABLE "subscriptions"
+  ALTER COLUMN "coke_account_id" DROP NOT NULL;
+
 CREATE INDEX "subscriptions_customer_id_idx" ON "subscriptions"("customer_id");
 CREATE INDEX "subscriptions_customer_id_expires_at_idx" ON "subscriptions"("customer_id", "expires_at");
 

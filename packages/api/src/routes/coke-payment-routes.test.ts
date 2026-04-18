@@ -5,6 +5,9 @@ const db = vi.hoisted(() => ({
   membership: {
     findFirst: vi.fn(),
   },
+  cokeAccount: {
+    findUnique: vi.fn(),
+  },
   subscription: {
     findFirst: vi.fn(),
     create: vi.fn(),
@@ -86,6 +89,7 @@ describe('coke payment routes', () => {
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('pending'));
+    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
 
     const app = new Hono();
     app.route('/api/coke', cokePaymentRouter);
@@ -118,9 +122,43 @@ describe('coke payment routes', () => {
         },
       },
     });
+    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      select: { status: true },
+    });
     await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'email_not_verified',
+    });
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('preserves suspended account behavior during the compatibility window', async () => {
+    verifyCokeToken.mockReturnValue({
+      sub: 'acct_1',
+      email: 'alice@example.com',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
+    db.cokeAccount.findUnique.mockResolvedValue({ status: 'suspended' });
+
+    const app = new Hono();
+    app.route('/api/coke', cokePaymentRouter);
+
+    const res = await app.request('/api/coke/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer coke-token',
+      },
+    });
+
+    expect(res.status).toBe(403);
+    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      select: { status: true },
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_suspended',
     });
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
   });
@@ -131,6 +169,7 @@ describe('coke payment routes', () => {
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
+    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
     stripeCheckoutSessionsCreate.mockResolvedValue({
       url: 'https://stripe.example/checkout/session_123',
     });
@@ -166,6 +205,10 @@ describe('coke payment routes', () => {
         },
       },
     });
+    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      select: { status: true },
+    });
     expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -195,6 +238,7 @@ describe('coke payment routes', () => {
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
+    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
     resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -234,6 +278,10 @@ describe('coke payment routes', () => {
           },
         },
       },
+    });
+    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
+      where: { id: 'acct_1' },
+      select: { status: true },
     });
     expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
       account: {

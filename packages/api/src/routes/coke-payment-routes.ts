@@ -46,26 +46,32 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
   emailVerified: boolean;
   status: 'normal' | 'suspended';
 } | null> {
-  const membership = await db.membership.findFirst({
-    where: {
-      customerId,
-      role: 'owner',
-    },
-    include: {
-      customer: {
-        select: {
-          id: true,
-          displayName: true,
+  const [membership, cokeAccount] = await Promise.all([
+    db.membership.findFirst({
+      where: {
+        customerId,
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
         },
       },
-      identity: {
-        select: {
-          email: true,
-          claimStatus: true,
-        },
-      },
-    },
-  });
+    }),
+    db.cokeAccount.findUnique({
+      where: { id: customerId },
+      select: { status: true },
+    }),
+  ]);
 
   const email = membership?.identity.email?.trim();
   if (!membership || !email) {
@@ -77,7 +83,7 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
     displayName: membership.customer.displayName,
     email,
     emailVerified: membership.identity.claimStatus === 'active',
-    status: 'normal',
+    status: cokeAccount?.status ?? 'normal',
   };
 }
 
