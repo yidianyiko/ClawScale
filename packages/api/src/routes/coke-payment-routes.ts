@@ -39,12 +39,52 @@ function toDate(value: number | string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
+  id: string;
+  displayName: string;
+  email: string;
+  emailVerified: boolean;
+  status: 'normal' | 'suspended';
+} | null> {
+  const membership = await db.membership.findFirst({
+    where: {
+      customerId,
+      role: 'owner',
+    },
+    include: {
+      customer: {
+        select: {
+          id: true,
+          displayName: true,
+        },
+      },
+      identity: {
+        select: {
+          email: true,
+          claimStatus: true,
+        },
+      },
+    },
+  });
+
+  const email = membership?.identity.email?.trim();
+  if (!membership || !email) {
+    return null;
+  }
+
+  return {
+    id: membership.customer.id,
+    displayName: membership.customer.displayName,
+    email,
+    emailVerified: membership.identity.claimStatus === 'active',
+    status: 'normal',
+  };
+}
+
 export const cokePaymentRouter = new Hono()
   .post('/checkout', requireCokeUserAuth, async (c) => {
     const auth = c.get('cokeAuth');
-    const account = await db.cokeAccount.findUnique({
-      where: { id: auth.accountId },
-    });
+    const account = await loadCompatibilityCustomerAccount(auth.accountId);
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);
@@ -83,9 +123,7 @@ export const cokePaymentRouter = new Hono()
   })
   .get('/subscription', requireCokeUserAuth, async (c) => {
     const auth = c.get('cokeAuth');
-    const account = await db.cokeAccount.findUnique({
-      where: { id: auth.accountId },
-    });
+    const account = await loadCompatibilityCustomerAccount(auth.accountId);
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);

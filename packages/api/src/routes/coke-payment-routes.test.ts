@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
 const db = vi.hoisted(() => ({
-  cokeAccount: {
-    findUnique: vi.fn(),
+  membership: {
+    findFirst: vi.fn(),
   },
   subscription: {
     findFirst: vi.fn(),
@@ -41,6 +41,21 @@ vi.mock('stripe', () => ({ default: stripeCtor }));
 
 import { cokePaymentRouter } from './coke-payment-routes.js';
 
+function makeOwnerMembership(claimStatus: 'active' | 'pending' | 'unclaimed') {
+  return {
+    role: 'owner',
+    customer: {
+      id: 'acct_1',
+      displayName: 'Alice',
+    },
+    identity: {
+      id: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus,
+    },
+  };
+}
+
 describe('coke payment routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,18 +80,12 @@ describe('coke payment routes', () => {
     });
   });
 
-  it('rejects checkout when the Coke email is unverified', async () => {
+  it('rejects checkout when the owner identity is unverified', async () => {
     verifyCokeToken.mockReturnValue({
       sub: 'acct_1',
       email: 'alice@example.com',
     });
-    db.cokeAccount.findUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: false,
-      status: 'normal',
-    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('pending'));
 
     const app = new Hono();
     app.route('/api/coke', cokePaymentRouter);
@@ -89,6 +98,26 @@ describe('coke payment routes', () => {
     });
 
     expect(res.status).toBe(403);
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'acct_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
+        },
+      },
+    });
     await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'email_not_verified',
@@ -96,18 +125,12 @@ describe('coke payment routes', () => {
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
   });
 
-  it('creates a Stripe Checkout session for a verified Coke account', async () => {
+  it('creates a Stripe Checkout session for a verified customer owner', async () => {
     verifyCokeToken.mockReturnValue({
       sub: 'acct_1',
       email: 'alice@example.com',
     });
-    db.cokeAccount.findUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
     stripeCheckoutSessionsCreate.mockResolvedValue({
       url: 'https://stripe.example/checkout/session_123',
     });
@@ -123,8 +146,25 @@ describe('coke payment routes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
-      where: { id: 'acct_1' },
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'acct_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
+        },
+      },
     });
     expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
       mode: 'payment',
@@ -149,18 +189,12 @@ describe('coke payment routes', () => {
     });
   });
 
-  it('returns the Coke subscription snapshot from /subscription', async () => {
+  it('returns the subscription snapshot from the customer owner graph', async () => {
     verifyCokeToken.mockReturnValue({
       sub: 'acct_1',
       email: 'alice@example.com',
     });
-    db.cokeAccount.findUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
     resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -181,6 +215,26 @@ describe('coke payment routes', () => {
     });
 
     expect(res.status).toBe(200);
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'acct_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
+        },
+      },
+    });
     expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
       account: {
         id: 'acct_1',
