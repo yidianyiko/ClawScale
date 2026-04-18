@@ -138,7 +138,7 @@ describe('coke payment routes', () => {
       success_url: 'https://coke.example/coke/payment-success',
       cancel_url: 'https://coke.example/coke/payment-cancel',
       metadata: {
-        cokeAccountId: 'acct_1',
+        customerId: 'acct_1',
       },
     });
     await expect(res.json()).resolves.toEqual({
@@ -214,7 +214,7 @@ describe('coke payment routes', () => {
           amount_total: 1299,
           currency: 'usd',
           metadata: {
-            cokeAccountId: 'acct_1',
+            customerId: 'acct_1',
           },
         },
       },
@@ -261,7 +261,7 @@ describe('coke payment routes', () => {
     expect(db.$transaction).toHaveBeenCalledOnce();
     expect(db.$queryRaw).toHaveBeenCalled();
     expect(db.subscription.findFirst).toHaveBeenCalledWith({
-      where: { cokeAccountId: 'acct_1' },
+      where: { customerId: 'acct_1' },
       orderBy: [{ expiresAt: 'desc' }],
       select: { expiresAt: true },
     });
@@ -273,7 +273,7 @@ describe('coke payment routes', () => {
     );
     expect(db.subscription.create).toHaveBeenCalledWith({
       data: {
-        cokeAccountId: 'acct_1',
+        customerId: 'acct_1',
         stripeSessionId: 'cs_test_123',
         amountPaid: 1299,
         currency: 'usd',
@@ -281,5 +281,6 @@ describe('coke payment routes', () => {
         expiresAt: new Date('2026-06-09T00:00:00.000Z'),
       },
     });
+    expect(String(db.$queryRaw.mock.calls[0]?.[0])).toContain('FROM customers');
   });
 });

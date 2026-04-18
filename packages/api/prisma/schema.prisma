@@ -248,7 +248,7 @@ model ClawscaleUser {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account       CokeAccount @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
+  account       Customer    @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
   channels      Channel[]
   endUsers      EndUser[]
   deliveryRoutes DeliveryRoute[]
@@ -258,23 +258,6 @@ model ClawscaleUser {
   @@unique([cokeAccountId])
   @@index([tenantId])
   @@map("clawscale_users")
-}
-
-model CokeAccount {
-  id            String            @id @default(cuid())
-  email         String            @unique
-  passwordHash  String            @map("password_hash")
-  displayName   String            @map("display_name")
-  emailVerified Boolean           @default(false) @map("email_verified")
-  status        CokeAccountStatus @default(normal)
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
-
-  clawscaleUser  ClawscaleUser?
-  subscriptions  Subscription[]
-  verifyTokens   VerifyToken[]
-
-  @@map("coke_accounts")
 }
 
 model Identity {
@@ -303,6 +286,8 @@ model Customer {
   channels           Channel[]
   agentBindings      AgentBinding[]
   externalIdentities ExternalIdentity[]
+  clawscaleUsers     ClawscaleUser[]
+  subscriptions      Subscription[]
 
   @@map("customers")
 }
@@ -402,8 +387,8 @@ model ParkedInbound {
 }
 
 model Subscription {
-  id             String   @id @default(cuid())
-  cokeAccountId   String   @map("coke_account_id")
+  id              String   @id @default(cuid())
+  customerId      String   @map("customer_id")
   stripeSessionId String   @unique @map("stripe_session_id")
   amountPaid      Int      @map("amount_paid")
   currency        String   @default("usd")
@@ -411,26 +396,11 @@ model Subscription {
   expiresAt       DateTime @map("expires_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  account CokeAccount @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  @@index([cokeAccountId])
-  @@index([cokeAccountId, expiresAt])
+  @@index([customerId])
+  @@index([customerId, expiresAt])
   @@map("subscriptions")
-}
-
-model VerifyToken {
-  id            String          @id @default(cuid())
-  cokeAccountId String          @map("coke_account_id")
-  tokenHash     String          @unique @map("token_hash")
-  type          VerifyTokenType
-  expiresAt     DateTime        @map("expires_at")
-  used          Boolean         @default(false)
-  createdAt     DateTime        @default(now()) @map("created_at")
-
-  account CokeAccount @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
-
-  @@index([cokeAccountId])
-  @@map("verify_tokens")
 }
 
 model EndUserBackend {

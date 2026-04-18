@@ -24,10 +24,17 @@ describe('coke-subscription helpers', () => {
     });
 
     await expect(
-      getSubscriptionSnapshot('acct_1', new Date('2026-04-10T00:00:00.000Z')),
+      getSubscriptionSnapshot('ck_1', new Date('2026-04-10T00:00:00.000Z')),
     ).resolves.toMatchObject({
       subscriptionActive: true,
       subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+    });
+    expect(db.subscription.findFirst).toHaveBeenCalledWith({
+      where: { customerId: 'ck_1' },
+      orderBy: [{ expiresAt: 'desc' }],
+      select: {
+        expiresAt: true,
+      },
     });
   });
 

@@ -33,11 +33,11 @@ export function calculateStackedAccessWindow(input: {
 }
 
 export async function getSubscriptionSnapshot(
-  cokeAccountId: string,
+  customerId: string,
   now = new Date(),
 ): Promise<SubscriptionSnapshot> {
   const latest = await db.subscription.findFirst({
-    where: { cokeAccountId },
+    where: { customerId },
     orderBy: [{ expiresAt: 'desc' }],
     select: {
       expiresAt: true,

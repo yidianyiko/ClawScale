@@ -70,7 +70,7 @@ export const cokePaymentRouter = new Hono()
       success_url: buildSuccessUrl(),
       cancel_url: buildCancelUrl(),
       metadata: {
-        cokeAccountId: account.id,
+        customerId: account.id,
       },
     });
 
@@ -124,16 +124,16 @@ export const cokePaymentRouter = new Hono()
       return c.json({ ok: true });
     }
 
-    const cokeAccountId = session.metadata?.cokeAccountId?.trim();
-    if (!cokeAccountId) {
+    const customerId = session.metadata?.customerId?.trim();
+    if (!customerId) {
       return c.json({ ok: true });
     }
 
     await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM coke_accounts WHERE id = ${cokeAccountId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${customerId} FOR UPDATE`;
 
       const latestSubscription = await tx.subscription.findFirst({
-        where: { cokeAccountId },
+        where: { customerId },
         orderBy: [{ expiresAt: 'desc' }],
         select: { expiresAt: true },
       });
@@ -147,7 +147,7 @@ export const cokePaymentRouter = new Hono()
       try {
         await tx.subscription.create({
           data: {
-            cokeAccountId,
+            customerId,
             stripeSessionId: session.id,
             amountPaid: session.amount_total ?? 0,
             currency: session.currency ?? 'usd',
