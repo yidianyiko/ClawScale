@@ -53,7 +53,8 @@ import { userWechatChannelRouter } from './user-wechat-channel.js';
 
 describe('userWechatChannelRouter', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    delete process.env.CLAWSCALE_IDENTITY_API_KEY;
     mocks.getWeixinStatus.mockReturnValue(null);
     mocks.getWeixinQR.mockReturnValue(null);
     mocks.getWeixinRestoreState.mockReturnValue('ready');
@@ -99,6 +100,36 @@ describe('userWechatChannelRouter', () => {
         qr: null,
         qr_url: null,
       },
+    });
+  });
+
+  it('accepts legacy coke_account_id for bridge create requests', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+      created: false,
+    });
+    mocks.createOrReusePersonalWeChatChannel.mockResolvedValueOnce({
+      id: 'ch_bridge',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request('/api/internal/user/wechat-channel', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ coke_account_id: 'ck_customer_legacy' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_customer_legacy',
     });
   });
 
@@ -181,6 +212,34 @@ describe('userWechatChannelRouter', () => {
     expect(res.status).toBe(200);
     expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
       cokeAccountId: 'ck_456',
+    });
+  });
+
+  it('accepts legacy coke_account_id query params for bridge status checks', async () => {
+    process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
+    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
+      tenantId: 'ten_bridge',
+      clawscaleUserId: 'csu_bridge',
+      created: false,
+    });
+    mocks.findMany.mockResolvedValueOnce([]);
+
+    const app = new Hono();
+    app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+
+    const res = await app.request(
+      '/api/internal/user/wechat-channel/status?coke_account_id=ck_789',
+      {
+        method: 'GET',
+        headers: {
+          authorization: 'Bearer secret',
+        },
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_789',
     });
   });
 

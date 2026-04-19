@@ -228,6 +228,47 @@ describe('coke auth routes', () => {
     });
   });
 
+  it('rejects neutral memberships whose compatibility id is not ck_-backed', async () => {
+    authenticateCustomer.mockResolvedValueOnce({
+      customerId: 'cust_1',
+      identityId: 'idt_legacy',
+      claimStatus: 'active',
+      email: 'legacy@example.com',
+      membershipRole: 'owner',
+      token: 'customer-token',
+    });
+    db.membership.findFirst.mockResolvedValueOnce(
+      makeOwnerMembership({
+        customerId: 'cust_1',
+        displayName: 'Legacy Customer',
+        email: 'legacy@example.com',
+        claimStatus: 'active',
+        identityId: 'idt_legacy',
+      }),
+    );
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/login', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'legacy@example.com',
+        password: 'password123',
+      }),
+    });
+
+    expect(res.status).toBe(404);
+    expectDeprecationHeaders(res, '/api/auth/login');
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_not_found',
+    });
+  });
+
   it('rejects legacy-only login instead of falling back to Coke account storage', async () => {
     authenticateCustomer.mockRejectedValueOnce(new CustomerAuthError('invalid_credentials'));
     db.cokeAccount.findUnique.mockResolvedValue({
@@ -312,6 +353,38 @@ describe('coke auth routes', () => {
         subscription_active: true,
         subscription_expires_at: '2026-05-10T00:00:00.000Z',
       },
+    });
+  });
+
+  it('rejects /me for non-ck compatibility ids even when a membership exists', async () => {
+    verifyCokeToken.mockReturnValue({
+      sub: 'cust_1',
+      email: 'legacy@example.com',
+    });
+    db.membership.findFirst.mockResolvedValueOnce(
+      makeOwnerMembership({
+        customerId: 'cust_1',
+        displayName: 'Legacy Customer',
+        email: 'legacy@example.com',
+        claimStatus: 'active',
+        identityId: 'idt_legacy',
+      }),
+    );
+
+    const app = new Hono();
+    app.route('/api/coke', cokeAuthRouter);
+
+    const res = await app.request('/api/coke/me', {
+      headers: {
+        authorization: 'Bearer coke-token',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    expectDeprecationHeaders(res, '/api/auth/me');
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_not_found',
     });
   });
 });

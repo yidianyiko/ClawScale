@@ -139,7 +139,12 @@ async function loadCompatibilityCustomerProfile(
 
   const email = membership?.identity.email?.trim();
   const displayName = membership?.customer.displayName?.trim();
-  if (!membership || !email || !displayName) {
+  if (
+    !membership ||
+    !membership.customer.id.startsWith('ck_') ||
+    !email ||
+    !displayName
+  ) {
     return null;
   }
 

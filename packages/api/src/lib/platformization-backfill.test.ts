@@ -349,6 +349,47 @@ describe('platformization backfill orchestration', () => {
     });
   });
 
+  it('verifyPlatformizationMigration reports missing requested owner memberships as blockers', async () => {
+    db.client.membership.findMany.mockResolvedValue([ownerMemberships[0]]);
+    db.client.agentBinding.findMany.mockResolvedValue([
+      {
+        customerId: 'ck_1',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        provisionStatus: 'ready',
+      },
+    ]);
+    db.client.agentBinding.count.mockResolvedValue(1);
+    db.client.channel.findMany.mockResolvedValue([]);
+
+    await expect(
+      verifyPlatformizationMigration({
+        cokeAccountIds: ['ck_1', 'ck_missing'],
+        expectedAgentId: DEFAULT_COKE_AGENT_ID,
+      }),
+    ).resolves.toEqual({
+      counts: {
+        cokeAccounts: 2,
+        identities: 1,
+        customers: 1,
+        memberships: 1,
+        agentBindings: 1,
+        defaultAgents: 1,
+        channels: 0,
+        verifiedAgentBindings: 1,
+        customerOwnedChannels: 0,
+        sharedOwnedChannels: 0,
+        invalidOwnershipChannels: 0,
+      },
+      errors: [
+        'missing_owner_membership:ck_missing',
+        'identity_count_mismatch:expected=2:actual=1',
+        'customer_count_mismatch:expected=2:actual=1',
+        'membership_count_mismatch:expected=2:actual=1',
+        'agent_binding_count_mismatch:expected=2:actual=1',
+      ],
+    });
+  });
+
   it('verifyPlatformizationMigration surfaces invalid channel ownership rows and non-ready agent bindings', async () => {
     db.client.membership.findMany.mockResolvedValue([ownerMemberships[0]]);
     db.client.customer.count.mockResolvedValue(1);

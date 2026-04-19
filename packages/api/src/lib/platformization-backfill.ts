@@ -195,7 +195,14 @@ export async function verifyPlatformizationMigration(
   input: VerifyPlatformizationMigrationInput = {},
 ) {
   const customerOwners = await listCustomerOwners(input.cokeAccountIds);
-  const legacyAccountIds = customerOwners.map((membership) => membership.customer.id);
+  const requestedAccountIds = input.cokeAccountIds ?? [];
+  const legacyAccountIds =
+    requestedAccountIds.length > 0
+      ? requestedAccountIds
+      : customerOwners.map((membership) => membership.customer.id);
+  const loadedAccountIds = new Set(
+    customerOwners.map((membership) => membership.customer.id),
+  );
 
   const channels = await db.channel.findMany({
     select: {
@@ -243,6 +250,12 @@ export async function verifyPlatformizationMigration(
   };
 
   const errors: string[] = [];
+
+  for (const accountId of legacyAccountIds) {
+    if (!loadedAccountIds.has(accountId)) {
+      errors.push(`missing_owner_membership:${accountId}`);
+    }
+  }
 
   if (counts.identities !== counts.cokeAccounts) {
     errors.push(
