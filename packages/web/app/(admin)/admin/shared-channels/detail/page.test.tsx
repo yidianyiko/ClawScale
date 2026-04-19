@@ -173,29 +173,53 @@ describe('AdminSharedChannelDetailPage', () => {
         updatedAt: '2026-04-16T10:00:00.000Z',
       },
     });
-    vi.mocked(adminApi.patch).mockResolvedValueOnce({
-      ok: true,
-      data: {
-        id: 'ch_1',
-        name: 'Evolution WhatsApp',
-        kind: 'whatsapp_evolution',
-        status: 'disconnected',
-        ownershipKind: 'shared',
-        customerId: null,
-        agent: {
-          id: 'agent_coke',
-          slug: 'coke',
-          name: 'Coke',
+    vi.mocked(adminApi.patch)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Evolution WhatsApp',
+          kind: 'whatsapp_evolution',
+          status: 'disconnected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_coke',
+            slug: 'coke',
+            name: 'Coke',
+          },
+          config: {
+            instanceName: 'coke-whatsapp-personal-v2',
+            webhookToken: 'secret-token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T10:30:00.000Z',
         },
-        config: {
-          instanceName: 'coke-whatsapp-personal-v2',
-          webhookToken: 'secret-token',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Evolution WhatsApp Connected',
+          kind: 'whatsapp_evolution',
+          status: 'connected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_connected',
+            slug: 'connected',
+            name: 'Connected Agent',
+          },
+          config: {
+            instanceName: 'coke-whatsapp-personal-v2',
+            webhookToken: 'secret-token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T11:10:00.000Z',
         },
-        hasWebhookToken: true,
-        createdAt: '2026-04-16T09:00:00.000Z',
-        updatedAt: '2026-04-16T10:30:00.000Z',
-      },
-    });
+      });
     vi.mocked(adminApi.post)
       .mockResolvedValueOnce({
         ok: true,
@@ -289,6 +313,24 @@ describe('AdminSharedChannelDetailPage', () => {
     expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/connect');
     await vi.waitFor(() => {
       expect(container.querySelector('button[data-testid="disconnect-shared-channel"]')).toBeTruthy();
+    });
+
+    const connectedNameInput = container.querySelector('#shared-channel-detail-name') as HTMLInputElement;
+    const connectedAgentInput = container.querySelector('#shared-channel-detail-agent-id') as HTMLInputElement;
+    connectedNameInput.value = 'Evolution WhatsApp Connected';
+    connectedNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    connectedAgentInput.value = 'agent_connected';
+    connectedAgentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    (container.querySelector('button[data-testid="save-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.patch)).toHaveBeenNthCalledWith(2, '/api/admin/shared-channels/ch_1', {
+      name: 'Evolution WhatsApp Connected',
+      agentId: 'agent_connected',
+      config: {
+        instanceName: 'coke-whatsapp-personal-v2',
+      },
     });
 
     (container.querySelector('button[data-testid="disconnect-shared-channel"]') as HTMLButtonElement).click();

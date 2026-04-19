@@ -123,7 +123,10 @@ export default function AdminSharedChannelDetailPage() {
     const form = new FormData(event.currentTarget);
     const nextName = String(form.get('name') ?? '').trim();
     const nextAgentId = String(form.get('agentId') ?? '').trim();
-    const nextInstanceName = String(form.get('instanceName') ?? '').trim();
+    const formInstanceName = String(form.get('instanceName') ?? '').trim();
+    const nextInstanceName = isWhatsAppEvolutionKind(record.kind)
+      ? formInstanceName || instanceName.trim() || getEvolutionInstanceName(record.config)
+      : formInstanceName;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
