@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   verifyCustomerToken: vi.fn(),
   verifyCokeToken: vi.fn(),
   getCustomerSession: vi.fn(),
-  cokeAccountFindUnique: vi.fn(),
+  membershipFindFirst: vi.fn(),
   resolveCokeAccountAccess: vi.fn(),
   ensureClawscaleUserForCustomer: vi.fn(),
   ensureClawscaleUserForCokeAccount: vi.fn(),
@@ -23,8 +23,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/index.js', () => ({
   db: {
-    cokeAccount: {
-      findUnique: mocks.cokeAccountFindUnique,
+    membership: {
+      findFirst: mocks.membershipFindFirst,
     },
     channel: {
       findMany: mocks.channelFindMany,
@@ -81,6 +81,24 @@ vi.mock('../adapters/wechat.js', () => ({
 
 import { customerChannelRouter } from './customer-channel-routes.js';
 
+function makeOwnerMembership(
+  claimStatus: 'active' | 'pending' | 'unclaimed',
+  customerId = 'ck_customer_1',
+) {
+  return {
+    role: 'owner',
+    customer: {
+      id: customerId,
+      displayName: 'Alice',
+    },
+    identity: {
+      id: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus,
+    },
+  };
+}
+
 describe('customerChannelRouter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -103,13 +121,7 @@ describe('customerChannelRouter', () => {
       email: 'alice@example.com',
       membershipRole: 'owner',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'ck_customer_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
+    mocks.membershipFindFirst.mockResolvedValue(makeOwnerMembership('active'));
     mocks.resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -308,7 +320,7 @@ describe('customerChannelRouter', () => {
     });
   });
 
-  it('allows a legacy coke token to use the neutral channel path', async () => {
+  it('returns account_not_found for a legacy-only coke token', async () => {
     mocks.verifyCustomerToken.mockImplementationOnce(() => {
       throw new Error('invalid_or_expired_token');
     });
@@ -316,38 +328,8 @@ describe('customerChannelRouter', () => {
       sub: 'acct_legacy_1',
       email: 'legacy@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValueOnce({
-      id: 'acct_legacy_1',
-      email: 'legacy@example.com',
-      displayName: 'Legacy User',
-      emailVerified: true,
-      status: 'normal',
-    });
-    mocks.resolveCokeAccountAccess.mockResolvedValueOnce({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
-      tenantId: 'ten_legacy',
-      clawscaleUserId: 'csu_legacy',
-      created: false,
-      ready: true,
-    });
-    mocks.channelFindMany.mockResolvedValueOnce([
-      {
-        id: 'ch_legacy',
-        type: 'wechat_personal',
-        scope: 'personal',
-        ownerClawscaleUserId: 'csu_legacy',
-        status: 'disconnected',
-        updatedAt: new Date('2026-04-16T00:00:00.000Z'),
-      },
-    ]);
+    mocks.membershipFindFirst.mockResolvedValueOnce(null);
+    mocks.channelFindMany.mockResolvedValueOnce([]);
 
     const app = new Hono();
     app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
@@ -358,20 +340,13 @@ describe('customerChannelRouter', () => {
       },
     });
 
-    expect(res.status).toBe(200);
-    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
-      cokeAccountId: 'acct_legacy_1',
-      displayName: 'Legacy User',
-    });
+    expect(res.status).toBe(404);
+    expect(mocks.resolveCokeAccountAccess).not.toHaveBeenCalled();
+    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
     expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
-      ok: true,
-      data: {
-        channel_id: 'ch_legacy',
-        status: 'disconnected',
-        qr: null,
-        qr_url: null,
-      },
+      ok: false,
+      error: 'account_not_found',
     });
   });
 

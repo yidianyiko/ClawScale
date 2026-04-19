@@ -5,9 +5,6 @@ const db = vi.hoisted(() => ({
   membership: {
     findFirst: vi.fn(),
   },
-  cokeAccount: {
-    findUnique: vi.fn(),
-  },
   subscription: {
     findFirst: vi.fn(),
     create: vi.fn(),
@@ -48,7 +45,7 @@ function makeOwnerMembership(claimStatus: 'active' | 'pending' | 'unclaimed') {
   return {
     role: 'owner',
     customer: {
-      id: 'acct_1',
+      id: 'ck_1',
       displayName: 'Alice',
     },
     identity: {
@@ -85,11 +82,10 @@ describe('coke payment routes', () => {
 
   it('rejects checkout when the owner identity is unverified', async () => {
     verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('pending'));
-    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
 
     const app = new Hono();
     app.route('/api/coke', cokePaymentRouter);
@@ -104,7 +100,7 @@ describe('coke payment routes', () => {
     expect(res.status).toBe(403);
     expect(db.membership.findFirst).toHaveBeenCalledWith({
       where: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         role: 'owner',
       },
       include: {
@@ -122,10 +118,6 @@ describe('coke payment routes', () => {
         },
       },
     });
-    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
-      where: { id: 'acct_1' },
-      select: { status: true },
-    });
     await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'email_not_verified',
@@ -133,13 +125,12 @@ describe('coke payment routes', () => {
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
   });
 
-  it('preserves suspended account behavior during the compatibility window', async () => {
+  it('returns account_not_found when the neutral owner membership is missing', async () => {
     verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
-      email: 'alice@example.com',
+      sub: 'acct_missing',
+      email: 'missing@example.com',
     });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
-    db.cokeAccount.findUnique.mockResolvedValue({ status: 'suspended' });
+    db.membership.findFirst.mockResolvedValue(null);
 
     const app = new Hono();
     app.route('/api/coke', cokePaymentRouter);
@@ -151,25 +142,20 @@ describe('coke payment routes', () => {
       },
     });
 
-    expect(res.status).toBe(403);
-    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
-      where: { id: 'acct_1' },
-      select: { status: true },
-    });
+    expect(res.status).toBe(404);
     await expect(res.json()).resolves.toEqual({
       ok: false,
-      error: 'account_suspended',
+      error: 'account_not_found',
     });
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
   });
 
   it('creates a Stripe Checkout session for a verified customer owner', async () => {
     verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
-    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
     stripeCheckoutSessionsCreate.mockResolvedValue({
       url: 'https://stripe.example/checkout/session_123',
     });
@@ -187,7 +173,7 @@ describe('coke payment routes', () => {
     expect(res.status).toBe(200);
     expect(db.membership.findFirst).toHaveBeenCalledWith({
       where: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         role: 'owner',
       },
       include: {
@@ -205,10 +191,6 @@ describe('coke payment routes', () => {
         },
       },
     });
-    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
-      where: { id: 'acct_1' },
-      select: { status: true },
-    });
     expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -221,7 +203,7 @@ describe('coke payment routes', () => {
       success_url: 'https://coke.example/coke/payment-success',
       cancel_url: 'https://coke.example/coke/payment-cancel',
       metadata: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
       },
     });
     await expect(res.json()).resolves.toEqual({
@@ -234,11 +216,10 @@ describe('coke payment routes', () => {
 
   it('returns the subscription snapshot from the customer owner graph', async () => {
     verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
     db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
-    db.cokeAccount.findUnique.mockResolvedValue({ status: 'normal' });
     resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -261,7 +242,7 @@ describe('coke payment routes', () => {
     expect(res.status).toBe(200);
     expect(db.membership.findFirst).toHaveBeenCalledWith({
       where: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         role: 'owner',
       },
       include: {
@@ -279,13 +260,9 @@ describe('coke payment routes', () => {
         },
       },
     });
-    expect(db.cokeAccount.findUnique).toHaveBeenCalledWith({
-      where: { id: 'acct_1' },
-      select: { status: true },
-    });
     expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
       account: {
-        id: 'acct_1',
+        id: 'ck_1',
         displayName: 'Alice',
         emailVerified: true,
         status: 'normal',
@@ -316,12 +293,12 @@ describe('coke payment routes', () => {
           amount_total: 1299,
           currency: 'usd',
           metadata: {
-            cokeAccountId: 'acct_1',
+            cokeAccountId: 'ck_1',
           },
         },
       },
     });
-    db.$queryRaw.mockResolvedValue([{ id: 'acct_1' }]);
+    db.$queryRaw.mockResolvedValue([{ id: 'ck_1' }]);
     db.subscription.findFirst.mockResolvedValue({
       expiresAt: new Date('2026-05-10T00:00:00.000Z'),
     });
@@ -355,13 +332,13 @@ describe('coke payment routes', () => {
     expect(res.status).toBe(200);
     expect(db.$transaction).toHaveBeenCalledOnce();
     expect(db.subscription.findFirst).toHaveBeenCalledWith({
-      where: { customerId: 'acct_1' },
+      where: { customerId: 'ck_1' },
       orderBy: [{ expiresAt: 'desc' }],
       select: { expiresAt: true },
     });
     expect(db.subscription.create).toHaveBeenCalledWith({
       data: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         stripeSessionId: 'cs_test_legacy',
         amountPaid: 1299,
         currency: 'usd',
@@ -382,12 +359,12 @@ describe('coke payment routes', () => {
           amount_total: 1299,
           currency: 'usd',
           metadata: {
-            customerId: 'acct_1',
+            customerId: 'ck_1',
           },
         },
       },
     });
-    db.$queryRaw.mockResolvedValue([{ id: 'acct_1' }]);
+    db.$queryRaw.mockResolvedValue([{ id: 'ck_1' }]);
     db.subscription.findFirst.mockResolvedValue({
       expiresAt: new Date('2026-05-10T00:00:00.000Z'),
     });
@@ -429,7 +406,7 @@ describe('coke payment routes', () => {
     expect(db.$transaction).toHaveBeenCalledOnce();
     expect(db.$queryRaw).toHaveBeenCalled();
     expect(db.subscription.findFirst).toHaveBeenCalledWith({
-      where: { customerId: 'acct_1' },
+      where: { customerId: 'ck_1' },
       orderBy: [{ expiresAt: 'desc' }],
       select: { expiresAt: true },
     });
@@ -441,7 +418,7 @@ describe('coke payment routes', () => {
     );
     expect(db.subscription.create).toHaveBeenCalledWith({
       data: {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         stripeSessionId: 'cs_test_123',
         amountPaid: 1299,
         currency: 'usd',

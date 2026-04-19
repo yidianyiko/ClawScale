@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  cokeAccountFindUnique: vi.fn(),
+  membershipFindFirst: vi.fn(),
   resolveCokeAccountAccess: vi.fn(),
   ensureClawscaleUserForCokeAccount: vi.fn(),
   ensureClawscaleUserForCustomer: vi.fn(),
@@ -21,8 +21,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../db/index.js', () => ({
   db: {
-    cokeAccount: {
-      findUnique: mocks.cokeAccountFindUnique,
+    membership: {
+      findFirst: mocks.membershipFindFirst,
     },
     channel: {
       findMany: mocks.channelFindMany,
@@ -72,6 +72,24 @@ function expectDeprecationHeaders(response: Response, successorPath: string) {
   expect(response.headers.get('Link')).toBe(`<${successorPath}>; rel="successor-version"`);
 }
 
+function makeOwnerMembership(
+  claimStatus: 'active' | 'pending' | 'unclaimed',
+  customerId = 'ck_1',
+) {
+  return {
+    role: 'owner',
+    customer: {
+      id: customerId,
+      displayName: 'Alice',
+    },
+    identity: {
+      id: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus,
+    },
+  };
+}
+
 describe('cokeWechatRouter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -96,18 +114,12 @@ describe('cokeWechatRouter', () => {
     });
   });
 
-  it('blocks unverified accounts before provisioning a personal channel', async () => {
+  it('blocks unverified customer-backed accounts before provisioning a personal channel', async () => {
     mocks.verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: false,
-      status: 'normal',
-    });
+    mocks.membershipFindFirst.mockResolvedValue(makeOwnerMembership('pending'));
     mocks.resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: false,
@@ -130,7 +142,7 @@ describe('cokeWechatRouter', () => {
 
     expect(res.status).toBe(403);
     expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal');
-    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,
@@ -138,18 +150,12 @@ describe('cokeWechatRouter', () => {
     });
   });
 
-  it('blocks suspended accounts before provisioning a personal channel', async () => {
+  it('blocks suspended customer-backed accounts before provisioning a personal channel', async () => {
     mocks.verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'suspended',
-    });
+    mocks.membershipFindFirst.mockResolvedValue(makeOwnerMembership('active'));
     mocks.resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'suspended',
       emailVerified: true,
@@ -172,7 +178,7 @@ describe('cokeWechatRouter', () => {
 
     expect(res.status).toBe(403);
     expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal');
-    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,
@@ -180,18 +186,12 @@ describe('cokeWechatRouter', () => {
     });
   });
 
-  it('blocks connect when the account needs a subscription', async () => {
+  it('blocks connect when the customer-backed account needs a subscription', async () => {
     mocks.verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
+    mocks.membershipFindFirst.mockResolvedValue(makeOwnerMembership('active'));
     mocks.resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -214,7 +214,7 @@ describe('cokeWechatRouter', () => {
 
     expect(res.status).toBe(402);
     expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal/connect');
-    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,
@@ -222,18 +222,12 @@ describe('cokeWechatRouter', () => {
     });
   });
 
-  it('connects an allowed account using the existing lifecycle behavior', async () => {
+  it('connects an allowed customer-backed account using the neutral graph', async () => {
     mocks.verifyCokeToken.mockReturnValue({
-      sub: 'acct_1',
+      sub: 'ck_1',
       email: 'alice@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
+    mocks.membershipFindFirst.mockResolvedValue(makeOwnerMembership('active'));
     mocks.resolveCokeAccountAccess.mockResolvedValue({
       accountStatus: 'normal',
       emailVerified: true,
@@ -243,7 +237,7 @@ describe('cokeWechatRouter', () => {
       accountAccessDeniedReason: null,
       renewalUrl: 'https://coke.example/coke/renew',
     });
-    mocks.ensureClawscaleUserForCokeAccount.mockResolvedValue({
+    mocks.ensureClawscaleUserForCustomer.mockResolvedValue({
       tenantId: 'ten_1',
       clawscaleUserId: 'csu_1',
       created: false,
@@ -271,10 +265,10 @@ describe('cokeWechatRouter', () => {
 
     expect(res.status).toBe(200);
     expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal/connect');
-    expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
-      cokeAccountId: 'acct_1',
-      displayName: 'Alice',
+    expect(mocks.ensureClawscaleUserForCustomer).toHaveBeenCalledWith({
+      customerId: 'ck_1',
     });
+    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
     expect(mocks.createOrReusePersonalWeChatChannel).toHaveBeenCalledWith({
       tenantId: 'ten_1',
       clawscaleUserId: 'csu_1',
@@ -296,72 +290,12 @@ describe('cokeWechatRouter', () => {
     });
   });
 
-  it('uses the customer compatibility projection for ck_* aliases', async () => {
-    mocks.verifyCokeToken.mockReturnValue({
-      sub: 'ck_1',
-      email: 'alice@example.com',
-    });
-    mocks.cokeAccountFindUnique.mockResolvedValue({
-      id: 'ck_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
-    mocks.resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-    mocks.ensureClawscaleUserForCustomer.mockResolvedValue({
-      tenantId: 'ten_1',
-      clawscaleUserId: 'csu_1',
-      created: false,
-      ready: true,
-    });
-    mocks.createOrReusePersonalWeChatChannel.mockResolvedValue({
-      id: 'ch_1',
-      status: 'connected',
-    });
-    mocks.getWeixinStatus.mockReturnValue('connected');
-
-    const app = new Hono();
-    app.route('/api/coke/wechat-channel', cokeWechatRouter);
-
-    const res = await app.request('/api/coke/wechat-channel/connect', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer coke-token',
-      },
-    });
-
-    expect(res.status).toBe(200);
-    expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal/connect');
-    expect(mocks.ensureClawscaleUserForCustomer).toHaveBeenCalledWith({
-      customerId: 'ck_1',
-    });
-    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      data: {
-        channel_id: 'ch_1',
-        status: 'connected',
-        qr: null,
-        qr_url: null,
-      },
-    });
-  });
-
-  it('returns 404 when the authenticated Coke account no longer exists', async () => {
+  it('returns account_not_found when there is no neutral owner membership', async () => {
     mocks.verifyCokeToken.mockReturnValue({
       sub: 'acct_missing',
       email: 'missing@example.com',
     });
-    mocks.cokeAccountFindUnique.mockResolvedValue(null);
+    mocks.membershipFindFirst.mockResolvedValue(null);
 
     const app = new Hono();
     app.route('/api/coke/wechat-channel', cokeWechatRouter);
@@ -375,6 +309,7 @@ describe('cokeWechatRouter', () => {
     expect(res.status).toBe(404);
     expectDeprecationHeaders(res, '/api/customer/channels/wechat-personal/status');
     expect(mocks.resolveCokeAccountAccess).not.toHaveBeenCalled();
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,

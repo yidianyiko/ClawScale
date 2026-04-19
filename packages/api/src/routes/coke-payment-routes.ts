@@ -44,37 +44,31 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
   displayName: string;
   email: string;
   emailVerified: boolean;
-  status: 'normal' | 'suspended';
+  status: 'normal';
 } | null> {
-  const [membership, cokeAccount] = await Promise.all([
-    db.membership.findFirst({
-      where: {
-        customerId,
-        role: 'owner',
-      },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            displayName: true,
-          },
-        },
-        identity: {
-          select: {
-            email: true,
-            claimStatus: true,
-          },
+  const membership = await db.membership.findFirst({
+    where: {
+      customerId,
+      role: 'owner',
+    },
+    include: {
+      customer: {
+        select: {
+          id: true,
+          displayName: true,
         },
       },
-    }),
-    db.cokeAccount.findUnique({
-      where: { id: customerId },
-      select: { status: true },
-    }),
-  ]);
+      identity: {
+        select: {
+          email: true,
+          claimStatus: true,
+        },
+      },
+    },
+  });
 
   const email = membership?.identity.email?.trim();
-  if (!membership || !email) {
+  if (!membership || !email || !membership.customer.id.startsWith('ck_')) {
     return null;
   }
 
@@ -83,7 +77,7 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
     displayName: membership.customer.displayName,
     email,
     emailVerified: membership.identity.claimStatus === 'active',
-    status: cokeAccount?.status ?? 'normal',
+    status: 'normal',
   };
 }
 
@@ -94,10 +88,6 @@ export const cokePaymentRouter = new Hono()
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);
-    }
-
-    if (account.status === 'suspended') {
-      return c.json({ ok: false, error: 'account_suspended' }, 403);
     }
 
     if (!account.emailVerified) {
