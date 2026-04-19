@@ -14,9 +14,15 @@ const getTeamsBot = vi.hoisted(() => vi.fn());
 const handleTeamsActivity = vi.hoisted(() => vi.fn());
 const verifyWebhook = vi.hoisted(() => vi.fn());
 const handleWABusinessWebhook = vi.hoisted(() => vi.fn());
+const evolutionSendText = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/route-message.js', () => ({ routeInboundMessage }));
+vi.mock('../lib/evolution-api.js', () => ({
+  EvolutionApiClient: class {
+    sendText = evolutionSendText;
+  },
+}));
 vi.mock('../adapters/line.js', () => ({ getLineBot, handleLineEvents }));
 vi.mock('../adapters/teams.js', () => ({ getTeamsBot, handleTeamsActivity }));
 vi.mock('../adapters/whatsapp-business.js', () => ({
@@ -39,6 +45,7 @@ describe('gatewayRouter evolution whatsapp route', () => {
       },
     });
     routeInboundMessage.mockResolvedValue(null);
+    evolutionSendText.mockResolvedValue(undefined);
   });
 
   it('routes whatsapp_evolution inbound messages into routeInboundMessage', async () => {
@@ -81,6 +88,46 @@ describe('gatewayRouter evolution whatsapp route', () => {
         remoteJid: '8619917902815@s.whatsapp.net',
       },
     });
+  });
+
+  it('sends immediate replies back through Evolution when routing returns a reply', async () => {
+    routeInboundMessage.mockResolvedValueOnce({
+      conversationId: 'conv_1',
+      replies: [{ backendId: null, backendName: 'ClawScale Assistant', reply: 'hello back' }],
+      reply: 'hello back',
+    });
+
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/evolution/whatsapp/ch_1/token_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          key: {
+            remoteJid: '8619917902815@s.whatsapp.net',
+            fromMe: false,
+            id: 'msg_reply',
+          },
+          pushName: 'Alice',
+          message: {
+            conversation: 'hello from evolution',
+          },
+          messageType: 'conversation',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(evolutionSendText).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      '8619917902815',
+      'hello back',
+    );
   });
 
   it('uses extendedTextMessage text when conversation is absent', async () => {

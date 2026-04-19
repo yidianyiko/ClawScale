@@ -13,6 +13,7 @@ import { z } from 'zod';
 import * as lineSdk from '@line/bot-sdk';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
+import { EvolutionApiClient } from '../lib/evolution-api.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
@@ -177,7 +178,7 @@ export const gatewayRouter = new Hono()
     }
 
     try {
-      await routeInboundMessage({
+      const result = await routeInboundMessage({
         channelId,
         externalId: normalizeEvolutionExternalId(remoteJid),
         displayName: data.pushName,
@@ -190,6 +191,14 @@ export const gatewayRouter = new Hono()
           remoteJid,
         },
       });
+
+      if (result?.reply && channelConfig.instanceName) {
+        await new EvolutionApiClient().sendText(
+          channelConfig.instanceName,
+          normalizeEvolutionExternalId(remoteJid),
+          result.reply,
+        );
+      }
     } catch (err) {
       console.error(`[evolution:${channelId}] Webhook handling error:`, err);
     }
