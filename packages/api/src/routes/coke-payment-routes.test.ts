@@ -5,6 +5,9 @@ const db = vi.hoisted(() => ({
   membership: {
     findFirst: vi.fn(),
   },
+  customer: {
+    findUnique: vi.fn(),
+  },
   subscription: {
     findFirst: vi.fn(),
     create: vi.fn(),
@@ -15,6 +18,9 @@ const db = vi.hoisted(() => ({
 
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 const calculateStackedAccessWindow = vi.hoisted(() => vi.fn());
+const calculateTrialExpiresAt = vi.hoisted(() =>
+  vi.fn((createdAt: Date) => new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000)),
+);
 const verifyCokeToken = vi.hoisted(() => vi.fn());
 const stripeCheckoutSessionsCreate = vi.hoisted(() => vi.fn());
 const stripeConstructEvent = vi.hoisted(() => vi.fn());
@@ -36,6 +42,7 @@ vi.mock('../lib/coke-auth.js', () => ({ verifyCokeToken }));
 vi.mock('../lib/coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('../lib/coke-subscription.js', () => ({
   calculateStackedAccessWindow,
+  calculateTrialExpiresAt,
 }));
 vi.mock('stripe', () => ({ default: stripeCtor }));
 
@@ -310,6 +317,7 @@ describe('coke payment routes', () => {
 
     const tx = {
       $queryRaw: db.$queryRaw,
+      customer: db.customer,
       subscription: db.subscription,
     };
     db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) =>
@@ -378,6 +386,7 @@ describe('coke payment routes', () => {
 
     const tx = {
       $queryRaw: db.$queryRaw,
+      customer: db.customer,
       subscription: db.subscription,
     };
     db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) =>
@@ -427,5 +436,76 @@ describe('coke payment routes', () => {
       },
     });
     expect(String(db.$queryRaw.mock.calls[0]?.[0])).toContain('FROM customers');
+  });
+
+  it('stacks paid access after the remaining trial window when checkout completes during trial', async () => {
+    stripeConstructEvent.mockReturnValue({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_test_trial',
+          payment_status: 'paid',
+          created: 1775088000,
+          amount_total: 1299,
+          currency: 'usd',
+          metadata: {
+            customerId: 'ck_1',
+          },
+        },
+      },
+    });
+    db.$queryRaw.mockResolvedValue([{ id: 'ck_1' }]);
+    db.customer.findUnique.mockResolvedValue({
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    db.subscription.findFirst.mockResolvedValue(null);
+    calculateStackedAccessWindow.mockReturnValue({
+      startsAt: '2026-04-08T00:00:00.000Z',
+      expiresAt: '2026-05-08T00:00:00.000Z',
+    });
+    db.subscription.create.mockResolvedValue({ id: 'sub_trial' });
+
+    const tx = {
+      $queryRaw: db.$queryRaw,
+      customer: db.customer,
+      subscription: db.subscription,
+    };
+    db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) =>
+      fn(tx),
+    );
+
+    const app = new Hono();
+    app.route('/api/coke', cokePaymentRouter);
+
+    const res = await app.request('/api/coke/stripe-webhook', {
+      method: 'POST',
+      headers: {
+        'stripe-signature': 'sig_test_trial',
+      },
+      body: JSON.stringify({
+        id: 'evt_trial',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.customer.findUnique).toHaveBeenCalledWith({
+      where: { id: 'ck_1' },
+      select: { createdAt: true },
+    });
+    expect(calculateStackedAccessWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latestExpiresAt: new Date('2026-04-08T00:00:00.000Z'),
+      }),
+    );
+    expect(db.subscription.create).toHaveBeenCalledWith({
+      data: {
+        customerId: 'ck_1',
+        stripeSessionId: 'cs_test_trial',
+        amountPaid: 1299,
+        currency: 'usd',
+        startsAt: new Date('2026-04-08T00:00:00.000Z'),
+        expiresAt: new Date('2026-05-08T00:00:00.000Z'),
+      },
+    });
   });
 });

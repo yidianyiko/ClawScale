@@ -1,6 +1,7 @@
 import { db } from '../db/index.js';
 
 const ACCESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const TRIAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface SubscriptionSnapshot {
   subscriptionActive: boolean;
@@ -14,6 +15,27 @@ export interface StackedAccessWindow {
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
+}
+
+export function calculateTrialExpiresAt(createdAt: Date): Date {
+  return new Date(createdAt.getTime() + TRIAL_WINDOW_MS);
+}
+
+function resolveLatestAccessExpiry(input: {
+  latestSubscriptionExpiresAt: Date | null;
+  customerCreatedAt: Date | null;
+}): Date | null {
+  const trialExpiresAt = input.customerCreatedAt
+    ? calculateTrialExpiresAt(input.customerCreatedAt)
+    : null;
+
+  if (input.latestSubscriptionExpiresAt && trialExpiresAt) {
+    return input.latestSubscriptionExpiresAt > trialExpiresAt
+      ? input.latestSubscriptionExpiresAt
+      : trialExpiresAt;
+  }
+
+  return input.latestSubscriptionExpiresAt ?? trialExpiresAt;
 }
 
 export function calculateStackedAccessWindow(input: {
@@ -36,17 +58,30 @@ export async function getSubscriptionSnapshot(
   customerId: string,
   now = new Date(),
 ): Promise<SubscriptionSnapshot> {
-  const latest = await db.subscription.findFirst({
-    where: { customerId },
-    orderBy: [{ expiresAt: 'desc' }],
-    select: {
-      expiresAt: true,
-    },
+  const [customer, latest] = await Promise.all([
+    db.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        createdAt: true,
+      },
+    }),
+    db.subscription.findFirst({
+      where: { customerId },
+      orderBy: [{ expiresAt: 'desc' }],
+      select: {
+        expiresAt: true,
+      },
+    }),
+  ]);
+
+  const accessExpiresAt = resolveLatestAccessExpiry({
+    latestSubscriptionExpiresAt: latest?.expiresAt ?? null,
+    customerCreatedAt: customer?.createdAt ?? null,
   });
 
   return {
-    subscriptionActive: !!latest?.expiresAt && latest.expiresAt > now,
-    subscriptionExpiresAt: toIso(latest?.expiresAt),
+    subscriptionActive: !!accessExpiresAt && accessExpiresAt > now,
+    subscriptionExpiresAt: toIso(accessExpiresAt),
   };
 }
 

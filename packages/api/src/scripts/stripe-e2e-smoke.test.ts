@@ -27,24 +27,24 @@ describe('stripe e2e smoke helpers', () => {
       assertPrePaymentSubscription({
         accountStatus: 'normal',
         emailVerified: true,
-        subscriptionActive: false,
-        subscriptionExpiresAt: null,
-        accountAccessAllowed: false,
-        accountAccessDeniedReason: 'subscription_required',
+        subscriptionActive: true,
+        subscriptionExpiresAt: '2026-04-11T00:00:00.000Z',
+        accountAccessAllowed: true,
+        accountAccessDeniedReason: null,
         renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
       }),
     ).not.toThrow();
   });
 
-  it('rejects a pre-payment state that already grants access', () => {
+  it('rejects a pre-payment state that is already blocked', () => {
     expect(() =>
       assertPrePaymentSubscription({
         accountStatus: 'normal',
         emailVerified: true,
-        subscriptionActive: true,
-        subscriptionExpiresAt: '2026-05-19T15:43:15.000Z',
-        accountAccessAllowed: true,
-        accountAccessDeniedReason: null,
+        subscriptionActive: false,
+        subscriptionExpiresAt: null,
+        accountAccessAllowed: false,
+        accountAccessDeniedReason: 'subscription_required',
         renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
       }),
     ).toThrow('before payment');

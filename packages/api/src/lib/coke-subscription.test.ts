@@ -9,6 +9,9 @@ const retirementMigrationPath = resolve(
 );
 
 const db = vi.hoisted(() => ({
+  customer: {
+    findUnique: vi.fn(),
+  },
   subscription: {
     findFirst: vi.fn(),
   },
@@ -27,6 +30,9 @@ describe('coke-subscription helpers', () => {
   });
 
   it('marks a future subscription as active', async () => {
+    db.customer.findUnique.mockResolvedValue({
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
     db.subscription.findFirst.mockResolvedValue({
       expiresAt: new Date('2026-05-10T00:00:00.000Z'),
     });
@@ -43,6 +49,34 @@ describe('coke-subscription helpers', () => {
       select: {
         expiresAt: true,
       },
+    });
+  });
+
+  it('treats newly registered customers as active during the seven-day trial window', async () => {
+    db.customer.findUnique.mockResolvedValue({
+      createdAt: new Date('2026-04-04T00:00:00.000Z'),
+    });
+    db.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      getSubscriptionSnapshot('ck_1', new Date('2026-04-10T00:00:00.000Z')),
+    ).resolves.toMatchObject({
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-04-11T00:00:00.000Z',
+    });
+  });
+
+  it('falls back to subscription_required after the seven-day trial window ends', async () => {
+    db.customer.findUnique.mockResolvedValue({
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    db.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      getSubscriptionSnapshot('ck_1', new Date('2026-04-10T00:00:00.000Z')),
+    ).resolves.toMatchObject({
+      subscriptionActive: false,
+      subscriptionExpiresAt: '2026-04-08T00:00:00.000Z',
     });
   });
 

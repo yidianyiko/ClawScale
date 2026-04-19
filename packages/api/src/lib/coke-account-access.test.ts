@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
+  customer: {
+    findUnique: vi.fn(),
+  },
   subscription: {
     findFirst: vi.fn(),
   },
@@ -13,6 +16,9 @@ import { resolveCokeAccountAccess } from './coke-account-access.js';
 describe('resolveCokeAccountAccess', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db.customer.findUnique.mockResolvedValue({
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
   });
 
   it('returns subscription_required when the account is normal and verified but expired', async () => {

@@ -3,7 +3,10 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
-import { calculateStackedAccessWindow } from '../lib/coke-subscription.js';
+import {
+  calculateStackedAccessWindow,
+  calculateTrialExpiresAt,
+} from '../lib/coke-subscription.js';
 
 const stripe = new Stripe(process.env['STRIPE_SECRET_KEY'] ?? '');
 
@@ -173,11 +176,22 @@ export const cokePaymentRouter = new Hono()
         orderBy: [{ expiresAt: 'desc' }],
         select: { expiresAt: true },
       });
+      const customer = await tx.customer.findUnique({
+        where: { id: customerId },
+        select: { createdAt: true },
+      });
 
       const now = toDate(session.created * 1000);
+      const trialExpiresAt = customer ? calculateTrialExpiresAt(customer.createdAt) : null;
+      const latestAccessExpiresAt =
+        latestSubscription?.expiresAt && trialExpiresAt
+          ? latestSubscription.expiresAt > trialExpiresAt
+            ? latestSubscription.expiresAt
+            : trialExpiresAt
+          : latestSubscription?.expiresAt ?? trialExpiresAt;
       const stackedWindow = calculateStackedAccessWindow({
         now,
-        latestExpiresAt: latestSubscription?.expiresAt ?? null,
+        latestExpiresAt: latestAccessExpiresAt,
       });
 
       try {

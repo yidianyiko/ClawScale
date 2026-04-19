@@ -258,17 +258,17 @@ export function assertPrePaymentSubscription(data: SubscriptionSnapshot): void {
   if (!data.emailVerified) {
     errors.push('email is not verified');
   }
-  if (data.subscriptionActive) {
-    errors.push('subscription is already active');
+  if (!data.subscriptionActive) {
+    errors.push('subscription is not active during trial');
   }
-  if (data.subscriptionExpiresAt) {
-    errors.push('subscription expiry should be null');
+  if (!data.subscriptionExpiresAt) {
+    errors.push('trial expiry is missing');
   }
-  if (data.accountAccessAllowed) {
-    errors.push('account access is already allowed');
+  if (!data.accountAccessAllowed) {
+    errors.push('account access is not allowed during trial');
   }
-  if (data.accountAccessDeniedReason !== 'subscription_required') {
-    errors.push('denied reason is not subscription_required');
+  if (data.accountAccessDeniedReason !== null) {
+    errors.push('denied reason should be null during trial');
   }
 
   if (errors.length > 0) {
@@ -508,6 +508,14 @@ export async function runStripeSmoke(
   const checkoutSessionId = extractCheckoutSessionId(checkoutUrl);
   const paymentSuccessUrl = await completeHostedCheckout(config, checkoutUrl);
   const postPayment = await waitForActiveSubscription(config, loginResult.token);
+  const prePaymentExpiresAt = new Date(prePayment.subscriptionExpiresAt ?? 0);
+  const postPaymentExpiresAt = new Date(postPayment.subscriptionExpiresAt ?? 0);
+
+  if (!(postPaymentExpiresAt > prePaymentExpiresAt)) {
+    throw new Error(
+      `Paid access did not extend beyond trial access: pre=${prePayment.subscriptionExpiresAt}, post=${postPayment.subscriptionExpiresAt}`,
+    );
+  }
 
   return {
     baseUrl: config.baseUrl,
