@@ -52,11 +52,13 @@ describe('EvolutionApiClient', () => {
           'content-type': 'application/json',
         }),
         body: JSON.stringify({
-          enabled: true,
-          url: 'https://coke.example/gateway/evolution/whatsapp/ch_1/token_1',
-          events: ['MESSAGES_UPSERT'],
-          webhookByEvents: false,
-          webhookBase64: false,
+          webhook: {
+            enabled: true,
+            url: 'https://coke.example/gateway/evolution/whatsapp/ch_1/token_1',
+            byEvents: false,
+            base64: false,
+            events: ['MESSAGES_UPSERT'],
+          },
         }),
         signal: expect.any(AbortSignal),
       }),
@@ -73,11 +75,13 @@ describe('EvolutionApiClient', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          enabled: false,
-          url: 'https://invalid.local/disabled',
-          events: ['MESSAGES_UPSERT'],
-          webhookByEvents: false,
-          webhookBase64: false,
+          webhook: {
+            enabled: false,
+            url: 'https://invalid.local/disabled',
+            byEvents: false,
+            base64: false,
+            events: ['MESSAGES_UPSERT'],
+          },
         }),
       }),
     );

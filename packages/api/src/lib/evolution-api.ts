@@ -1,6 +1,18 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 const EVOLUTION_WEBHOOK_EVENTS = ['MESSAGES_UPSERT'] as const;
 
+function buildWebhookPayload(enabled: boolean, url: string) {
+  return {
+    webhook: {
+      enabled,
+      url,
+      byEvents: false,
+      base64: false,
+      events: [...EVOLUTION_WEBHOOK_EVENTS],
+    },
+  };
+}
+
 export interface EvolutionWebhookConfig {
   enabled: boolean;
   url: string;
@@ -46,26 +58,14 @@ export class EvolutionApiClient {
   async setWebhook(instanceName: string, url: string): Promise<unknown> {
     return this.request(`/webhook/set/${instanceName}`, {
       method: 'POST',
-      body: JSON.stringify({
-        enabled: true,
-        url,
-        events: [...EVOLUTION_WEBHOOK_EVENTS],
-        webhookByEvents: false,
-        webhookBase64: false,
-      }),
+      body: JSON.stringify(buildWebhookPayload(true, url)),
     });
   }
 
   async clearWebhook(instanceName: string): Promise<unknown> {
     return this.request(`/webhook/set/${instanceName}`, {
       method: 'POST',
-      body: JSON.stringify({
-        enabled: false,
-        url: 'https://invalid.local/disabled',
-        events: [...EVOLUTION_WEBHOOK_EVENTS],
-        webhookByEvents: false,
-        webhookBase64: false,
-      }),
+      body: JSON.stringify(buildWebhookPayload(false, 'https://invalid.local/disabled')),
     });
   }
 
