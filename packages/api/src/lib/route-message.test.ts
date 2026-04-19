@@ -163,7 +163,7 @@ describe('routeInboundMessage', () => {
     );
   });
 
-  it('treats whatsapp_evolution shared channels as wa_id identities', async () => {
+  it('ignores mismatched meta.platform when provisioning whatsapp_evolution shared channels', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
@@ -182,7 +182,7 @@ describe('routeInboundMessage', () => {
       externalId: '8619917902815@s.whatsapp.net',
       displayName: 'Alice',
       text: 'hello',
-      meta: {},
+      meta: { platform: 'telegram' },
     });
 
     expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(

@@ -108,8 +108,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   let resolvedChannelCustomerId = channel.customerId ?? null;
 
   if (channel.ownershipKind === 'shared' && channel.agentId) {
+    const sharedChannelProvider = channel.type ?? 'unknown';
     const identityType =
-      platform === 'whatsapp' || platform === 'whatsapp_business' || platform === 'whatsapp_evolution'
+      sharedChannelProvider === 'whatsapp' ||
+      sharedChannelProvider === 'whatsapp_business' ||
+      sharedChannelProvider === 'whatsapp_evolution'
         ? 'wa_id'
         : 'external_id';
     const sharedChannelPayload = {
@@ -124,7 +127,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       channelId: channel.id,
       agentId: channel.agentId,
       displayName,
-      provider: platform,
+      provider: sharedChannelProvider,
       identityType,
       rawIdentityValue: externalId,
       payload: sharedChannelPayload,

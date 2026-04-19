@@ -85,6 +85,44 @@ describe('admin channels route', () => {
     });
   });
 
+  it('accepts whatsapp_evolution as a kind filter', async () => {
+    db.channel.findMany.mockResolvedValue([]);
+    db.channel.count.mockResolvedValue(0);
+
+    const app = new Hono();
+    app.route('/api/admin/channels', adminChannelsRouter);
+
+    const res = await app.request('/api/admin/channels?kind=whatsapp_evolution');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        rows: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      },
+    });
+    expect(db.channel.findMany).toHaveBeenCalledWith({
+      orderBy: { createdAt: 'desc' },
+      select: expect.any(Object),
+      skip: 0,
+      take: 50,
+      where: {
+        ownershipKind: 'customer',
+        type: 'whatsapp_evolution',
+      },
+    });
+    expect(db.channel.count).toHaveBeenCalledWith({
+      where: {
+        ownershipKind: 'customer',
+        type: 'whatsapp_evolution',
+      },
+    });
+  });
+
   it('rejects invalid status and kind filters', async () => {
     const app = new Hono();
     app.route('/api/admin/channels', adminChannelsRouter);

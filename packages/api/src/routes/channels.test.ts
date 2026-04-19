@@ -191,6 +191,64 @@ describe('channels router', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it('creates whatsapp_evolution channels through the generic admin route', async () => {
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      name: 'Evolution WhatsApp',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      name: 'Evolution WhatsApp',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'whatsapp_evolution',
+        name: 'Evolution WhatsApp',
+        config: { phoneNumber: '+15551234567' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        type: 'whatsapp_evolution',
+        name: 'Evolution WhatsApp',
+        status: 'disconnected',
+      },
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'whatsapp_evolution',
+        name: 'Evolution WhatsApp',
+        config: { phoneNumber: '+15551234567' },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        customerId: null,
+      }),
+    });
+  });
+
   it('creates generic admin channels with dormant shared ownership metadata', async () => {
     mocks.create.mockResolvedValueOnce({
       id: 'ch_new',
