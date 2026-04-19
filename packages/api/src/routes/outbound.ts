@@ -81,7 +81,7 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
   }
 
   const record = payload as Record<string, unknown>;
-  const comparable: Prisma.InputJsonObject = {};
+  const comparable: Record<string, string> = {};
   for (const key of [
     'output_id',
     'customer_id',
@@ -100,15 +100,15 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
     }
   }
 
-  return comparable;
+  return comparable as Prisma.InputJsonObject;
 }
 
 function readStoredTarget(
   payload: unknown,
   fallbackChannelId: string,
-): Pick<DeliveryRouteTarget, 'channelId' | 'externalEndUserId'> | null {
+): Pick<DeliveryRouteTarget, 'channelId' | 'externalEndUserId'> | undefined {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return null;
+    return undefined;
   }
 
   const record = payload as Record<string, unknown>;
@@ -120,7 +120,7 @@ function readStoredTarget(
     : '';
 
   if (!channelId || !externalEndUserId) {
-    return null;
+    return undefined;
   }
 
   return { channelId, externalEndUserId };

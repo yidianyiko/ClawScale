@@ -109,6 +109,8 @@ function mapCustomerAuthError(error: unknown): {
       return { status: 400, body: { ok: false, error: error.code } };
     case 'account_not_found':
       return { status: 404, body: { ok: false, error: error.code } };
+    case 'claim_not_allowed':
+      return { status: 409, body: { ok: false, error: error.code } };
   }
 }
 

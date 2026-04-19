@@ -22,6 +22,7 @@ import { resolveCokeAccountAccess } from './coke-account-access.js';
 import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
 import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
+import type { Prisma } from '@prisma/client';
 import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
 
 export interface Attachment {
@@ -109,6 +110,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   if (channel.ownershipKind === 'shared' && channel.agentId) {
     const identityType =
       platform === 'whatsapp' || platform === 'whatsapp_business' ? 'wa_id' : 'external_id';
+    const sharedChannelPayload = {
+      externalId,
+      ...(displayName ? { displayName } : {}),
+      text,
+      ...(attachments ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
+      ...(meta ? { meta: meta as Prisma.InputJsonValue } : {}),
+    } satisfies Prisma.InputJsonObject;
+
     const sharedChannelProvisioning = await provisionSharedChannelCustomer({
       channelId: channel.id,
       agentId: channel.agentId,
@@ -116,13 +125,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       provider: platform,
       identityType,
       rawIdentityValue: externalId,
-      payload: {
-        externalId,
-        displayName,
-        text,
-        ...(attachments ? { attachments } : {}),
-        ...(meta ? { meta } : {}),
-      },
+      payload: sharedChannelPayload,
     });
 
     if (sharedChannelProvisioning.parked || sharedChannelProvisioning.provisionStatus !== 'ready') {

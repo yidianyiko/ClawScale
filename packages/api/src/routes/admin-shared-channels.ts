@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
@@ -32,7 +33,7 @@ const sharedChannelSelect = {
   config: true,
   createdAt: true,
   updatedAt: true,
-  agent: {
+  sharedAgent: {
     select: {
       id: true,
       slug: true,
@@ -98,7 +99,8 @@ function serializeSharedChannel(
     config?: unknown;
     createdAt: Date;
     updatedAt: Date;
-    agent: { id: string; slug: string; name: string } | null;
+    sharedAgent: { id: string; slug: string; name: string } | null;
+    agent?: { id: string; slug: string; name: string } | null;
   },
   options?: { includeConfig?: boolean },
 ) {
@@ -109,7 +111,7 @@ function serializeSharedChannel(
     status: row.status,
     ownershipKind: row.ownershipKind,
     customerId: row.customerId,
-    agent: row.agent,
+    agent: row.sharedAgent ?? row.agent ?? null,
     ...(options?.includeConfig ? { config: row.config ?? {} } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -199,24 +201,15 @@ export const adminSharedChannelsRouter = new Hono()
     const created = await db.channel.create({
       data: {
         id: generateId('ch'),
-        tenantId: getPlatformTenantId(),
+        tenant: { connect: { id: getPlatformTenantId() } },
         type: parsedBody.data.kind,
         name: parsedBody.data.name,
         status: 'disconnected',
         ownershipKind: 'shared',
-        customerId: null,
-        agentId: parsedBody.data.agentId,
-        config: parsedBody.data.config,
+        sharedAgent: { connect: { id: parsedBody.data.agentId } },
+        config: parsedBody.data.config as Prisma.InputJsonValue,
       },
-      include: {
-        agent: {
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-          },
-        },
-      },
+      select: sharedChannelSelect,
     });
 
     return c.json(
@@ -249,18 +242,14 @@ export const adminSharedChannelsRouter = new Hono()
       where: { id: existing.id },
       data: {
         ...(parsedBody.data.name ? { name: parsedBody.data.name } : {}),
-        ...(parsedBody.data.agentId ? { agentId: parsedBody.data.agentId } : {}),
-        ...(parsedBody.data.config ? { config: parsedBody.data.config } : {}),
+        ...(parsedBody.data.agentId
+          ? { sharedAgent: { connect: { id: parsedBody.data.agentId } } }
+          : {}),
+        ...(parsedBody.data.config
+          ? { config: parsedBody.data.config as Prisma.InputJsonValue }
+          : {}),
       },
-      include: {
-        agent: {
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-          },
-        },
-      },
+      select: sharedChannelSelect,
     });
 
     return c.json({

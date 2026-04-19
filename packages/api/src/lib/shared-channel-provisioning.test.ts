@@ -91,7 +91,11 @@ describe('provisionSharedChannelCustomer', () => {
         provider: 'whatsapp_business',
         identityType: 'wa_id',
         identityValue: '14155550100',
-        firstSeenChannelId: 'ch_1',
+        firstSeenChannel: {
+          connect: {
+            id: 'ch_1',
+          },
+        },
       }),
     });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -179,7 +183,12 @@ describe('provisionSharedChannelCustomer', () => {
         provider: 'whatsapp_business',
         identityType: 'wa_id',
         identityValue: '14155550100',
-        firstSeenChannelId: 'ch_1',
+        firstSeenChannel: {
+          connect: {
+            id: 'ch_1',
+          },
+        },
+        lastSeenAt: expect.any(Date),
         customer: {
           create: expect.objectContaining({
             id: expect.stringMatching(/^ck_/),

@@ -86,7 +86,7 @@ const TOUCHPOINT_CHECKS: TouchpointCheck[] = [
 ];
 
 function listScannedFiles(): string[] {
-  const files = [...REQUIRED_AGENT_FILES];
+  const files: string[] = [...REQUIRED_AGENT_FILES];
 
   for (const relativeDir of DIRECTORY_SCANS) {
     const absoluteDir = path.join(repoRoot, relativeDir);

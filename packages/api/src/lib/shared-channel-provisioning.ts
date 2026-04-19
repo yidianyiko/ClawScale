@@ -1,4 +1,10 @@
-import type { Prisma } from '@prisma/client';
+import {
+  AgentBindingProvisionStatus,
+  CustomerKind,
+  IdentityClaimStatus,
+  MembershipRole,
+  type Prisma,
+} from '@prisma/client';
 
 import { db } from '../db/index.js';
 import {
@@ -224,22 +230,22 @@ export async function provisionSharedChannelCustomer(
           provider: identity.provider,
           identityType: identity.identityType,
           identityValue: identity.identityValue,
-          firstSeenChannelId: input.channelId,
+          firstSeenChannel: { connect: { id: input.channelId } },
           lastSeenAt: now,
           customer: {
             create: {
               id: customerId,
-              kind: 'personal',
+              kind: CustomerKind.personal,
               displayName,
               memberships: {
                 create: {
                   id: membershipId,
-                  role: 'owner',
+                  role: MembershipRole.owner,
                   identity: {
                     create: {
                       id: identityId,
                       displayName,
-                      claimStatus: 'unclaimed',
+                      claimStatus: IdentityClaimStatus.unclaimed,
                     },
                   },
                 },
@@ -247,7 +253,7 @@ export async function provisionSharedChannelCustomer(
               agentBindings: {
                 create: {
                   agentId: input.agentId,
-                  provisionStatus: 'pending',
+                  provisionStatus: AgentBindingProvisionStatus.pending,
                   provisionAttempts: 0,
                   provisionLastError: null,
                   provisionUpdatedAt: now,

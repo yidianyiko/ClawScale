@@ -249,26 +249,17 @@ describe('admin shared channels route', () => {
     expect(db.channel.create).toHaveBeenCalledWith({
       data: {
         id: expect.stringMatching(/^ch_/),
-        tenantId: 'ten_1',
+        tenant: { connect: { id: 'ten_1' } },
         name: 'Primary WhatsApp',
         type: 'whatsapp',
-        agentId: 'agent_coke',
+        sharedAgent: { connect: { id: 'agent_coke' } },
         config: {
           accessToken: 'secret',
         },
         status: 'disconnected',
         ownershipKind: 'shared',
-        customerId: null,
       },
-      include: {
-        agent: {
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-          },
-        },
-      },
+      select: expect.any(Object),
     });
   });
 
@@ -356,20 +347,12 @@ describe('admin shared channels route', () => {
       where: { id: 'ch_1' },
       data: {
         name: 'Primary WhatsApp',
-        agentId: 'agent_2',
+        sharedAgent: { connect: { id: 'agent_2' } },
         config: {
           accessToken: 'updated',
         },
       },
-      include: {
-        agent: {
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-          },
-        },
-      },
+      select: expect.any(Object),
     });
   });
 
