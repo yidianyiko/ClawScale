@@ -11,17 +11,100 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import * as lineSdk from '@line/bot-sdk';
+import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
-import { verifyWebhook, handleWABusinessWebhook, getWABusinessConfig } from '../adapters/whatsapp-business.js';
+import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
 
 const inboundSchema = z.object({
-  externalId:  z.string().min(1),
+  externalId: z.string().min(1),
   displayName: z.string().optional(),
-  text:        z.string().min(1),
-  meta:        z.record(z.unknown()).default({}),
+  text: z.string().min(1),
+  meta: z.record(z.unknown()).default({}),
 });
+
+interface EvolutionWebhookData {
+  key?: {
+    remoteJid?: string;
+    fromMe?: boolean;
+    id?: string;
+  };
+  pushName?: string;
+  message?: {
+    conversation?: string;
+    extendedTextMessage?: {
+      text?: string;
+    };
+  };
+  messageType?: string;
+}
+
+interface EvolutionWebhookConfigSnapshot {
+  webhookToken: string | null;
+  instanceName: string | null;
+}
+
+function readEvolutionWebhookData(payload: unknown): EvolutionWebhookData | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const data = (payload as { data?: unknown }).data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+
+  return data as EvolutionWebhookData;
+}
+
+function readEvolutionWebhookConfig(config: unknown): EvolutionWebhookConfigSnapshot {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return {
+      webhookToken: null,
+      instanceName: null,
+    };
+  }
+
+  const record = config as Record<string, unknown>;
+  const webhookToken =
+    typeof record['webhookToken'] === 'string' && record['webhookToken'].trim()
+      ? record['webhookToken'].trim()
+      : null;
+  const instanceName =
+    typeof record['instanceName'] === 'string' && record['instanceName'].trim()
+      ? record['instanceName'].trim()
+      : null;
+
+  return {
+    webhookToken,
+    instanceName,
+  };
+}
+
+function shouldIgnoreEvolutionRemoteJid(remoteJid: string): boolean {
+  return (
+    remoteJid === '' ||
+    remoteJid.endsWith('@g.us') ||
+    remoteJid.endsWith('@broadcast') ||
+    remoteJid === 'status@broadcast'
+  );
+}
+
+function normalizeEvolutionExternalId(remoteJid: string): string {
+  const digitsOnly = remoteJid.replace(/\D+/g, '');
+  return digitsOnly || remoteJid;
+}
+
+function readEvolutionText(data: EvolutionWebhookData): string | null {
+  const conversation = data.message?.conversation?.trim();
+  if (conversation) {
+    return conversation;
+  }
+
+  const extendedText = data.message?.extendedTextMessage?.text?.trim();
+  return extendedText || null;
+}
 
 export const gatewayRouter = new Hono()
 
@@ -49,6 +132,68 @@ export const gatewayRouter = new Hono()
     );
 
     // Always return 200 quickly so Meta doesn't retry
+    return c.json({ ok: true });
+  })
+
+  // ── POST /gateway/evolution/whatsapp/:channelId/:token ─────────────────────
+  // Evolution sends shared-channel WhatsApp events here.
+  .post('/evolution/whatsapp/:channelId/:token', async (c) => {
+    const channelId = c.req.param('channelId');
+    const token = c.req.param('token');
+
+    const channel = await db.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        config: true,
+      },
+    });
+
+    if (!channel || channel.type !== 'whatsapp_evolution' || channel.status !== 'connected') {
+      return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
+    }
+
+    const channelConfig = readEvolutionWebhookConfig(channel.config);
+    if (!channelConfig.webhookToken || token !== channelConfig.webhookToken) {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const body = await c.req.json().catch(() => null);
+    const data = readEvolutionWebhookData(body);
+    if (!data) {
+      return c.json({ ok: true });
+    }
+
+    const remoteJid = data.key?.remoteJid?.trim() ?? '';
+    if (data.key?.fromMe || shouldIgnoreEvolutionRemoteJid(remoteJid)) {
+      return c.json({ ok: true });
+    }
+
+    const text = readEvolutionText(data);
+    if (!text) {
+      return c.json({ ok: true });
+    }
+
+    try {
+      await routeInboundMessage({
+        channelId,
+        externalId: normalizeEvolutionExternalId(remoteJid),
+        displayName: data.pushName,
+        text,
+        meta: {
+          platform: 'whatsapp_evolution',
+          instanceName: channelConfig.instanceName,
+          messageId: data.key?.id,
+          messageType: data.messageType,
+          remoteJid,
+        },
+      });
+    } catch (err) {
+      console.error(`[evolution:${channelId}] Webhook handling error:`, err);
+    }
+
     return c.json({ ok: true });
   })
 
@@ -98,10 +243,10 @@ export const gatewayRouter = new Hono()
 
     const result = await routeInboundMessage({
       channelId,
-      externalId:  body.externalId,
+      externalId: body.externalId,
       displayName: body.displayName,
-      text:        body.text,
-      meta:        body.meta,
+      text: body.text,
+      meta: body.meta,
     });
 
     if (!result) return c.json({ ok: false, error: 'Message could not be routed' }, 400);
