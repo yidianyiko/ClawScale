@@ -87,7 +87,7 @@ describe('AdminSharedChannelsPage', () => {
     container.remove();
   });
 
-  it('renders shared channels and creates a new one', async () => {
+  it('renders shared channels and routes detail navigation through the static-export-safe detail page', async () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="en">
@@ -100,7 +100,7 @@ describe('AdminSharedChannelsPage', () => {
       expect(vi.mocked(adminApi.get)).toHaveBeenCalledWith('/api/admin/shared-channels?limit=50&offset=0');
       expect(container.textContent).toContain('Shared channels');
       expect(container.textContent).toContain('Primary WhatsApp');
-      expect(container.querySelector('a[href="/admin/shared-channels/ch_1"]')).toBeTruthy();
+      expect(container.querySelector('a[href="/admin/shared-channels/detail?id=ch_1"]')).toBeTruthy();
     });
 
     (container.querySelector('button[data-testid="open-create-shared-channel"]') as HTMLButtonElement).click();
@@ -130,6 +130,6 @@ describe('AdminSharedChannelsPage', () => {
         token: 'secret',
       },
     });
-    expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/ch_new');
+    expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_new');
   });
 });

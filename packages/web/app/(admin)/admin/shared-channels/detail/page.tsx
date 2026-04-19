@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale } from '../../../../../components/locale-provider';
 import {
   adminApi,
@@ -29,11 +29,11 @@ function parseConfig(value: string): Record<string, unknown> {
 }
 
 export default function AdminSharedChannelDetailPage() {
-  const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale } = useLocale();
   const copy = getAdminCopy(locale);
-  const id = params.id;
+  const id = searchParams.get('id') ?? '';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [retiring, setRetiring] = useState(false);
@@ -47,6 +47,13 @@ export default function AdminSharedChannelDetailPage() {
     let active = true;
 
     async function loadDetail() {
+      if (!id) {
+        setError('missing_id');
+        setRecord(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError('');
       const response = await adminApi.get<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id);
