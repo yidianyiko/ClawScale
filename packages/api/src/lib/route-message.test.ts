@@ -875,6 +875,52 @@ describe('routeInboundMessage', () => {
     );
   });
 
+  it('auto-selects the default backend for an existing shared-channel end user with no active backends', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'whatsapp_evolution',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: '8617807028761',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [],
+    });
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: '8617807028761',
+      displayName: 'Alice',
+      text: '继续聊',
+      meta: { platform: 'whatsapp_evolution' },
+    });
+
+    expect(db.endUserBackend.upsert).toHaveBeenCalledWith({
+      where: { endUserId_backendId: { endUserId: 'eu_1', backendId: 'ab_1' } },
+      create: { endUserId: 'eu_1', backendId: 'ab_1' },
+      update: {},
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        reply: 'bridge ok',
+      }),
+    );
+  });
+
   it('uses the current conversation directly for ordinary inbound messages', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',

@@ -817,11 +817,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     return routeToBackends(activeBackends);
   }
 
-  // No active backends — personal channels should always recover onto the
-  // tenant default backend, even if the EndUser record was created before the
-  // backend was provisioned. Shared channels keep the legacy "brand-new only"
-  // behavior.
-  if (isNewUser || personalChannelOwnership) {
+  // No active backends — recover onto the tenant default backend for brand-new
+  // users, personal channels, and shared channels whose EndUser row was
+  // created before the tenant backend existed.
+  if (isNewUser || personalChannelOwnership || channel.ownershipKind === 'shared') {
     const defaultBackend = allBackends.find((b) => b.isDefault);
     const autoSelect = defaultBackend ?? (allBackends.length === 1 ? allBackends[0] : null);
 
