@@ -15,6 +15,10 @@ import { formatDateTime } from '../../../../lib/utils';
 const PAGE_SIZE = 50;
 const DEFAULT_KIND = 'whatsapp';
 
+function buildSharedChannelDetailHref(id: string): string {
+  return '/admin/shared-channels/detail?id=' + encodeURIComponent(id);
+}
+
 function parseConfig(value: string): Record<string, unknown> {
   if (!value.trim()) {
     return {};
@@ -98,7 +102,7 @@ export default function AdminSharedChannelsPage() {
         return;
       }
 
-      router.push('/admin/shared-channels/' + response.data.id);
+      router.push(buildSharedChannelDetailHref(response.data.id));
     } catch {
       setError('invalid_config_json');
     } finally {
@@ -236,7 +240,7 @@ export default function AdminSharedChannelsPage() {
                 rows.map((row) => (
                   <tr key={row.id}>
                     <td className="px-5 py-3.5 text-gray-900">
-                      <a href={'/admin/shared-channels/' + row.id} className="font-medium underline underline-offset-4">
+                      <a href={buildSharedChannelDetailHref(row.id)} className="font-medium underline underline-offset-4">
                         {row.name}
                       </a>
                     </td>
