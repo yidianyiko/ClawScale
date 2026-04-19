@@ -20,7 +20,7 @@ import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'wechat_personal',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal',
 ] as const;
 
 const createSchema = z.object({

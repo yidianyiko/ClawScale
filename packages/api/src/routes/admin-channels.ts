@@ -18,6 +18,7 @@ const CHANNEL_KIND_VALUES = [
   'web',
   'wechat_work',
   'whatsapp_business',
+  'whatsapp_evolution',
   'wechat_personal',
 ] as const;
 

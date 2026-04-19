@@ -20,6 +20,20 @@ describe('external identity helpers', () => {
     });
   });
 
+  it('normalizes whatsapp_evolution wa_id values to digits only', () => {
+    expect(
+      normalizeExternalIdentity({
+        provider: 'whatsapp_evolution',
+        identityType: 'wa_id',
+        rawValue: '8619917902815@s.whatsapp.net',
+      }),
+    ).toEqual({
+      provider: 'whatsapp_evolution',
+      identityType: 'wa_id',
+      identityValue: '8619917902815',
+    });
+  });
+
   it('keeps non-WhatsApp identities trimmed without phone-number rewriting', () => {
     expect(
       normalizeExternalIdentity({

@@ -163,6 +163,39 @@ describe('routeInboundMessage', () => {
     );
   });
 
+  it('treats whatsapp_evolution shared channels as wa_id identities', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'whatsapp_evolution',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: '8619917902815@s.whatsapp.net',
+      displayName: 'Alice',
+      text: 'hello',
+      meta: {},
+    });
+
+    expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        provider: 'whatsapp_evolution',
+        identityType: 'wa_id',
+        rawIdentityValue: '8619917902815@s.whatsapp.net',
+      }),
+    );
+  });
+
   it('parks shared-channel inbound before legacy end-user routing when provisioning is not ready', async () => {
     provisionSharedChannelCustomer.mockResolvedValueOnce({
       customerId: 'ck_shared_1',

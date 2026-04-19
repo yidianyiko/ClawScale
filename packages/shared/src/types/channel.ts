@@ -4,6 +4,7 @@
 export type ChannelType =
   | 'whatsapp'
   | 'whatsapp_business'
+  | 'whatsapp_evolution'
   | 'telegram'
   | 'slack'
   | 'discord'
@@ -55,6 +56,10 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
       { key: 'accessToken', label: 'Access Token', type: 'password', required: true, placeholder: 'EAAxxxxxxx...' },
       { key: 'verifyToken', label: 'Webhook Verify Token', type: 'text', required: true, placeholder: 'any-secret-string-you-choose' },
     ],
+  },
+  whatsapp_evolution: {
+    label: 'WhatsApp Evolution',
+    fields: [],
   },
   telegram: {
     label: 'Telegram Bot',

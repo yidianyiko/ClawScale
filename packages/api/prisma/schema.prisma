@@ -42,6 +42,7 @@ enum ChannelType {
   web
   wechat_work
   whatsapp_business
+  whatsapp_evolution
   wechat_personal
 }
 

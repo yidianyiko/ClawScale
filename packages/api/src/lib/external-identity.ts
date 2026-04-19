@@ -14,7 +14,7 @@ export interface ExternalIdentityUniqueWhere {
   provider_identityType_identityValue: NormalizedExternalIdentity;
 }
 
-const WHATSAPP_PROVIDERS = new Set(['whatsapp', 'whatsapp_business']);
+const WHATSAPP_PROVIDERS = new Set(['whatsapp', 'whatsapp_business', 'whatsapp_evolution']);
 
 function requireNonBlank(value: string, fieldName: string): string {
   const trimmed = value.trim();
