@@ -56,6 +56,7 @@ export type AdminSharedChannelRow = {
   status: string;
   ownershipKind: string;
   customerId: string | null;
+  hasWebhookToken?: boolean;
   agent: {
     id: string;
     slug: string;
