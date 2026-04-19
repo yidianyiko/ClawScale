@@ -3,7 +3,6 @@ import { generateId } from './id.js';
 import {
   DEFAULT_COKE_AGENT_ID,
   buildLegacyAgentBindingSeed,
-  buildLegacyCustomerGraph,
 } from './platformization-migration.js';
 
 export type ClawscaleUserBindingErrorCode =
@@ -67,15 +66,6 @@ export interface UnifiedConversationIdsInput {
   linkedTo: string | null;
 }
 
-type CokeAccountProvisioningRecord = {
-  id: string;
-  email: string;
-  displayName: string;
-  passwordHash: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 type CustomerCompatibilityProvisioningRecord = {
   customer: {
     id: string;
@@ -94,13 +84,8 @@ type CustomerCompatibilityProvisioningRecord = {
   role: 'owner' | 'member' | 'viewer';
 };
 
-type CokeAccountLookupClient = Pick<typeof db, 'cokeAccount'>;
 type CustomerOwnershipLookupClient = Pick<typeof db, 'membership'>;
-type PlatformizationGraphClient = Pick<
-  typeof db,
-  'agentBinding' | 'customer' | 'identity' | 'membership'
->;
-type CustomerCompatibilityClient = Pick<typeof db, 'agentBinding' | 'cokeAccount'>;
+type CustomerCompatibilityClient = Pick<typeof db, 'agentBinding'>;
 
 function buildPersonalTenantSlug(cokeAccountId: string): string {
   return `personal-${cokeAccountId.toLowerCase()}`;
@@ -111,16 +96,10 @@ function buildPersonalTenantName(displayName?: string | null): string {
   return trimmed ? `${trimmed}'s Workspace` : 'Personal Workspace';
 }
 
-function buildPlatformizationConflictEmail(cokeAccountId: string): string {
-  return `platformization-conflict+${cokeAccountId.toLowerCase()}@invalid.local`;
-}
-
-function normalizeProvisioningEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
 function resolvePersonalCokeBridgeBackendConfig() {
-  const baseUrl = process.env['COKE_BRIDGE_INBOUND_URL']?.trim() || 'http://127.0.0.1:8090/bridge/inbound';
+  const baseUrl =
+    process.env['COKE_BRIDGE_INBOUND_URL']?.trim() ||
+    'http://127.0.0.1:8090/bridge/inbound';
   const apiKey = process.env['COKE_BRIDGE_API_KEY']?.trim() ?? '';
 
   return {
@@ -196,30 +175,8 @@ function isUniqueConstraint(error: unknown, fieldName: string): boolean {
   return target === fieldName;
 }
 
-async function getCokeAccountForProvisioning(
-  client: CokeAccountLookupClient,
-  cokeAccountId: string,
-): Promise<CokeAccountProvisioningRecord> {
-  const account = await client.cokeAccount.findUnique({
-    where: { id: cokeAccountId },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      passwordHash: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
-
-  if (!account) {
-    throw new ClawscaleUserBindingError(
-      'coke_account_not_found',
-      'Coke account not found',
-    );
-  }
-
-  return account;
+function isCustomerCompatibilityId(value: string): boolean {
+  return value.startsWith('ck_');
 }
 
 async function getCustomerOwnerForProvisioning(
@@ -263,31 +220,10 @@ async function getCustomerOwnerForProvisioning(
   return membership;
 }
 
-async function ensureCompatibilityCokeAccount(
+async function ensureCustomerCompatibilityBinding(
   client: CustomerCompatibilityClient,
   ownership: CustomerCompatibilityProvisioningRecord,
 ) {
-  const normalizedEmail = normalizeProvisioningEmail(ownership.identity.email!);
-
-  await client.cokeAccount.upsert({
-    where: { id: ownership.customer.id },
-    create: {
-      id: ownership.customer.id,
-      email: normalizedEmail,
-      passwordHash: ownership.identity.passwordHash!,
-      displayName: ownership.customer.displayName,
-      emailVerified: ownership.identity.claimStatus === 'active',
-      status: 'normal',
-    },
-    update: {
-      email: normalizedEmail,
-      passwordHash: ownership.identity.passwordHash!,
-      displayName: ownership.customer.displayName,
-      emailVerified: ownership.identity.claimStatus === 'active',
-      status: 'normal',
-    },
-  });
-
   const agentBindingSeed = buildLegacyAgentBindingSeed({
     customerId: ownership.customer.id,
     agentId: DEFAULT_COKE_AGENT_ID,
@@ -305,214 +241,32 @@ async function ensureCompatibilityCokeAccount(
   });
 }
 
-async function ensurePlatformizationShadowGraph(
-  client: PlatformizationGraphClient,
-  account: CokeAccountProvisioningRecord,
-) {
-  const graph = buildLegacyCustomerGraph({
-    cokeAccountId: account.id,
-    email: account.email,
-    displayName: account.displayName,
-    createdAt: account.createdAt,
-    updatedAt: account.updatedAt,
-  });
-  const agentBindingSeed = buildLegacyAgentBindingSeed({
-    customerId: graph.customer.id,
-    agentId: DEFAULT_COKE_AGENT_ID,
-  });
-
-  try {
-    await client.identity.upsert({
-      where: { id: graph.identity.id },
-      create: {
-        ...graph.identity,
-        passwordHash: account.passwordHash ?? null,
-      },
-      update: {
-        email: graph.identity.email,
-        displayName: graph.identity.displayName,
-        passwordHash: account.passwordHash ?? null,
-        claimStatus: graph.identity.claimStatus,
-        updatedAt: account.updatedAt,
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConstraint(error, 'email')) {
-      throw error;
-    }
-
-    console.warn(
-      '[clawscale-user] compatibility Identity shadow write skipped due to email collision',
-      {
-        cokeAccountId: account.id,
-        email: graph.identity.email,
-        fallbackEmail: buildPlatformizationConflictEmail(account.id),
-        error,
-      },
-    );
-    await client.identity.upsert({
-      where: { id: graph.identity.id },
-      create: {
-        ...graph.identity,
-        email: buildPlatformizationConflictEmail(account.id),
-        passwordHash: account.passwordHash ?? null,
-      },
-      update: {
-        email: buildPlatformizationConflictEmail(account.id),
-        displayName: graph.identity.displayName,
-        passwordHash: account.passwordHash ?? null,
-        claimStatus: graph.identity.claimStatus,
-        updatedAt: account.updatedAt,
-      },
-    });
-  }
-
-  await client.customer.upsert({
-    where: { id: graph.customer.id },
-    create: graph.customer,
-    update: {
-      kind: graph.customer.kind,
-      displayName: graph.customer.displayName,
-      updatedAt: account.updatedAt,
-    },
-  });
-
-  await client.membership.upsert({
-    where: { id: graph.membership.id },
-    create: graph.membership,
-    update: {
-      identityId: graph.membership.identityId,
-      customerId: graph.membership.customerId,
-      role: graph.membership.role,
-      updatedAt: account.updatedAt,
-    },
-  });
-
-  await client.agentBinding.upsert({
-    where: { customerId: graph.customer.id },
-    create: agentBindingSeed,
-    update: {
-      agentId: agentBindingSeed.agentId,
-      provisionStatus: agentBindingSeed.provisionStatus,
-      provisionAttempts: agentBindingSeed.provisionAttempts,
-      provisionLastError: agentBindingSeed.provisionLastError,
-    },
-  });
-}
-
 export async function ensureClawscaleUserForCokeAccount(
   input: EnsureClawscaleUserForCokeAccountInput,
 ): Promise<EnsureClawscaleUserForCokeAccountResult> {
-  const account = await getCokeAccountForProvisioning(db, input.cokeAccountId);
-
-  const existing = await db.clawscaleUser.findUnique({
-    where: { cokeAccountId: input.cokeAccountId },
-    select: { id: true, tenantId: true },
-  });
-
-  if (existing) {
-    await db.$transaction(async (tx) => {
-      await ensurePlatformizationShadowGraph(tx, account);
-    });
-    await ensurePersonalCokeBridgeBackend(existing.tenantId);
-    return {
-      tenantId: existing.tenantId,
-      clawscaleUserId: existing.id,
-      created: false,
-      ready: true,
-    };
+  if (!isCustomerCompatibilityId(input.cokeAccountId)) {
+    throw new ClawscaleUserBindingError(
+      'coke_account_not_found',
+      'Coke account not found',
+    );
   }
 
   try {
-    return await db.$transaction(async (tx) => {
-      const cokeAccount = await getCokeAccountForProvisioning(tx, input.cokeAccountId);
-
-      const raced = await tx.clawscaleUser.findUnique({
-        where: { cokeAccountId: input.cokeAccountId },
-        select: { id: true, tenantId: true },
-      });
-
-      if (raced) {
-        await ensurePlatformizationShadowGraph(tx, cokeAccount);
-        await ensurePersonalCokeBridgeBackend(raced.tenantId);
-        return {
-          tenantId: raced.tenantId,
-          clawscaleUserId: raced.id,
-          created: false,
-          ready: true,
-        };
-      }
-
-      const tenantId = generateId('tnt');
-      const clawscaleUserId = generateId('csu');
-
-      await tx.tenant.create({
-        data: {
-          id: tenantId,
-          slug: buildPersonalTenantSlug(input.cokeAccountId),
-          name: buildPersonalTenantName(input.displayName),
-          settings: {
-            ...defaultPersonalTenantSettings,
-            kind: 'personal',
-            ownerCokeAccountId: input.cokeAccountId,
-            autoCreated: true,
-          },
-        },
-      });
-
-      await tx.clawscaleUser.create({
-        data: {
-          id: clawscaleUserId,
-          tenantId,
-          cokeAccountId: input.cokeAccountId,
-        },
-      });
-
-      await tx.aiBackend.create({
-        data: {
-          id: generateId('aib'),
-          tenantId,
-          name: personalCokeBridgeBackendName,
-          type: 'custom',
-          config: resolvePersonalCokeBridgeBackendConfig(),
-          isActive: true,
-          isDefault: true,
-        },
-      });
-
-      await ensurePlatformizationShadowGraph(tx, cokeAccount);
-
-      return {
-        tenantId,
-        clawscaleUserId,
-        created: true,
-        ready: true,
-      };
+    return await ensureClawscaleUserForCustomer({
+      customerId: input.cokeAccountId,
     });
   } catch (error) {
-    if (!isUniqueConstraint(error, 'slug') && !isUniqueConstraint(error, 'cokeAccountId')) {
-      throw error;
+    if (
+      error instanceof ClawscaleUserBindingError &&
+      error.code === 'customer_not_found'
+    ) {
+      throw new ClawscaleUserBindingError(
+        'coke_account_not_found',
+        'Coke account not found',
+      );
     }
 
-    const raced = await db.clawscaleUser.findUnique({
-      where: { cokeAccountId: input.cokeAccountId },
-      select: { id: true, tenantId: true },
-    });
-    if (!raced) {
-      throw error;
-    }
-
-    await db.$transaction(async (tx) => {
-      await ensurePlatformizationShadowGraph(tx, account);
-    });
-    await ensurePersonalCokeBridgeBackend(raced.tenantId);
-
-    return {
-      tenantId: raced.tenantId,
-      clawscaleUserId: raced.id,
-      created: false,
-      ready: true,
-    };
+    throw error;
   }
 }
 
@@ -529,7 +283,7 @@ export async function ensureClawscaleUserForCustomer(
   if (existing) {
     await db.$transaction(async (tx) => {
       const currentOwnership = await getCustomerOwnerForProvisioning(tx, input.customerId);
-      await ensureCompatibilityCokeAccount(tx, currentOwnership);
+      await ensureCustomerCompatibilityBinding(tx, currentOwnership);
     });
     await ensurePersonalCokeBridgeBackend(existing.tenantId);
     return {
@@ -543,7 +297,7 @@ export async function ensureClawscaleUserForCustomer(
   try {
     return await db.$transaction(async (tx) => {
       const currentOwnership = await getCustomerOwnerForProvisioning(tx, input.customerId);
-      await ensureCompatibilityCokeAccount(tx, currentOwnership);
+      await ensureCustomerCompatibilityBinding(tx, currentOwnership);
 
       const raced = await tx.clawscaleUser.findUnique({
         where: { cokeAccountId: input.customerId },
@@ -619,7 +373,7 @@ export async function ensureClawscaleUserForCustomer(
 
     await db.$transaction(async (tx) => {
       const currentOwnership = await getCustomerOwnerForProvisioning(tx, input.customerId);
-      await ensureCompatibilityCokeAccount(tx, currentOwnership);
+      await ensureCustomerCompatibilityBinding(tx, currentOwnership);
     });
     await ensurePersonalCokeBridgeBackend(raced.tenantId);
 
@@ -680,16 +434,16 @@ export async function bindEndUserToCokeAccount(
       where: {
         id: endUser.id,
         tenantId: input.tenantId,
-        OR: [
-          { clawscaleUserId: null },
-          { clawscaleUserId: user.id },
-        ],
+        OR: [{ clawscaleUserId: null }, { clawscaleUserId: user.id }],
       },
       data: { clawscaleUserId: user.id },
     });
 
     if (updated.count !== 1) {
-      throw new ClawscaleUserBindingError('end_user_already_bound', 'End user is already bound to another ClawscaleUser');
+      throw new ClawscaleUserBindingError(
+        'end_user_already_bound',
+        'End user is already bound to another ClawscaleUser',
+      );
     }
 
     return {
@@ -728,10 +482,7 @@ export async function getUnifiedConversationIds(
   const linkedUsers = await db.endUser.findMany({
     where: {
       tenantId: input.tenantId,
-      OR: [
-        { id: primaryId },
-        { linkedTo: primaryId },
-      ],
+      OR: [{ id: primaryId }, { linkedTo: primaryId }],
     },
     select: { id: true },
   });

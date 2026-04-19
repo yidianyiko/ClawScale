@@ -59,7 +59,7 @@ describe('userWechatChannelRouter', () => {
     mocks.getWeixinRestoreState.mockReturnValue('ready');
   });
 
-  it('allows bridge api-key callers to resolve and create the account-owned channel', async () => {
+  it('allows bridge api-key callers to resolve and create the compatibility-owned channel', async () => {
     process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
     mocks.ensureClawscaleUserForCokeAccount.mockResolvedValueOnce({
       tenantId: 'ten_bridge',
@@ -80,12 +80,12 @@ describe('userWechatChannelRouter', () => {
         authorization: 'Bearer secret',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ account_id: 'acct_1' }),
+      body: JSON.stringify({ account_id: 'ck_customer_1' }),
     });
 
     expect(res.status).toBe(200);
     expect(mocks.ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
-      cokeAccountId: 'acct_1',
+      cokeAccountId: 'ck_customer_1',
     });
     expect(mocks.createOrReusePersonalWeChatChannel).toHaveBeenCalledWith({
       tenantId: 'ten_bridge',
@@ -102,7 +102,7 @@ describe('userWechatChannelRouter', () => {
     });
   });
 
-  it('returns 404 when bridge api-key callers reference a missing coke account', async () => {
+  it('returns 404 when bridge api-key callers reference a missing compatibility id', async () => {
     process.env.CLAWSCALE_IDENTITY_API_KEY = 'secret';
     mocks.ensureClawscaleUserForCokeAccount.mockRejectedValueOnce({
       code: 'coke_account_not_found',
@@ -118,7 +118,7 @@ describe('userWechatChannelRouter', () => {
         authorization: 'Bearer secret',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ account_id: 'acct_missing' }),
+      body: JSON.stringify({ account_id: 'ck_missing' }),
     });
 
     expect(res.status).toBe(404);

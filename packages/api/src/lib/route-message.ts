@@ -173,17 +173,34 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.clawscaleUserId ?? endUser.clawscaleUserId ?? null;
   const resolvedCokeAccountId =
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
-  const resolvedCokeAccount = resolvedCokeAccountId
-    ? await db.cokeAccount.findUnique({
-        where: { id: resolvedCokeAccountId },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          emailVerified: true,
-          status: true,
+  const resolvedCokeAccountOwner = resolvedCokeAccountId
+    ? await db.membership.findFirst({
+        where: {
+          customerId: resolvedCokeAccountId,
+          role: 'owner',
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+          identity: {
+            select: {
+              claimStatus: true,
+            },
+          },
         },
       })
+    : null;
+  const resolvedCokeAccount = resolvedCokeAccountId && resolvedCokeAccountOwner
+    ? {
+        id: resolvedCokeAccountId,
+        displayName: resolvedCokeAccountOwner.customer.displayName,
+        emailVerified: resolvedCokeAccountOwner.identity.claimStatus === 'active',
+        status: 'normal' as const,
+      }
     : null;
   const resolvedCokeAccountAccess = resolvedCokeAccount
     ? await resolveCokeAccountAccess({

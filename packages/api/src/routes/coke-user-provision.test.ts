@@ -34,7 +34,7 @@ describe('coke-user-provision router', () => {
     expect(ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
   });
 
-  it('returns the expected success payload', async () => {
+  it('returns the expected success payload for customer_id compatibility inputs', async () => {
     vi.mocked(ensureClawscaleUserForCokeAccount).mockResolvedValue({
       tenantId: 'ten_1',
       clawscaleUserId: 'csu_1',
@@ -52,14 +52,14 @@ describe('coke-user-provision router', () => {
         authorization: 'Bearer secret',
       },
       body: JSON.stringify({
-        coke_account_id: 'acct_1',
+        customer_id: 'ck_customer_1',
         display_name: 'Alice',
       }),
     });
 
     expect(res.status).toBe(200);
     expect(ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
-      cokeAccountId: 'acct_1',
+      cokeAccountId: 'ck_customer_1',
       displayName: 'Alice',
     });
     await expect(res.json()).resolves.toEqual({
@@ -68,6 +68,35 @@ describe('coke-user-provision router', () => {
         tenant_id: 'ten_1',
         clawscale_user_id: 'csu_1',
       },
+    });
+  });
+
+  it('accepts account_id as a compatibility alias', async () => {
+    vi.mocked(ensureClawscaleUserForCokeAccount).mockResolvedValue({
+      tenantId: 'ten_1',
+      clawscaleUserId: 'csu_1',
+      created: true,
+      ready: true,
+    });
+
+    const app = new Hono();
+    app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
+
+    const res = await app.request('/api/internal/coke-users/provision', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret',
+      },
+      body: JSON.stringify({
+        account_id: 'ck_account_alias',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(ensureClawscaleUserForCokeAccount).toHaveBeenCalledWith({
+      cokeAccountId: 'ck_account_alias',
+      displayName: undefined,
     });
   });
 

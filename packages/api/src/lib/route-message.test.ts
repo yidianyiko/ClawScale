@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   channel: { findUnique: vi.fn() },
   tenant: { findUnique: vi.fn() },
+  membership: { findFirst: vi.fn() },
   endUser: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   conversation: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   deliveryRoute: { findFirst: vi.fn() },
@@ -88,6 +89,10 @@ describe('routeInboundMessage', () => {
     db.deliveryRoute.findFirst.mockResolvedValue(null);
     db.message.create.mockResolvedValue({});
     db.message.findMany.mockResolvedValue([]);
+    db.membership.findFirst.mockResolvedValue({
+      customer: { id: 'ck_customer_1', displayName: 'Alice' },
+      identity: { claimStatus: 'active' },
+    });
     db.aiBackend.findMany.mockResolvedValue([
       {
         id: 'ab_1',
@@ -106,7 +111,6 @@ describe('routeInboundMessage', () => {
     db.endUserBackend.deleteMany.mockResolvedValue({});
     db.conversation.update.mockResolvedValue({});
     generateReply.mockResolvedValue('bridge ok');
-    db.cokeAccount.findUnique.mockResolvedValue(null);
     bindBusinessConversation.mockResolvedValue({
       tenantId: 'ten_1',
       cokeAccountId: 'acct_1',
@@ -570,13 +574,13 @@ describe('routeInboundMessage', () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
       tenantId: 'ten_1',
-      customerId: 'cust_1',
+      customerId: 'ck_customer_1',
       ownershipKind: 'customer',
       agentId: null,
       status: 'connected',
       scope: 'personal',
       ownerClawscaleUserId: 'csu_1',
-      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'acct_1' },
+      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'ck_customer_1' },
     });
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
@@ -590,14 +594,6 @@ describe('routeInboundMessage', () => {
       clawscaleUser: null,
       activeBackends: [{ backendId: 'ab_1' }],
     });
-    db.cokeAccount.findUnique.mockResolvedValue({
-      id: 'acct_1',
-      email: 'alice@example.com',
-      displayName: 'Alice',
-      emailVerified: true,
-      status: 'normal',
-    });
-
     await routeInboundMessage({
       channelId: 'ch_1',
       externalId: 'wxid_123',
@@ -609,12 +605,40 @@ describe('routeInboundMessage', () => {
     const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
       | { metadata?: Record<string, unknown> }
       | undefined;
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_customer_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+    });
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_customer_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            claimStatus: true,
+          },
+        },
+      },
+    });
+    expect(db.cokeAccount.findUnique).not.toHaveBeenCalled();
     expect(firstGenerateCall?.metadata).toEqual(
       expect.objectContaining({
-        customerId: 'cust_1',
-        customer_id: 'cust_1',
-        cokeAccountId: 'acct_1',
-        coke_account_id: 'acct_1',
+        customerId: 'ck_customer_1',
+        customer_id: 'ck_customer_1',
+        cokeAccountId: 'ck_customer_1',
+        coke_account_id: 'ck_customer_1',
         cokeAccountDisplayName: 'Alice',
         accountStatus: 'normal',
         emailVerified: true,

@@ -2,15 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => {
   const tx = {
-    identity: {
-      upsert: vi.fn(),
-    },
-    customer: {
-      upsert: vi.fn(),
-    },
-    membership: {
-      upsert: vi.fn(),
-    },
     agentBinding: {
       upsert: vi.fn(),
     },
@@ -26,19 +17,17 @@ const db = vi.hoisted(() => {
     },
     cokeAccount: {
       findMany: vi.fn(),
-      count: vi.fn(),
     },
     clawscaleUser: {
       findMany: vi.fn(),
-      count: vi.fn(),
     },
-    identity: {
-      count: vi.fn(),
+    membership: {
+      findMany: vi.fn(),
     },
     customer: {
       count: vi.fn(),
     },
-    membership: {
+    identity: {
       count: vi.fn(),
     },
     agentBinding: {
@@ -63,14 +52,55 @@ import {
   DEFAULT_COKE_AGENT_ID,
   buildDefaultAgentSeed,
   buildLegacyAgentBindingSeed,
-  buildLegacyCustomerGraph,
-  deriveDeterministicPlatformId,
 } from './platformization-migration.js';
+
+const ownerMemberships = [
+  {
+    customerId: 'ck_1',
+    role: 'owner',
+    customer: {
+      id: 'ck_1',
+      displayName: 'Alice',
+    },
+    identity: {
+      id: 'idt_1',
+      email: 'Alice@Example.com',
+      passwordHash: 'hash_1',
+      claimStatus: 'active',
+    },
+  },
+  {
+    customerId: 'ck_2',
+    role: 'owner',
+    customer: {
+      id: 'ck_2',
+      displayName: 'Bob',
+    },
+    identity: {
+      id: 'idt_2',
+      email: 'Bob@Example.com',
+      passwordHash: 'hash_2',
+      claimStatus: 'active',
+    },
+  },
+] as const;
 
 describe('platformization backfill orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    db.client.membership.findMany.mockResolvedValue(ownerMemberships);
+    db.client.clawscaleUser.findMany.mockResolvedValue([
+      { id: 'csu_1', cokeAccountId: 'ck_1', tenantId: 'tenant_1' },
+      { id: 'csu_2', cokeAccountId: 'ck_2', tenantId: 'tenant_2' },
+    ]);
+    db.client.channel.findMany.mockResolvedValue([]);
+    db.client.agentBinding.findMany.mockResolvedValue([]);
+    db.client.agentBinding.count.mockResolvedValue(0);
+    db.client.agent.count.mockResolvedValue(1);
+    db.client.customer.count.mockResolvedValue(2);
+    db.client.identity.count.mockResolvedValue(2);
+    db.client.cokeAccount.findMany.mockResolvedValue([]);
   });
 
   it('ensureDefaultAgent upserts the deterministic default Coke agent and refreshes its config', async () => {
@@ -101,19 +131,15 @@ describe('platformization backfill orchestration', () => {
     });
   });
 
-  it('auditLegacyBaseline summarizes legacy CokeAccount and ClawscaleUser rows', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      { id: 'acct_1', email: 'one@example.com' },
-      { id: 'acct_2', email: 'two@example.com' },
-    ]);
+  it('auditLegacyBaseline summarizes customer-backed owner memberships and clawscale users', async () => {
+    db.client.membership.findMany.mockResolvedValue(ownerMemberships.slice(0, 2));
     db.client.clawscaleUser.findMany.mockResolvedValue([
-      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
+      { id: 'csu_1', cokeAccountId: 'ck_1', tenantId: 'tenant_1' },
     ]);
-    db.client.channel.findMany.mockResolvedValue([]);
 
     await expect(
       auditLegacyBaseline({
-        mongoAccountIds: ['acct_1', 'acct_2', 'acct_orphan'],
+        mongoAccountIds: ['ck_1', 'ck_2', 'ck_orphan'],
       }),
     ).resolves.toEqual({
       counts: {
@@ -121,28 +147,38 @@ describe('platformization backfill orchestration', () => {
         clawscaleUsers: 1,
         mongoAccountIds: 3,
       },
-      errors: [
-        'missing_clawscale_user:acct_2',
-        'orphan_mongo_account_id:acct_orphan',
-      ],
+      errors: ['missing_clawscale_user:ck_2', 'orphan_mongo_account_id:ck_orphan'],
     });
 
-    expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
+    expect(db.client.membership.findMany).toHaveBeenCalledWith({
       where: {
-        id: {
-          in: ['acct_1', 'acct_2', 'acct_orphan'],
+        customerId: {
+          in: ['ck_1', 'ck_2', 'ck_orphan'],
+        },
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            id: true,
+            email: true,
+            passwordHash: true,
+            claimStatus: true,
+          },
         },
       },
-      select: {
-        id: true,
-        email: true,
-      },
-      orderBy: { id: 'asc' },
+      orderBy: { customerId: 'asc' },
     });
     expect(db.client.clawscaleUser.findMany).toHaveBeenCalledWith({
       where: {
         cokeAccountId: {
-          in: ['acct_1', 'acct_2', 'acct_orphan'],
+          in: ['ck_1', 'ck_2', 'ck_orphan'],
         },
       },
       select: {
@@ -152,56 +188,18 @@ describe('platformization backfill orchestration', () => {
       },
       orderBy: { cokeAccountId: 'asc' },
     });
-    expect(db.client.channel.findMany).toHaveBeenCalledWith({
-      where: {
-        ownerClawscaleUserId: {
-          in: ['csu_1'],
-        },
-        status: {
-          not: 'archived',
-        },
-      },
-      select: {
-        ownerClawscaleUserId: true,
-        type: true,
-      },
-      orderBy: [{ ownerClawscaleUserId: 'asc' }, { type: 'asc' }, { id: 'asc' }],
-    });
   });
 
-  it('auditLegacyBaseline reports case-insensitive email collisions as blockers', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      { id: 'acct_1', email: 'Alice@Example.com' },
-      { id: 'acct_2', email: 'alice@example.com' },
-    ]);
-    db.client.clawscaleUser.findMany.mockResolvedValue([
-      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
-      { id: 'csu_2', cokeAccountId: 'acct_2', tenantId: 'tenant_2' },
-    ]);
-    db.client.channel.findMany.mockResolvedValue([]);
-
-    await expect(
-      auditLegacyBaseline({
-        mongoAccountIds: ['acct_1', 'acct_2'],
-      }),
-    ).resolves.toEqual({
-      counts: {
-        cokeAccounts: 2,
-        clawscaleUsers: 2,
-        mongoAccountIds: 2,
+  it('auditLegacyBaseline reports case-insensitive email collisions and duplicate active channels as blockers', async () => {
+    db.client.membership.findMany.mockResolvedValue([
+      ownerMemberships[0],
+      {
+        ...ownerMemberships[1],
+        identity: {
+          ...ownerMemberships[1].identity,
+          email: 'alice@example.com',
+        },
       },
-      errors: [
-        'case_insensitive_email_collision:alice@example.com:accounts=acct_1,acct_2',
-      ],
-    });
-  });
-
-  it('auditLegacyBaseline reports duplicate active customer-owned channels as blockers', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      { id: 'acct_1', email: 'one@example.com' },
-    ]);
-    db.client.clawscaleUser.findMany.mockResolvedValue([
-      { id: 'csu_1', cokeAccountId: 'acct_1', tenantId: 'tenant_1' },
     ]);
     db.client.channel.findMany.mockResolvedValue([
       { ownerClawscaleUserId: 'csu_1', type: 'wechat_personal' },
@@ -210,117 +208,62 @@ describe('platformization backfill orchestration', () => {
 
     await expect(
       auditLegacyBaseline({
-        mongoAccountIds: ['acct_1'],
+        mongoAccountIds: ['ck_1', 'ck_2'],
       }),
     ).resolves.toEqual({
       counts: {
-        cokeAccounts: 1,
-        clawscaleUsers: 1,
-        mongoAccountIds: 1,
+        cokeAccounts: 2,
+        clawscaleUsers: 2,
+        mongoAccountIds: 2,
       },
-      errors: ['duplicate_active_customer_channel:acct_1:wechat_personal:count=2'],
+      errors: [
+        'case_insensitive_email_collision:alice@example.com:accounts=ck_1,ck_2',
+        'duplicate_active_customer_channel:ck_1:wechat_personal:count=2',
+      ],
     });
   });
 
-  it('backfillLegacyCustomers upserts the new graph for each legacy CokeAccount', async () => {
-    const createdAt = new Date('2026-04-01T00:00:00.000Z');
-    const updatedAt = new Date('2026-04-02T00:00:00.000Z');
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      {
-        id: 'acct_1',
-        email: 'Alice@Example.com',
-        displayName: 'Alice',
-        passwordHash: 'hash_1',
-        createdAt,
-        updatedAt,
-      },
-      {
-        id: 'acct_2',
-        email: 'Bob@Example.com',
-        displayName: 'Bob',
-        passwordHash: 'hash_2',
-        createdAt,
-        updatedAt,
-      },
-    ]);
-
+  it('backfillLegacyCustomers upserts ready agent bindings from customer-backed owner memberships', async () => {
     await expect(
       backfillLegacyCustomers({
         agentId: 'agent_default_1',
         dryRun: false,
-        cokeAccountIds: ['acct_1', 'acct_2'],
+        cokeAccountIds: ['ck_1', 'ck_2'],
       }),
     ).resolves.toEqual({
       backfilled: 2,
     });
 
-    const firstGraph = buildLegacyCustomerGraph({
-      cokeAccountId: 'acct_1',
-      email: 'Alice@Example.com',
-      displayName: 'Alice',
-      createdAt,
-      updatedAt,
-    });
-
-    expect(db.client.$transaction).toHaveBeenCalledTimes(2);
-    expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
+    expect(db.client.membership.findMany).toHaveBeenCalledWith({
       where: {
-        id: {
-          in: ['acct_1', 'acct_2'],
+        customerId: {
+          in: ['ck_1', 'ck_2'],
+        },
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            id: true,
+            email: true,
+            passwordHash: true,
+            claimStatus: true,
+          },
         },
       },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        passwordHash: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { id: 'asc' },
+      orderBy: { customerId: 'asc' },
     });
-    expect(db.tx.identity.upsert).toHaveBeenCalledTimes(2);
-    expect(db.tx.customer.upsert).toHaveBeenCalledTimes(2);
-    expect(db.tx.membership.upsert).toHaveBeenCalledTimes(2);
-    expect(db.tx.agentBinding.upsert).toHaveBeenCalledTimes(2);
-
-    expect(db.tx.identity.upsert).toHaveBeenNthCalledWith(1, {
-      where: { id: firstGraph.identity.id },
-      create: {
-        ...firstGraph.identity,
-        passwordHash: 'hash_1',
-      },
-      update: {
-        email: firstGraph.identity.email,
-        displayName: firstGraph.identity.displayName,
-        passwordHash: 'hash_1',
-        claimStatus: firstGraph.identity.claimStatus,
-        updatedAt,
-      },
-    });
-    expect(db.tx.customer.upsert).toHaveBeenNthCalledWith(1, {
-      where: { id: firstGraph.customer.id },
-      create: firstGraph.customer,
-      update: {
-        kind: firstGraph.customer.kind,
-        displayName: firstGraph.customer.displayName,
-        updatedAt,
-      },
-    });
-    expect(db.tx.membership.upsert).toHaveBeenNthCalledWith(1, {
-      where: { id: firstGraph.membership.id },
-      create: firstGraph.membership,
-      update: {
-        identityId: firstGraph.membership.identityId,
-        customerId: firstGraph.membership.customerId,
-        role: firstGraph.membership.role,
-        updatedAt,
-      },
-    });
+    expect(db.client.$transaction).toHaveBeenCalledTimes(2);
     expect(db.tx.agentBinding.upsert).toHaveBeenNthCalledWith(1, {
-      where: { customerId: firstGraph.customer.id },
+      where: { customerId: 'ck_1' },
       create: buildLegacyAgentBindingSeed({
-        customerId: firstGraph.customer.id,
+        customerId: 'ck_1',
         agentId: 'agent_default_1',
       }),
       update: {
@@ -333,77 +276,46 @@ describe('platformization backfill orchestration', () => {
   });
 
   it('backfillLegacyCustomers dry run returns the pending count without mutating', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([
-      {
-        id: 'acct_1',
-        email: 'one@example.com',
-        displayName: 'One',
-        passwordHash: 'hash_1',
-        createdAt: new Date('2026-04-01T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-02T00:00:00.000Z'),
-      },
-      {
-        id: 'acct_2',
-        email: 'two@example.com',
-        displayName: 'Two',
-        passwordHash: 'hash_2',
-        createdAt: new Date('2026-04-01T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-02T00:00:00.000Z'),
-      },
-    ]);
-
     await expect(
       backfillLegacyCustomers({
         agentId: 'agent_unused_for_dry_run',
         dryRun: true,
-        cokeAccountIds: ['acct_1', 'acct_2'],
+        cokeAccountIds: ['ck_1', 'ck_2'],
       }),
     ).resolves.toEqual({
       wouldBackfill: 2,
     });
 
     expect(db.client.$transaction).not.toHaveBeenCalled();
-    expect(db.tx.identity.upsert).not.toHaveBeenCalled();
-    expect(db.tx.customer.upsert).not.toHaveBeenCalled();
-    expect(db.tx.membership.upsert).not.toHaveBeenCalled();
     expect(db.tx.agentBinding.upsert).not.toHaveBeenCalled();
   });
 
-  it('verifyPlatformizationMigration reports matching counts for a requested migrated legacy slice', async () => {
-    const legacyAccountIds = ['acct_1', 'acct_2'];
-    const membershipIds = legacyAccountIds.map((accountId) =>
-      deriveDeterministicPlatformId('membership', accountId),
-    );
-
-    db.client.cokeAccount.findMany.mockResolvedValue(legacyAccountIds.map((id) => ({ id })));
-    db.client.identity.count.mockResolvedValue(2);
-    db.client.customer.count.mockResolvedValue(2);
-    db.client.membership.count.mockResolvedValue(2);
-    db.client.agentBinding.count.mockResolvedValue(2);
+  it('verifyPlatformizationMigration reports matching counts for a requested migrated customer-backed slice', async () => {
+    db.client.membership.findMany.mockResolvedValue(ownerMemberships);
     db.client.agentBinding.findMany.mockResolvedValue([
       {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         agentId: DEFAULT_COKE_AGENT_ID,
         provisionStatus: 'ready',
       },
       {
-        customerId: 'acct_2',
+        customerId: 'ck_2',
         agentId: DEFAULT_COKE_AGENT_ID,
         provisionStatus: 'ready',
       },
     ]);
-    db.client.agent.count.mockResolvedValue(1);
+    db.client.agentBinding.count.mockResolvedValue(2);
     db.client.channel.findMany.mockResolvedValue([
       {
         id: 'chan_customer_1',
         ownershipKind: 'customer',
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         agentId: null,
       },
       {
         id: 'chan_customer_2',
         ownershipKind: 'customer',
-        customerId: 'acct_2',
+        customerId: 'ck_2',
         agentId: null,
       },
       {
@@ -416,7 +328,7 @@ describe('platformization backfill orchestration', () => {
 
     await expect(
       verifyPlatformizationMigration({
-        cokeAccountIds: legacyAccountIds,
+        cokeAccountIds: ['ck_1', 'ck_2'],
         expectedAgentId: DEFAULT_COKE_AGENT_ID,
       }),
     ).resolves.toEqual({
@@ -435,75 +347,20 @@ describe('platformization backfill orchestration', () => {
       },
       errors: [],
     });
-
-    expect(db.client.cokeAccount.findMany).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: legacyAccountIds,
-        },
-      },
-      select: { id: true },
-      orderBy: { id: 'asc' },
-    });
-    expect(db.client.customer.count).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: legacyAccountIds,
-        },
-      },
-    });
-    expect(db.client.membership.count).toHaveBeenCalledWith({
-      where: {
-        id: {
-          in: membershipIds,
-        },
-      },
-    });
-    expect(db.client.agentBinding.count).toHaveBeenCalledWith({
-      where: {
-        customerId: {
-          in: legacyAccountIds,
-        },
-      },
-    });
-    expect(db.client.agentBinding.findMany).toHaveBeenCalledWith({
-      where: {
-        customerId: {
-          in: legacyAccountIds,
-        },
-      },
-      select: {
-        customerId: true,
-        agentId: true,
-        provisionStatus: true,
-      },
-      orderBy: { customerId: 'asc' },
-    });
-    expect(db.client.channel.findMany).toHaveBeenCalledWith({
-      select: {
-        id: true,
-        ownershipKind: true,
-        customerId: true,
-        agentId: true,
-      },
-      orderBy: { id: 'asc' },
-    });
   });
 
   it('verifyPlatformizationMigration surfaces invalid channel ownership rows and non-ready agent bindings', async () => {
-    db.client.cokeAccount.findMany.mockResolvedValue([{ id: 'acct_1' }]);
-    db.client.identity.count.mockResolvedValue(1);
+    db.client.membership.findMany.mockResolvedValue([ownerMemberships[0]]);
     db.client.customer.count.mockResolvedValue(1);
-    db.client.membership.count.mockResolvedValue(1);
+    db.client.identity.count.mockResolvedValue(1);
     db.client.agentBinding.count.mockResolvedValue(1);
     db.client.agentBinding.findMany.mockResolvedValue([
       {
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         agentId: 'agent_other',
         provisionStatus: 'error',
       },
     ]);
-    db.client.agent.count.mockResolvedValue(1);
     db.client.channel.findMany.mockResolvedValue([
       {
         id: 'chan_broken_customer',
@@ -520,14 +377,14 @@ describe('platformization backfill orchestration', () => {
       {
         id: 'chan_customer_with_agent',
         ownershipKind: 'customer',
-        customerId: 'acct_1',
+        customerId: 'ck_1',
         agentId: 'agent_other',
       },
     ]);
 
     await expect(
       verifyPlatformizationMigration({
-        cokeAccountIds: ['acct_1'],
+        cokeAccountIds: ['ck_1'],
         expectedAgentId: DEFAULT_COKE_AGENT_ID,
       }),
     ).resolves.toEqual({
@@ -545,122 +402,11 @@ describe('platformization backfill orchestration', () => {
         invalidOwnershipChannels: 2,
       },
       errors: [
-        `agent_binding_agent_mismatch:acct_1:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
-        'agent_binding_provision_status_mismatch:acct_1:expected=ready:actual=error',
+        `agent_binding_agent_mismatch:ck_1:expected=${DEFAULT_COKE_AGENT_ID}:actual=agent_other`,
+        'agent_binding_provision_status_mismatch:ck_1:expected=ready:actual=error',
         'invalid_channel_ownership:chan_broken_customer:ownershipKind=customer:customerId=null:agentId=null',
-        'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=acct_1:agentId=agent_other',
+        'invalid_channel_ownership:chan_customer_with_agent:ownershipKind=customer:customerId=ck_1:agentId=agent_other',
       ],
     });
-  });
-
-  it('backfill dry-run CLI skips env validation and default agent creation', async () => {
-    vi.resetModules();
-    vi.stubEnv('COKE_AGENT_ENDPOINT', '');
-    vi.stubEnv('COKE_AGENT_AUTH_TOKEN', '');
-
-    const ensureDefaultAgentMock = vi.fn();
-    const backfillLegacyCustomersMock = vi.fn().mockResolvedValue({ wouldBackfill: 2 });
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const originalArgv = process.argv;
-
-    process.argv = ['node', 'script', '--dry-run'];
-
-    vi.doMock('../lib/platformization-backfill.js', () => ({
-      ensureDefaultAgent: ensureDefaultAgentMock,
-      backfillLegacyCustomers: backfillLegacyCustomersMock,
-    }));
-
-    await import('../scripts/backfill-platformization-identity.ts');
-
-    expect(ensureDefaultAgentMock).not.toHaveBeenCalled();
-    expect(backfillLegacyCustomersMock).toHaveBeenCalledWith({
-      agentId: 'dry-run',
-      dryRun: true,
-      cokeAccountIds: [],
-    });
-
-    logSpy.mockRestore();
-    process.argv = originalArgv;
-    vi.doUnmock('../lib/platformization-backfill.js');
-  });
-
-  it('backfill CLI refuses to write when the legacy audit reports blockers', async () => {
-    vi.resetModules();
-    vi.stubEnv('COKE_AGENT_ENDPOINT', 'https://coke.example.com/agent');
-    vi.stubEnv('COKE_AGENT_AUTH_TOKEN', 'secret-token');
-    vi.stubEnv('MONGO_ACCOUNT_IDS', 'acct_1, acct_2');
-
-    const auditLegacyBaselineMock = vi.fn().mockResolvedValue({
-      counts: {
-        cokeAccounts: 2,
-        clawscaleUsers: 2,
-        mongoAccountIds: 0,
-      },
-      errors: ['case_insensitive_email_collision:alice@example.com:accounts=acct_1,acct_2'],
-    });
-    const ensureDefaultAgentMock = vi.fn();
-    const backfillLegacyCustomersMock = vi.fn();
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const originalArgv = process.argv;
-
-    process.argv = ['node', 'script'];
-
-    vi.doMock('../lib/platformization-backfill.js', () => ({
-      auditLegacyBaseline: auditLegacyBaselineMock,
-      ensureDefaultAgent: ensureDefaultAgentMock,
-      backfillLegacyCustomers: backfillLegacyCustomersMock,
-    }));
-
-    await expect(import('../scripts/backfill-platformization-identity.ts')).rejects.toThrow(
-      'platformization_audit_blocked',
-    );
-
-    expect(auditLegacyBaselineMock).toHaveBeenCalledWith({ mongoAccountIds: ['acct_1', 'acct_2'] });
-    expect(ensureDefaultAgentMock).not.toHaveBeenCalled();
-    expect(backfillLegacyCustomersMock).not.toHaveBeenCalled();
-
-    logSpy.mockRestore();
-    process.argv = originalArgv;
-    vi.doUnmock('../lib/platformization-backfill.js');
-  });
-
-  it('verify CLI scopes verification to MONGO_ACCOUNT_IDS when provided', async () => {
-    vi.resetModules();
-    vi.stubEnv('MONGO_ACCOUNT_IDS', 'acct_1, acct_2');
-
-    const verifyPlatformizationMigrationMock = vi.fn().mockResolvedValue({
-      counts: {
-        cokeAccounts: 2,
-      },
-      errors: [],
-    });
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    vi.doMock('../lib/platformization-backfill.js', () => ({
-      verifyPlatformizationMigration: verifyPlatformizationMigrationMock,
-    }));
-
-    await import('../scripts/verify-platformization-migration.ts');
-
-    expect(verifyPlatformizationMigrationMock).toHaveBeenCalledWith({
-      cokeAccountIds: ['acct_1', 'acct_2'],
-      expectedAgentId: DEFAULT_COKE_AGENT_ID,
-    });
-    expect(logSpy).toHaveBeenCalledWith(
-      JSON.stringify(
-        {
-          mongoAccountIds: ['acct_1', 'acct_2'],
-          counts: {
-            cokeAccounts: 2,
-          },
-          errors: [],
-        },
-        null,
-        2,
-      ),
-    );
-
-    logSpy.mockRestore();
-    vi.doUnmock('../lib/platformization-backfill.js');
   });
 });

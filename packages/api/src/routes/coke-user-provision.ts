@@ -3,9 +3,15 @@ import { z } from 'zod';
 import { ensureClawscaleUserForCokeAccount } from '../lib/clawscale-user.js';
 
 const bodySchema = z.object({
-  coke_account_id: z.string().min(1),
+  coke_account_id: z.string().trim().min(1).optional(),
+  account_id: z.string().trim().min(1).optional(),
+  customer_id: z.string().trim().min(1).optional(),
   display_name: z.string().trim().min(1).max(120).optional(),
 });
+
+function resolveCompatibilityId(payload: z.infer<typeof bodySchema>): string | null {
+  return payload.customer_id ?? payload.account_id ?? payload.coke_account_id ?? null;
+}
 
 function readErrorCode(err: unknown): string | undefined {
   if (typeof err !== 'object' || err === null || !('code' in err)) {
@@ -32,13 +38,14 @@ cokeUserProvisionRouter.post('/', async (c) => {
   }
 
   const parsed = bodySchema.safeParse(rawBody);
-  if (!parsed.success) {
+  const cokeAccountId = parsed.success ? resolveCompatibilityId(parsed.data) : null;
+  if (!parsed.success || !cokeAccountId) {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
 
   try {
     const result = await ensureClawscaleUserForCokeAccount({
-      cokeAccountId: parsed.data.coke_account_id,
+      cokeAccountId,
       displayName: parsed.data.display_name,
     });
 
