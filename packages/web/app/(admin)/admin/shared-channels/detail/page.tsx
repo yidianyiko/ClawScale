@@ -11,8 +11,14 @@ import {
 import { getAdminCopy } from '../../../../../lib/admin-copy';
 import { formatDateTime } from '../../../../../lib/utils';
 
+const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
+
 function titleCase(value: string): string {
   return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : value;
+}
+
+function isWhatsAppEvolutionKind(kind: string): boolean {
+  return kind === WHATSAPP_EVOLUTION_KIND;
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -28,6 +34,10 @@ function parseConfig(value: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function getEvolutionInstanceName(config: Record<string, unknown>): string {
+  return typeof config.instanceName === 'string' ? config.instanceName : '';
+}
+
 export default function AdminSharedChannelDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -36,11 +46,14 @@ export default function AdminSharedChannelDetailPage() {
   const id = searchParams.get('id') ?? '';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [retiring, setRetiring] = useState(false);
   const [error, setError] = useState('');
   const [record, setRecord] = useState<AdminSharedChannelDetail | null>(null);
   const [name, setName] = useState('');
   const [agentId, setAgentId] = useState('');
+  const [instanceName, setInstanceName] = useState('');
   const [configText, setConfigText] = useState('{}');
 
   useEffect(() => {
@@ -69,10 +82,15 @@ export default function AdminSharedChannelDetailPage() {
         return;
       }
 
-      setRecord(response.data);
-      setName(response.data.name);
-      setAgentId(response.data.agent?.id ?? '');
-      setConfigText(JSON.stringify(response.data.config ?? {}, null, 2));
+      const nextRecord = response.data;
+      setRecord(nextRecord);
+      setName(nextRecord.name);
+      setAgentId(nextRecord.agent?.id ?? '');
+      if (isWhatsAppEvolutionKind(nextRecord.kind)) {
+        setInstanceName(getEvolutionInstanceName(nextRecord.config));
+      } else {
+        setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
+      }
       setLoading(false);
     }
 
@@ -82,21 +100,41 @@ export default function AdminSharedChannelDetailPage() {
     };
   }, [id]);
 
+  function syncRecord(nextRecord: AdminSharedChannelDetail) {
+    setRecord(nextRecord);
+    setName(nextRecord.name);
+    setAgentId(nextRecord.agent?.id ?? '');
+    if (isWhatsAppEvolutionKind(nextRecord.kind)) {
+      setInstanceName(getEvolutionInstanceName(nextRecord.config));
+    } else {
+      setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
+    }
+  }
+
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!record) {
+      return;
+    }
+
     setSaving(true);
     setError('');
 
     const form = new FormData(event.currentTarget);
     const nextName = String(form.get('name') ?? '').trim();
     const nextAgentId = String(form.get('agentId') ?? '').trim();
+    const nextInstanceName = String(form.get('instanceName') ?? '').trim();
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
       const response = await adminApi.patch<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id, {
         name: nextName,
         agentId: nextAgentId,
-        config: parseConfig(nextConfigText),
+        config: isWhatsAppEvolutionKind(record.kind)
+          ? {
+              instanceName: nextInstanceName,
+            }
+          : parseConfig(nextConfigText),
       });
 
       if (!response.ok) {
@@ -104,15 +142,50 @@ export default function AdminSharedChannelDetailPage() {
         return;
       }
 
-      setRecord(response.data);
-      setName(response.data.name);
-      setAgentId(response.data.agent?.id ?? '');
-      setConfigText(JSON.stringify(response.data.config ?? {}, null, 2));
+      syncRecord(response.data);
     } catch {
       setError('invalid_config_json');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleConnect() {
+    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+      return;
+    }
+
+    setConnecting(true);
+    setError('');
+
+    const response = await adminApi.post<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id + '/connect');
+    setConnecting(false);
+
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+
+    syncRecord(response.data);
+  }
+
+  async function handleDisconnect() {
+    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+      return;
+    }
+
+    setDisconnecting(true);
+    setError('');
+
+    const response = await adminApi.post<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id + '/disconnect');
+    setDisconnecting(false);
+
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+
+    syncRecord(response.data);
   }
 
   async function handleRetire() {
@@ -133,6 +206,9 @@ export default function AdminSharedChannelDetailPage() {
     router.push('/admin/shared-channels');
   }
 
+  const evolutionChannel = record ? isWhatsAppEvolutionKind(record.kind) : false;
+  const instanceNameLocked = evolutionChannel && record?.status === 'connected';
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -149,17 +225,88 @@ export default function AdminSharedChannelDetailPage() {
             <Loader2 className="h-6 w-6 animate-spin text-teal-500" />
           </div>
         ) : error && !record ? (
-          <p className="text-sm text-red-600">{copy.common.errorPrefix}: {error}</p>
+          <p className="text-sm text-red-600">
+            {copy.common.errorPrefix}: {error}
+          </p>
         ) : record ? (
           <form className="space-y-5" onSubmit={(event) => void handleSave(event)}>
-            <div>
-              <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.columns.status}</p>
-              <p className="mt-1 text-base text-gray-900">{titleCase(record.status)}</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.columns.status}</p>
+                <p className="mt-1 text-base text-gray-900">{titleCase(record.status)}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.columns.updated}</p>
+                <p className="mt-1 text-base text-gray-900">{formatDateTime(record.updatedAt)}</p>
+              </div>
+              {evolutionChannel ? (
+                <div>
+                  <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookToken}</p>
+                  <p className="mt-1 text-base text-gray-900">
+                    {record.hasWebhookToken ? copy.sharedChannels.webhookTokenHidden : '—'}
+                  </p>
+                </div>
+              ) : null}
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.columns.updated}</p>
-              <p className="mt-1 text-base text-gray-900">{formatDateTime(record.updatedAt)}</p>
-            </div>
+
+            {evolutionChannel ? (
+              <>
+                <div>
+                  <label htmlFor="shared-channel-detail-instance-name" className="label">
+                    {copy.sharedChannels.fields.instanceName}
+                  </label>
+                  <input
+                    id="shared-channel-detail-instance-name"
+                    name="instanceName"
+                    className="input"
+                    value={instanceName}
+                    onInput={(event) => setInstanceName(event.currentTarget.value)}
+                    required
+                    disabled={instanceNameLocked}
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    {instanceNameLocked ? copy.sharedChannels.instanceNameLocked : copy.sharedChannels.instanceNameHelp}
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  {record.status === 'connected' ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="disconnect-shared-channel"
+                      disabled={disconnecting}
+                      onClick={() => void handleDisconnect()}
+                    >
+                      {disconnecting ? copy.common.loading : copy.sharedChannels.actions.disconnect}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="connect-shared-channel"
+                      disabled={connecting}
+                      onClick={() => void handleConnect()}
+                    >
+                      {connecting ? copy.common.loading : copy.sharedChannels.actions.connect}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div>
+                <label htmlFor="shared-channel-detail-config" className="label">
+                  {copy.sharedChannels.fields.config}
+                </label>
+                <textarea
+                  id="shared-channel-detail-config"
+                  name="config"
+                  className="input min-h-[160px]"
+                  value={configText}
+                  onInput={(event) => setConfigText(event.currentTarget.value)}
+                />
+              </div>
+            )}
+
             <div>
               <label htmlFor="shared-channel-detail-name" className="label">
                 {copy.sharedChannels.fields.name}
@@ -186,18 +333,7 @@ export default function AdminSharedChannelDetailPage() {
                 required
               />
             </div>
-            <div>
-              <label htmlFor="shared-channel-detail-config" className="label">
-                {copy.sharedChannels.fields.config}
-              </label>
-              <textarea
-                id="shared-channel-detail-config"
-                name="config"
-                className="input min-h-[160px]"
-                value={configText}
-                onInput={(event) => setConfigText(event.currentTarget.value)}
-              />
-            </div>
+
             {error ? <p className="text-sm text-red-600">{copy.common.errorPrefix}: {error}</p> : null}
             <div className="flex gap-3">
               <button

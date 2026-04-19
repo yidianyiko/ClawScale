@@ -20,6 +20,7 @@ vi.mock('../../../../../lib/admin-api', () => ({
   adminApi: {
     get: vi.fn(),
     patch: vi.fn(),
+    post: vi.fn(),
     delete: vi.fn(),
   },
 }));
@@ -45,6 +46,7 @@ describe('AdminSharedChannelDetailPage', () => {
     searchParamsMock.mockReturnValue(new URLSearchParams('id=ch_1'));
     vi.mocked(adminApi.get).mockReset();
     vi.mocked(adminApi.patch).mockReset();
+    vi.mocked(adminApi.post).mockReset();
     vi.mocked(adminApi.delete).mockReset();
     vi.mocked(adminApi.get).mockResolvedValue({
       ok: true,
@@ -145,5 +147,154 @@ describe('AdminSharedChannelDetailPage', () => {
 
     expect(vi.mocked(adminApi.delete)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1');
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels');
+  });
+
+  it('shows typed whatsapp_evolution config, connect/disconnect actions, and hidden token semantics', async () => {
+    vi.mocked(adminApi.get).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Evolution WhatsApp',
+        kind: 'whatsapp_evolution',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'secret-token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:00:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.patch).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Evolution WhatsApp',
+        kind: 'whatsapp_evolution',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          instanceName: 'coke-whatsapp-personal-v2',
+          webhookToken: 'secret-token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:30:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.post)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Evolution WhatsApp',
+          kind: 'whatsapp_evolution',
+          status: 'connected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_coke',
+            slug: 'coke',
+            name: 'Coke',
+          },
+          config: {
+            instanceName: 'coke-whatsapp-personal-v2',
+            webhookToken: 'secret-token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T11:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Evolution WhatsApp',
+          kind: 'whatsapp_evolution',
+          status: 'disconnected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_coke',
+            slug: 'coke',
+            name: 'Coke',
+          },
+          config: {
+            instanceName: 'coke-whatsapp-personal-v2',
+            webhookToken: 'secret-token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T11:30:00.000Z',
+        },
+      });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelDetailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(adminApi.get)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1');
+      expect(container.textContent).toContain('Evolution WhatsApp');
+      expect(container.textContent).toContain('Webhook token');
+      expect(container.textContent).toContain('Hidden and managed server-side.');
+      expect(container.querySelector('#shared-channel-detail-instance-name')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-detail-config')).toBeNull();
+      expect(container.querySelector('button[data-testid="connect-shared-channel"]')).toBeTruthy();
+    });
+
+    const instanceNameInput = container.querySelector('#shared-channel-detail-instance-name') as HTMLInputElement;
+    const nameInput = container.querySelector('#shared-channel-detail-name') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-detail-agent-id') as HTMLInputElement;
+    instanceNameInput.value = 'coke-whatsapp-personal-v2';
+    instanceNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    nameInput.value = 'Evolution WhatsApp';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_coke';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    (container.querySelector('button[data-testid="save-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.patch)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1', {
+      name: 'Evolution WhatsApp',
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal-v2',
+      },
+    });
+
+    (container.querySelector('button[data-testid="connect-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/connect');
+    await vi.waitFor(() => {
+      expect(container.querySelector('button[data-testid="disconnect-shared-channel"]')).toBeTruthy();
+    });
+
+    (container.querySelector('button[data-testid="disconnect-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
+    expect(container.textContent).toContain('Disconnected');
   });
 });

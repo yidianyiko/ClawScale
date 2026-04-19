@@ -132,4 +132,73 @@ describe('AdminSharedChannelsPage', () => {
     });
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_new');
   });
+
+  it('creates whatsapp_evolution shared channels with instanceName instead of raw JSON config', async () => {
+    vi.mocked(adminApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_evo',
+        name: 'Evolution WhatsApp',
+        kind: 'whatsapp_evolution',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T11:00:00.000Z',
+        updatedAt: '2026-04-16T11:00:00.000Z',
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelsPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Shared channels');
+    });
+
+    (container.querySelector('button[data-testid="open-create-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    const kindInput = container.querySelector('#shared-channel-kind') as HTMLSelectElement;
+    kindInput.value = 'whatsapp_evolution';
+    kindInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('#shared-channel-instance-name')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-config')).toBeNull();
+    });
+
+    const nameInput = container.querySelector('#shared-channel-name') as HTMLInputElement;
+    const instanceNameInput = container.querySelector('#shared-channel-instance-name') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-agent-id') as HTMLInputElement;
+    nameInput.value = 'Evolution WhatsApp';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    instanceNameInput.value = 'coke-whatsapp-personal';
+    instanceNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_coke';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels', {
+      name: 'Evolution WhatsApp',
+      kind: 'whatsapp_evolution',
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+      },
+    });
+    expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_evo');
+  });
 });

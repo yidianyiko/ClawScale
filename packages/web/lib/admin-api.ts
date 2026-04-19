@@ -68,6 +68,7 @@ export type AdminSharedChannelRow = {
 
 export type AdminSharedChannelDetail = AdminSharedChannelRow & {
   config: Record<string, unknown>;
+  hasWebhookToken?: boolean;
 };
 
 export type AdminDeliveryRow = {

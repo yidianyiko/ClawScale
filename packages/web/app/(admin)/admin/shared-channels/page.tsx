@@ -14,9 +14,14 @@ import { formatDateTime } from '../../../../lib/utils';
 
 const PAGE_SIZE = 50;
 const DEFAULT_KIND = 'whatsapp';
+const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
 
 function buildSharedChannelDetailHref(id: string): string {
   return '/admin/shared-channels/detail?id=' + encodeURIComponent(id);
+}
+
+function isWhatsAppEvolutionKind(kind: string): boolean {
+  return kind === WHATSAPP_EVOLUTION_KIND;
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -45,6 +50,7 @@ export default function AdminSharedChannelsPage() {
   const [kind, setKind] = useState(DEFAULT_KIND);
   const [agentId, setAgentId] = useState('');
   const [configText, setConfigText] = useState('{}');
+  const [instanceName, setInstanceName] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -87,6 +93,7 @@ export default function AdminSharedChannelsPage() {
     const nextName = String(form.get('name') ?? '').trim();
     const nextKind = String(form.get('kind') ?? DEFAULT_KIND).trim() || DEFAULT_KIND;
     const nextAgentId = String(form.get('agentId') ?? '').trim();
+    const nextInstanceName = String(form.get('instanceName') ?? '').trim();
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
@@ -94,7 +101,11 @@ export default function AdminSharedChannelsPage() {
         name: nextName,
         kind: nextKind,
         agentId: nextAgentId,
-        config: parseConfig(nextConfigText),
+        config: isWhatsAppEvolutionKind(nextKind)
+          ? {
+              instanceName: nextInstanceName,
+            }
+          : parseConfig(nextConfigText),
       });
 
       if (!response.ok) {
@@ -109,6 +120,8 @@ export default function AdminSharedChannelsPage() {
       setCreating(false);
     }
   }
+
+  const evolutionCreateMode = isWhatsAppEvolutionKind(kind);
 
   return (
     <div className="p-8">
@@ -156,9 +169,10 @@ export default function AdminSharedChannelsPage() {
                 onChange={(event) => setKind(event.target.value)}
               >
                 <option value="whatsapp">whatsapp</option>
+                <option value="whatsapp_business">whatsapp_business</option>
+                <option value="whatsapp_evolution">whatsapp_evolution</option>
                 <option value="telegram">telegram</option>
                 <option value="wechat_personal">wechat_personal</option>
-                <option value="whatsapp_business">whatsapp_business</option>
               </select>
             </div>
             <div>
@@ -174,18 +188,35 @@ export default function AdminSharedChannelsPage() {
                 required
               />
             </div>
-            <div>
-              <label htmlFor="shared-channel-config" className="label">
-                {copy.sharedChannels.fields.config}
-              </label>
-              <textarea
-                id="shared-channel-config"
-                name="config"
-                className="input min-h-[120px]"
-                value={configText}
-                onInput={(event) => setConfigText(event.currentTarget.value)}
-              />
-            </div>
+            {evolutionCreateMode ? (
+              <div>
+                <label htmlFor="shared-channel-instance-name" className="label">
+                  {copy.sharedChannels.fields.instanceName}
+                </label>
+                <input
+                  id="shared-channel-instance-name"
+                  name="instanceName"
+                  className="input"
+                  value={instanceName}
+                  onInput={(event) => setInstanceName(event.currentTarget.value)}
+                  required
+                />
+                <p className="mt-2 text-xs text-gray-500">{copy.sharedChannels.instanceNameHelp}</p>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="shared-channel-config" className="label">
+                  {copy.sharedChannels.fields.config}
+                </label>
+                <textarea
+                  id="shared-channel-config"
+                  name="config"
+                  className="input min-h-[120px]"
+                  value={configText}
+                  onInput={(event) => setConfigText(event.currentTarget.value)}
+                />
+              </div>
+            )}
             {error ? <p className="text-sm text-red-600">{copy.common.errorPrefix}: {error}</p> : null}
             <div className="flex gap-3">
               <button type="submit" className="btn-primary" disabled={creating}>
