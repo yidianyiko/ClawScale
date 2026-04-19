@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   stopWeixinBot: vi.fn(),
   getWeixinQR: vi.fn(),
   getWeixinStatus: vi.fn(),
+  randomUUID: vi.fn(() => 'token_uuid_1'),
 }));
 
 vi.mock('../db/index.js', () => ({
@@ -35,6 +36,10 @@ vi.mock('../db/index.js', () => ({
 
 vi.mock('../lib/id.js', () => ({
   generateId: mocks.generateId,
+}));
+
+vi.mock('node:crypto', () => ({
+  randomUUID: mocks.randomUUID,
 }));
 
 vi.mock('../middleware/auth.js', () => ({
@@ -219,7 +224,7 @@ describe('channels router', () => {
       body: JSON.stringify({
         type: 'whatsapp_evolution',
         name: 'Evolution WhatsApp',
-        config: { phoneNumber: '+15551234567' },
+        config: { instanceName: 'coke-whatsapp-personal' },
       }),
     });
     const body = await res.json();
@@ -240,13 +245,129 @@ describe('channels router', () => {
         tenantId: 'tnt_1',
         type: 'whatsapp_evolution',
         name: 'Evolution WhatsApp',
-        config: { phoneNumber: '+15551234567' },
+        config: { instanceName: 'coke-whatsapp-personal', webhookToken: 'token_uuid_1' },
         status: 'disconnected',
         ownershipKind: 'shared',
         agentId: DEFAULT_COKE_AGENT_ID,
         customerId: null,
       }),
     });
+  });
+
+  it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      status: 'disconnected',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+      },
+    });
+    mocks.update.mockResolvedValueOnce({});
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      name: 'Evolution WhatsApp',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          instanceName: 'renamed-instance',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 'ch_1' },
+      data: {
+        config: {
+          instanceName: 'renamed-instance',
+          webhookToken: 'token_uuid_1',
+        },
+      },
+    });
+  });
+
+  it('rejects webhookToken patch attempts for whatsapp_evolution channels', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      status: 'disconnected',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+        webhookToken: 'secret-token',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'another-token',
+        },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ ok: false, error: 'webhook_token_not_mutable' });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change instanceName while a whatsapp_evolution channel is connected', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_1',
+      tenantId: 'tnt_1',
+      type: 'whatsapp_evolution',
+      status: 'connected',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+        webhookToken: 'secret-token',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          instanceName: 'different-instance',
+        },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toEqual({ ok: false, error: 'disconnect_before_instance_change' });
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it('creates generic admin channels with dormant shared ownership metadata', async () => {

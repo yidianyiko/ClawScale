@@ -7,7 +7,11 @@ import { EvolutionApiClient } from '../lib/evolution-api.js';
 import { generateId } from '../lib/id.js';
 import {
   buildPublicWhatsAppEvolutionConfig,
-  parseStoredWhatsAppEvolutionConfig,
+  ensureStoredWhatsAppEvolutionConfig,
+  hasWhatsAppEvolutionWebhookToken,
+  parseWhatsAppEvolutionConfig,
+  type StoredWhatsAppEvolutionConfig,
+  type WhatsAppEvolutionConfig,
 } from '../lib/whatsapp-evolution-config.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
@@ -48,6 +52,8 @@ const sharedChannelSelect = {
     },
   },
 } as const;
+
+type SharedChannelRow = Prisma.ChannelGetPayload<{ select: typeof sharedChannelSelect }>;
 
 const listQuerySchema = z
   .object({
@@ -114,6 +120,77 @@ function validationError(issues: z.ZodIssue[]) {
   };
 }
 
+function parseEvolutionConfigInput(config: Record<string, unknown>) {
+  const parsed = evolutionConfigInputSchema.safeParse(config);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError(parsed.error.issues),
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: parsed.data,
+  };
+}
+
+function buildStoredEvolutionConfig(
+  instanceName: string,
+  webhookToken: string,
+): Prisma.InputJsonObject & StoredWhatsAppEvolutionConfig {
+  return {
+    instanceName,
+    webhookToken,
+  };
+}
+
+async function ensureEvolutionWebhookToken(
+  channel: SharedChannelRow,
+): Promise<{ channel: SharedChannelRow; config: StoredWhatsAppEvolutionConfig }> {
+  const config = ensureStoredWhatsAppEvolutionConfig(channel.config, randomUUID);
+  if (hasWhatsAppEvolutionWebhookToken(channel.config)) {
+    return { channel, config };
+  }
+
+  const updated = await db.channel.update({
+    where: { id: channel.id },
+    data: {
+      config: buildStoredEvolutionConfig(config.instanceName, config.webhookToken),
+    },
+    select: sharedChannelSelect,
+  });
+
+  return {
+    channel: updated as SharedChannelRow,
+    config,
+  };
+}
+
+async function rollbackEvolutionConnect(client: EvolutionApiClient, instanceName: string) {
+  try {
+    await client.clearWebhook(instanceName);
+  } catch (error) {
+    console.error('[shared-channel:evolution] Failed to roll back webhook registration:', error);
+  }
+}
+
+async function rollbackEvolutionDisconnect(
+  client: EvolutionApiClient,
+  channelId: string,
+  config: WhatsAppEvolutionConfig,
+) {
+  if (!config.webhookToken) {
+    return;
+  }
+
+  try {
+    await client.setWebhook(config.instanceName, buildEvolutionWebhookUrl(channelId, config.webhookToken));
+  } catch (error) {
+    console.error('[shared-channel:evolution] Failed to restore webhook after DB failure:', error);
+  }
+}
+
 const activeSharedChannelWhere = {
   ownershipKind: 'shared' as const,
   status: {
@@ -151,11 +228,10 @@ function serializeSharedChannel(
   };
 
   if (row.type === 'whatsapp_evolution') {
-    const storedConfig = parseStoredWhatsAppEvolutionConfig(row.config);
     return {
       ...base,
       ...(options?.includeConfig ? { config: buildPublicWhatsAppEvolutionConfig(row.config) } : {}),
-      hasWebhookToken: Boolean(storedConfig.webhookToken),
+      hasWebhookToken: hasWhatsAppEvolutionWebhookToken(row.config),
     };
   }
 
@@ -175,7 +251,7 @@ async function readSharedChannel(id: string) {
     return null;
   }
 
-  return channel;
+  return channel as SharedChannelRow;
 }
 
 export const adminSharedChannelsRouter = new Hono()
@@ -233,15 +309,12 @@ export const adminSharedChannelsRouter = new Hono()
 
     let config: Prisma.InputJsonValue = parsedBody.data.config as Prisma.InputJsonValue;
     if (parsedBody.data.kind === 'whatsapp_evolution') {
-      const parsedConfig = evolutionConfigInputSchema.safeParse(parsedBody.data.config);
-      if (!parsedConfig.success) {
-        return c.json(validationError(parsedConfig.error.issues), 400);
+      const parsedConfig = parseEvolutionConfigInput(parsedBody.data.config);
+      if (!parsedConfig.ok) {
+        return c.json(parsedConfig.response, 400);
       }
 
-      config = {
-        instanceName: parsedConfig.data.instanceName,
-        webhookToken: randomUUID(),
-      } satisfies Prisma.InputJsonObject;
+      config = buildStoredEvolutionConfig(parsedConfig.data.instanceName, randomUUID());
     }
 
     const created = await db.channel.create({
@@ -284,12 +357,12 @@ export const adminSharedChannelsRouter = new Hono()
           return c.json({ ok: false, error: 'webhook_token_not_mutable' }, 400);
         }
 
-        const parsedConfig = evolutionConfigInputSchema.safeParse(parsedBody.data.config);
-        if (!parsedConfig.success) {
-          return c.json(validationError(parsedConfig.error.issues), 400);
+        const parsedConfig = parseEvolutionConfigInput(parsedBody.data.config);
+        if (!parsedConfig.ok) {
+          return c.json(parsedConfig.response, 400);
         }
 
-        const storedConfig = parseStoredWhatsAppEvolutionConfig(existing.config);
+        const storedConfig = ensureStoredWhatsAppEvolutionConfig(existing.config, randomUUID);
         if (
           existing.status === 'connected' &&
           parsedConfig.data.instanceName !== storedConfig.instanceName
@@ -297,10 +370,10 @@ export const adminSharedChannelsRouter = new Hono()
           return c.json({ ok: false, error: 'disconnect_before_instance_change' }, 409);
         }
 
-        config = {
-          instanceName: parsedConfig.data.instanceName,
-          webhookToken: storedConfig.webhookToken,
-        } satisfies Prisma.InputJsonObject;
+        config = buildStoredEvolutionConfig(
+          parsedConfig.data.instanceName,
+          storedConfig.webhookToken,
+        );
       } else {
         config = parsedBody.data.config as Prisma.InputJsonValue;
       }
@@ -335,21 +408,27 @@ export const adminSharedChannelsRouter = new Hono()
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
     }
 
-    const config = parseStoredWhatsAppEvolutionConfig(existing.config);
+    const client = new EvolutionApiClient();
+    const prepared = await ensureEvolutionWebhookToken(existing);
+    const webhookUrl = buildEvolutionWebhookUrl(prepared.channel.id, prepared.config.webhookToken);
+
     try {
-      await new EvolutionApiClient().setWebhook(
-        config.instanceName,
-        buildEvolutionWebhookUrl(existing.id, config.webhookToken),
-      );
+      await client.setWebhook(prepared.config.instanceName, webhookUrl);
     } catch {
       return c.json({ ok: false, error: 'evolution_webhook_register_failed' }, 502);
     }
 
-    const updated = await db.channel.update({
-      where: { id: existing.id },
-      data: { status: 'connected' },
-      select: sharedChannelSelect,
-    });
+    let updated: SharedChannelRow;
+    try {
+      updated = (await db.channel.update({
+        where: { id: prepared.channel.id },
+        data: { status: 'connected' },
+        select: sharedChannelSelect,
+      })) as SharedChannelRow;
+    } catch (error) {
+      await rollbackEvolutionConnect(client, prepared.config.instanceName);
+      throw error;
+    }
 
     return c.json({
       ok: true,
@@ -368,18 +447,25 @@ export const adminSharedChannelsRouter = new Hono()
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
     }
 
-    const config = parseStoredWhatsAppEvolutionConfig(existing.config);
+    const client = new EvolutionApiClient();
+    const config = parseWhatsAppEvolutionConfig(existing.config);
     try {
-      await new EvolutionApiClient().clearWebhook(config.instanceName);
+      await client.clearWebhook(config.instanceName);
     } catch {
       return c.json({ ok: false, error: 'evolution_webhook_clear_failed' }, 502);
     }
 
-    const updated = await db.channel.update({
-      where: { id: existing.id },
-      data: { status: 'disconnected' },
-      select: sharedChannelSelect,
-    });
+    let updated: SharedChannelRow;
+    try {
+      updated = (await db.channel.update({
+        where: { id: existing.id },
+        data: { status: 'disconnected' },
+        select: sharedChannelSelect,
+      })) as SharedChannelRow;
+    } catch (error) {
+      await rollbackEvolutionDisconnect(client, existing.id, config);
+      throw error;
+    }
 
     return c.json({
       ok: true,
@@ -392,22 +478,32 @@ export const adminSharedChannelsRouter = new Hono()
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
 
+    let rollbackConfig: WhatsAppEvolutionConfig | null = null;
+    let client: EvolutionApiClient | null = null;
     if (existing.type === 'whatsapp_evolution' && existing.status === 'connected') {
-      const config = parseStoredWhatsAppEvolutionConfig(existing.config);
+      rollbackConfig = parseWhatsAppEvolutionConfig(existing.config);
+      client = new EvolutionApiClient();
       try {
-        await new EvolutionApiClient().clearWebhook(config.instanceName);
+        await client.clearWebhook(rollbackConfig.instanceName);
       } catch {
         return c.json({ ok: false, error: 'evolution_webhook_clear_failed' }, 502);
       }
     }
 
-    await db.channel.update({
-      where: { id: existing.id },
-      data: {
-        status: 'archived',
-        config: {},
-      },
-    });
+    try {
+      await db.channel.update({
+        where: { id: existing.id },
+        data: {
+          status: 'archived',
+          config: {},
+        },
+      });
+    } catch (error) {
+      if (client && rollbackConfig) {
+        await rollbackEvolutionDisconnect(client, existing.id, rollbackConfig);
+      }
+      throw error;
+    }
 
     return c.json({ ok: true, data: null });
   });

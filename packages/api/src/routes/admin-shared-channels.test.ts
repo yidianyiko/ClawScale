@@ -209,6 +209,58 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('keeps legacy whatsapp_evolution rows readable when webhookToken is missing', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_legacy',
+      name: 'Evolution WhatsApp',
+      type: 'whatsapp_evolution',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_legacy');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        id: 'ch_legacy',
+        name: 'Evolution WhatsApp',
+        kind: 'whatsapp_evolution',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+        },
+        hasWebhookToken: false,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:00:00.000Z',
+      },
+    });
+  });
+
   it('hides retired shared channels from the detail route', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
@@ -619,6 +671,135 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('backfills a missing webhook token before connecting legacy whatsapp_evolution channels', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_legacy',
+      name: 'Evolution WhatsApp',
+      type: 'whatsapp_evolution',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+    db.channel.update
+      .mockResolvedValueOnce({
+        id: 'ch_legacy',
+        name: 'Evolution WhatsApp',
+        type: 'whatsapp_evolution',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'token_uuid_1',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'ch_legacy',
+        name: 'Evolution WhatsApp',
+        type: 'whatsapp_evolution',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'token_uuid_1',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_legacy/connect', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.channel.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'ch_legacy' },
+      data: {
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'token_uuid_1',
+        },
+      },
+      select: expect.any(Object),
+    });
+    expect(setWebhook).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      'https://coke.keep4oforever.com/gateway/evolution/whatsapp/ch_legacy/token_uuid_1',
+    );
+    expect(db.channel.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'ch_legacy' },
+      data: { status: 'connected' },
+      select: expect.any(Object),
+    });
+  });
+
+  it('rolls back remote webhook registration when local connect state write fails', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      name: 'Evolution WhatsApp',
+      type: 'whatsapp_evolution',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+    db.channel.update.mockRejectedValueOnce(new Error('db down'));
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_1/connect', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(500);
+    expect(setWebhook).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      'https://coke.keep4oforever.com/gateway/evolution/whatsapp/ch_1/secret-token',
+    );
+    expect(clearWebhook).toHaveBeenCalledWith('coke-whatsapp-personal');
+  });
+
   it('disconnects a whatsapp_evolution shared channel by clearing the Evolution webhook', async () => {
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_1',
@@ -684,6 +865,82 @@ describe('admin shared channels route', () => {
       data: { status: 'disconnected' },
       select: expect.any(Object),
     });
+  });
+
+  it('restores the remote webhook when local disconnect state write fails', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      name: 'Evolution WhatsApp',
+      type: 'whatsapp_evolution',
+      status: 'connected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+    db.channel.update.mockRejectedValueOnce(new Error('db down'));
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_1/disconnect', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(500);
+    expect(clearWebhook).toHaveBeenCalledWith('coke-whatsapp-personal');
+    expect(setWebhook).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      'https://coke.keep4oforever.com/gateway/evolution/whatsapp/ch_1/secret-token',
+    );
+  });
+
+  it('restores the remote webhook when archive fails after clearing it', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_1',
+      name: 'Evolution WhatsApp',
+      type: 'whatsapp_evolution',
+      status: 'connected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        instanceName: 'coke-whatsapp-personal',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+    db.channel.update.mockRejectedValueOnce(new Error('db down'));
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_1', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(500);
+    expect(clearWebhook).toHaveBeenCalledWith('coke-whatsapp-personal');
+    expect(setWebhook).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      'https://coke.keep4oforever.com/gateway/evolution/whatsapp/ch_1/secret-token',
+    );
   });
 
   it('retires shared channels by archiving them in place', async () => {

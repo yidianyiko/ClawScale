@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ import { startMatrixBot, stopMatrixBot } from '../adapters/matrix.js';
 import { startLineBot, stopLineBot } from '../adapters/line.js';
 import { startSignalBot, stopSignalBot } from '../adapters/signal.js';
 import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
+import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-config.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
@@ -34,6 +36,10 @@ const updateSchema = z.object({
   config: z.record(z.unknown()).optional(),
 });
 
+const evolutionConfigInputSchema = z.object({
+  instanceName: z.string().trim().min(1),
+}).strict();
+
 const channelListSelect = {
   id: true,
   tenantId: true,
@@ -44,6 +50,14 @@ const channelListSelect = {
   updatedAt: true,
   // config intentionally omitted (contains secrets)
 } as const;
+
+function validationError(issues: z.ZodIssue[]) {
+  return {
+    ok: false as const,
+    error: 'validation_error',
+    issues,
+  };
+}
 
 export const channelsRouter = new Hono()
   .use('*', requireAuth)
@@ -69,6 +83,19 @@ export const channelsRouter = new Hono()
       return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
     }
 
+    let config = body.config as Record<string, unknown>;
+    if (body.type === 'whatsapp_evolution') {
+      const parsedConfig = evolutionConfigInputSchema.safeParse(body.config);
+      if (!parsedConfig.success) {
+        return c.json(validationError(parsedConfig.error.issues), 400);
+      }
+
+      config = {
+        instanceName: parsedConfig.data.instanceName,
+        webhookToken: randomUUID(),
+      };
+    }
+
     const id = generateId('ch');
     await db.channel.create({
       data: {
@@ -76,7 +103,7 @@ export const channelsRouter = new Hono()
         tenantId,
         type: body.type,
         name: body.name,
-        config: body.config as any,
+        config: config as any,
         status: 'disconnected',
         // Phase 1 keeps legacy tenant-level channel behavior while persisting dormant ownership metadata.
         ownershipKind: 'shared',
@@ -111,12 +138,41 @@ export const channelsRouter = new Hono()
 
     const existing = await db.channel.findFirst({
       where: { id, tenantId },
-      select: { id: true },
+      select: { id: true, type: true, status: true, config: true },
     });
 
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
 
-    await db.channel.update({ where: { id }, data: body as any });
+    const data: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      data.name = body.name;
+    }
+    if (body.config !== undefined) {
+      if (existing.type === 'whatsapp_evolution') {
+        if ('webhookToken' in body.config) {
+          return c.json({ ok: false, error: 'webhook_token_not_mutable' }, 400);
+        }
+
+        const parsedConfig = evolutionConfigInputSchema.safeParse(body.config);
+        if (!parsedConfig.success) {
+          return c.json(validationError(parsedConfig.error.issues), 400);
+        }
+
+        const storedConfig = ensureStoredWhatsAppEvolutionConfig(existing.config, randomUUID);
+        if (existing.status === 'connected' && parsedConfig.data.instanceName !== storedConfig.instanceName) {
+          return c.json({ ok: false, error: 'disconnect_before_instance_change' }, 409);
+        }
+
+        data.config = {
+          instanceName: parsedConfig.data.instanceName,
+          webhookToken: storedConfig.webhookToken,
+        };
+      } else {
+        data.config = body.config;
+      }
+    }
+
+    await db.channel.update({ where: { id }, data: data as any });
     await audit({ tenantId, memberId: userId, action: 'update_channel', resource: 'channel', resourceId: id });
 
     // Reload in-memory config for adapters that cache it
