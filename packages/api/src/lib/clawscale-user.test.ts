@@ -357,24 +357,31 @@ describe('clawscale-user helpers', () => {
     ).rejects.toThrow(bindingError);
   });
 
-  it('ensureClawscaleUserForCustomer rejects customers without a provisionable owner identity', async () => {
+  it('ensureClawscaleUserForCustomer provisions shared-channel customers with an unclaimed owner identity', async () => {
     db.membership.findFirst.mockResolvedValueOnce({
       ...defaultCustomerOwnership,
       identity: {
         ...defaultCustomerOwnership.identity,
         email: null,
+        passwordHash: null,
+        claimStatus: 'unclaimed',
       },
     });
+    db.clawscaleUser.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
 
     await expect(
       ensureClawscaleUserForCustomer({
         customerId: defaultCustomerOwnership.customer.id,
       }),
-    ).rejects.toEqual(
-      expect.objectContaining<Partial<ClawscaleUserBindingError>>({
-        code: 'customer_not_found',
-      }),
-    );
+    ).resolves.toEqual({
+      tenantId: expect.any(String),
+      clawscaleUserId: expect.any(String),
+      created: true,
+      ready: true,
+    });
+
+    expect(db.tenant.create).toHaveBeenCalled();
+    expect(db.clawscaleUser.create).toHaveBeenCalled();
   });
 
   it('getUnifiedConversationIds returns all conversations for the same clawscaleUserId', async () => {

@@ -210,7 +210,7 @@ async function getCustomerOwnerForProvisioning(
     },
   });
 
-  if (!membership?.identity.email || !membership.identity.passwordHash) {
+  if (!membership) {
     throw new ClawscaleUserBindingError(
       'customer_not_found',
       'Customer owner not found',
