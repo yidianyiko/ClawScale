@@ -95,6 +95,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const platform = metadataPlatform ?? channel.type ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
   const { tenantId } = channel;
+  const isSharedWhatsAppChannel =
+    channel.ownershipKind === 'shared' &&
+    (
+      channel.type === 'whatsapp' ||
+      channel.type === 'whatsapp_business' ||
+      channel.type === 'whatsapp_evolution'
+    );
   const personalChannelOwnership =
     channel.scope === 'personal' &&
     channel.ownerClawscaleUserId &&
@@ -183,7 +190,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const resolvedCokeAccountId =
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
   const accessCustomerId =
-    channel.ownershipKind === 'shared' ? resolvedChannelCustomerId : resolvedCokeAccountId;
+    isSharedWhatsAppChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
   const resolvedAccessAccountOwner = accessCustomerId
     ? await db.membership.findFirst({
         where: {
@@ -221,11 +228,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           displayName: resolvedAccessAccount.displayName,
           status: resolvedAccessAccount.status,
         },
-        ...(channel.ownershipKind === 'shared' ? { requireEmailVerified: false } : {}),
+        ...(isSharedWhatsAppChannel ? { requireEmailVerified: false } : {}),
       })
     : null;
   const resolvedAccessAccountMetadata =
-    channel.ownershipKind === 'shared' &&
+    isSharedWhatsAppChannel &&
     resolvedAccessAccountDecision?.accountAccessDeniedReason === 'subscription_required' &&
     resolvedChannelCustomerId
       ? {

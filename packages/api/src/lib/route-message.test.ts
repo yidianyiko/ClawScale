@@ -396,6 +396,75 @@ describe('routeInboundMessage', () => {
     );
   });
 
+  it('keeps non-WhatsApp shared channels on the legacy account access path', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'wechat_personal',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: 'csu_legacy_1',
+      clawscaleUser: { id: 'csu_legacy_1', cokeAccountId: 'ck_legacy_1' },
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.membership.findFirst.mockResolvedValueOnce({
+      customer: { id: 'ck_legacy_1', displayName: 'Legacy Alice' },
+      identity: { claimStatus: 'active' },
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello shared wechat',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_legacy_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            claimStatus: true,
+          },
+        },
+      },
+    });
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_legacy_1',
+        displayName: 'Legacy Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+    });
+    expect(issuePublicCheckoutToken).not.toHaveBeenCalled();
+    expect(buildPublicCheckoutUrl).not.toHaveBeenCalled();
+  });
+
   it('binds first-turn business conversation key returned by backend', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
