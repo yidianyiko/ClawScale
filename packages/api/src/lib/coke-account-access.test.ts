@@ -42,4 +42,28 @@ describe('resolveCokeAccountAccess', () => {
       accountAccessDeniedReason: 'subscription_required',
     });
   });
+
+  it('does not block on email verification when requireEmailVerified is false', async () => {
+    db.subscription.findFirst.mockResolvedValue({
+      expiresAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      resolveCokeAccountAccess({
+        account: {
+          id: 'acct_1',
+          status: 'normal',
+          emailVerified: false,
+          displayName: 'Alice',
+        },
+        now: new Date('2026-04-10T00:00:00.000Z'),
+        requireEmailVerified: false,
+        renewalUrl: 'https://coke.app/api/coke/public-checkout?token=signed',
+      }),
+    ).resolves.toMatchObject({
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'subscription_required',
+      renewalUrl: 'https://coke.app/api/coke/public-checkout?token=signed',
+    });
+  });
 });

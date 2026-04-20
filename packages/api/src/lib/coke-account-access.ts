@@ -24,6 +24,7 @@ export interface ResolveCokeAccountAccessInput {
   };
   now?: Date;
   renewalUrl?: string;
+  requireEmailVerified?: boolean;
 }
 
 export async function resolveCokeAccountAccess(
@@ -31,6 +32,7 @@ export async function resolveCokeAccountAccess(
 ): Promise<CokeAccountAccessDecision> {
   const snapshot = await getSubscriptionSnapshot(input.account.id, input.now ?? new Date());
   const renewalUrl = input.renewalUrl ?? buildRenewalUrl();
+  const requireEmailVerified = input.requireEmailVerified ?? true;
 
   if (input.account.status !== 'normal') {
     return {
@@ -43,7 +45,7 @@ export async function resolveCokeAccountAccess(
     };
   }
 
-  if (!input.account.emailVerified) {
+  if (requireEmailVerified && !input.account.emailVerified) {
     return {
       accountStatus: input.account.status,
       emailVerified: input.account.emailVerified,
