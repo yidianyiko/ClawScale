@@ -32,6 +32,9 @@ export interface SharedChannelProvisioningResult {
   provisionStatus: 'ready' | 'pending' | 'error';
 }
 
+const CONCURRENT_PROVISION_READY_WAIT_MS = 2_000;
+const CONCURRENT_PROVISION_POLL_MS = 100;
+
 function buildDisplayName(displayName?: string | null): string {
   return displayName?.trim() ?? '';
 }
@@ -116,12 +119,30 @@ async function readProvisionStatus(customerId: string) {
   return binding?.provisionStatus ?? 'pending';
 }
 
+async function waitForProvisionStatus(customerId: string) {
+  let provisionStatus = await readProvisionStatus(customerId);
+  if (provisionStatus !== 'pending') {
+    return provisionStatus;
+  }
+
+  const deadline = Date.now() + CONCURRENT_PROVISION_READY_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, CONCURRENT_PROVISION_POLL_MS));
+    provisionStatus = await readProvisionStatus(customerId);
+    if (provisionStatus !== 'pending') {
+      return provisionStatus;
+    }
+  }
+
+  return provisionStatus;
+}
+
 async function resolveExistingCustomer(
   customerId: string,
   identity: NormalizedExternalIdentity,
   input: SharedChannelProvisioningInput,
 ): Promise<SharedChannelProvisioningResult> {
-  const provisionStatus = await readProvisionStatus(customerId);
+  const provisionStatus = await waitForProvisionStatus(customerId);
 
   if (provisionStatus === 'ready') {
     return {
