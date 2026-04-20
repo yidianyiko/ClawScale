@@ -52,25 +52,34 @@ export function verifyPublicCheckoutToken(token: string): PublicCheckoutTokenPay
     throw new PublicCheckoutTokenError();
   }
 
+  const payloadRecord = payload as Record<string, unknown>;
+
   if (
     !payload ||
     typeof payload !== 'object' ||
-    (payload as Record<string, unknown>).sub !== (payload as Record<string, unknown>).customerId ||
-    typeof (payload as Record<string, unknown>).sub !== 'string' ||
-    typeof (payload as Record<string, unknown>).customerId !== 'string' ||
-    (payload as Record<string, unknown>).tokenType !== 'action' ||
-    (payload as Record<string, unknown>).purpose !== 'public_checkout' ||
-    typeof (payload as Record<string, unknown>).iat !== 'number' ||
-    typeof (payload as Record<string, unknown>).exp !== 'number'
+    payloadRecord.sub !== payloadRecord.customerId ||
+    typeof payloadRecord.sub !== 'string' ||
+    typeof payloadRecord.customerId !== 'string' ||
+    payloadRecord.tokenType !== 'action' ||
+    payloadRecord.purpose !== 'public_checkout' ||
+    typeof payloadRecord.iat !== 'number' ||
+    typeof payloadRecord.exp !== 'number'
   ) {
     throw new PublicCheckoutTokenError();
   }
 
-  if ((payload as Record<string, unknown>).exp <= Math.floor(Date.now() / 1000)) {
+  if (payloadRecord.exp <= Math.floor(Date.now() / 1000)) {
     throw new PublicCheckoutTokenError();
   }
 
-  return payload as PublicCheckoutTokenPayload;
+  return {
+    sub: payloadRecord.sub,
+    customerId: payloadRecord.customerId,
+    tokenType: 'action',
+    purpose: 'public_checkout',
+    iat: payloadRecord.iat,
+    exp: payloadRecord.exp,
+  };
 }
 
 export function buildPublicCheckoutUrl(token: string): string {
