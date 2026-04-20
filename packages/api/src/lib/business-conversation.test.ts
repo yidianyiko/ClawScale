@@ -49,6 +49,7 @@ import {
   bindBusinessConversation,
   invalidateRoutesForChannelReplacement,
   resolveExactDeliveryRoute,
+  upsertDirectDeliveryRoute,
 } from './business-conversation.js';
 
 function makeRouteBindingSnapshot(
@@ -526,6 +527,77 @@ describe('business conversation helpers', () => {
       },
     });
     expect(result.channelId).toBe('ch_1');
+  });
+
+  it('upsertDirectDeliveryRoute validates the conversation identity and upserts the exact route', async () => {
+    tx.conversation.findUnique.mockResolvedValue({
+      id: 'conv_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      endUser: {
+        externalId: 'ext_1',
+      },
+    });
+    tx.deliveryRoute.upsert.mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'ext_1',
+      isActive: true,
+    });
+
+    const result = await upsertDirectDeliveryRoute({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'ext_1',
+      cokeAccountId: 'acct_1',
+      gatewayConversationId: 'conv_1',
+      businessConversationKey: 'biz_conv_1',
+    });
+
+    expect(tx.conversation.findUnique).toHaveBeenCalledWith({
+      where: { id: 'conv_1' },
+      select: {
+        id: true,
+        tenantId: true,
+        channelId: true,
+        endUserId: true,
+        endUser: {
+          select: {
+            externalId: true,
+          },
+        },
+      },
+    });
+    expect(tx.deliveryRoute.upsert).toHaveBeenCalledWith({
+      where: {
+        cokeAccountId_businessConversationKey: {
+          cokeAccountId: 'acct_1',
+          businessConversationKey: 'biz_conv_1',
+        },
+      },
+      create: {
+        tenantId: 'ten_1',
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_conv_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'ext_1',
+        isActive: true,
+      },
+      update: {
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'ext_1',
+        isActive: true,
+      },
+    });
+    expect(result.businessConversationKey).toBe('biz_conv_1');
   });
 
   it('resolveExactDeliveryRoute throws missing_delivery_route when route is absent', async () => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   bindBusinessConversation,
   BusinessConversationBindingError,
+  upsertDirectDeliveryRoute,
 } from '../lib/business-conversation.js';
 import { bindEndUserToCokeAccount } from '../lib/clawscale-user.js';
 
@@ -80,7 +81,38 @@ cokeDeliveryRoutesRouter.post('/', async (c) => {
       },
     });
   } catch (err) {
-    const code = readErrorCode(err);
+    let effectiveError = err;
+    let code = readErrorCode(effectiveError);
+    if (code === 'coke_account_tenant_mismatch') {
+      try {
+        const result = await upsertDirectDeliveryRoute({
+          tenantId: parsed.data.tenant_id,
+          channelId: parsed.data.channel_id,
+          endUserId: parsed.data.end_user_id,
+          externalEndUserId: parsed.data.external_end_user_id,
+          cokeAccountId: parsed.data.account_id,
+          gatewayConversationId: parsed.data.conversation_id,
+          businessConversationKey: parsed.data.business_conversation_key,
+        });
+
+        return c.json({
+          ok: true,
+          data: {
+            tenant_id: result.tenantId,
+            account_id: result.cokeAccountId,
+            business_conversation_key: result.businessConversationKey,
+            channel_id: result.channelId,
+            end_user_id: result.endUserId,
+            external_end_user_id: result.externalEndUserId,
+            is_active: result.isActive,
+          },
+        });
+      } catch (fallbackErr) {
+        effectiveError = fallbackErr;
+        code = readErrorCode(effectiveError);
+      }
+    }
+
     if (code === 'end_user_not_found') {
       return c.json({ ok: false, error: code }, 404);
     }
@@ -90,12 +122,12 @@ cokeDeliveryRoutesRouter.post('/', async (c) => {
     if (code === 'conversation_not_found') {
       return c.json({ ok: false, error: code }, 404);
     }
-    if (err instanceof BusinessConversationBindingError && code) {
+    if (effectiveError instanceof BusinessConversationBindingError && code) {
       return c.json({ ok: false, error: code }, 409);
     }
     if (code) {
       return c.json({ ok: false, error: code }, code === 'conversation_not_found' ? 404 : 409);
     }
-    throw err;
+    throw effectiveError;
   }
 });

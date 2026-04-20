@@ -6,6 +6,16 @@ export interface BindBusinessConversationInput {
   businessConversationKey: string;
 }
 
+export interface UpsertDirectDeliveryRouteInput {
+  tenantId: string;
+  channelId: string;
+  endUserId: string;
+  externalEndUserId: string;
+  cokeAccountId: string;
+  gatewayConversationId: string;
+  businessConversationKey: string;
+}
+
 export interface DeliveryRouteRecord {
   tenantId: string;
   cokeAccountId: string;
@@ -280,6 +290,80 @@ export async function bindBusinessConversation(
         channelId: routeBinding.channelId,
         endUserId: routeBinding.endUserId,
         externalEndUserId: routeBinding.externalEndUserId,
+        isActive: true,
+      },
+    });
+  });
+}
+
+export async function upsertDirectDeliveryRoute(
+  input: UpsertDirectDeliveryRouteInput,
+): Promise<DeliveryRouteRecord> {
+  return db.$transaction(async (tx) => {
+    const conversation = await tx.conversation.findUnique({
+      where: { id: input.gatewayConversationId },
+      select: {
+        id: true,
+        tenantId: true,
+        channelId: true,
+        endUserId: true,
+        endUser: {
+          select: {
+            externalId: true,
+          },
+        },
+      },
+    });
+
+    if (!conversation) {
+      throw new BusinessConversationBindingError(
+        'conversation_not_found',
+        `Conversation ${input.gatewayConversationId} not found`,
+      );
+    }
+
+    if (
+      conversation.tenantId !== input.tenantId ||
+      conversation.channelId !== input.channelId ||
+      conversation.endUserId !== input.endUserId
+    ) {
+      throw new BusinessConversationBindingError(
+        'conversation_identity_mismatch',
+        `Conversation ${input.gatewayConversationId} does not match tenant/channel/end-user`,
+      );
+    }
+
+    if (
+      !conversation.endUser ||
+      conversation.endUser.externalId !== input.externalEndUserId
+    ) {
+      throw new BusinessConversationBindingError(
+        'external_end_user_mismatch',
+        `Conversation ${input.gatewayConversationId} does not match external end-user identity`,
+      );
+    }
+
+    return tx.deliveryRoute.upsert({
+      where: {
+        cokeAccountId_businessConversationKey: {
+          cokeAccountId: input.cokeAccountId,
+          businessConversationKey: input.businessConversationKey,
+        },
+      },
+      create: {
+        tenantId: input.tenantId,
+        cokeAccountId: input.cokeAccountId,
+        businessConversationKey: input.businessConversationKey,
+        channelId: input.channelId,
+        endUserId: input.endUserId,
+        externalEndUserId: input.externalEndUserId,
+        isActive: true,
+      },
+      update: {
+        tenantId: input.tenantId,
+        channelId: input.channelId,
+        endUserId: input.endUserId,
+        externalEndUserId: input.externalEndUserId,
         isActive: true,
       },
     });

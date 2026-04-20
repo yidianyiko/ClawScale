@@ -1,14 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
-vi.mock('../lib/business-conversation.js', () => ({
-  bindBusinessConversation: vi.fn(),
-}));
+vi.mock('../lib/business-conversation.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/business-conversation.js')>();
+  return {
+    ...actual,
+    bindBusinessConversation: vi.fn(),
+    upsertDirectDeliveryRoute: vi.fn(),
+  };
+});
 vi.mock('../lib/clawscale-user.js', () => ({
   bindEndUserToCokeAccount: vi.fn(),
 }));
 
-import { bindBusinessConversation } from '../lib/business-conversation.js';
+import {
+  bindBusinessConversation,
+  upsertDirectDeliveryRoute,
+} from '../lib/business-conversation.js';
 import { bindEndUserToCokeAccount } from '../lib/clawscale-user.js';
 import { cokeDeliveryRoutesRouter } from './coke-delivery-routes.js';
 
@@ -143,6 +151,64 @@ describe('coke-delivery-routes router', () => {
 
     expect(res.status).toBe(404);
     expect(bindBusinessConversation).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a direct delivery-route upsert when customer tenant binding is incompatible', async () => {
+    vi.mocked(bindEndUserToCokeAccount).mockRejectedValue({
+      code: 'coke_account_tenant_mismatch',
+    });
+    vi.mocked(upsertDirectDeliveryRoute).mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'wxid_1',
+      isActive: true,
+    });
+
+    const app = makeApp();
+
+    const res = await app.request('/api/internal/coke-delivery', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret',
+      },
+      body: JSON.stringify({
+        tenant_id: 'ten_1',
+        conversation_id: 'conv_1',
+        account_id: 'acct_1',
+        business_conversation_key: 'biz_conv_1',
+        channel_id: 'ch_1',
+        end_user_id: 'eu_1',
+        external_end_user_id: 'wxid_1',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bindBusinessConversation).not.toHaveBeenCalled();
+    expect(upsertDirectDeliveryRoute).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'wxid_1',
+      cokeAccountId: 'acct_1',
+      gatewayConversationId: 'conv_1',
+      businessConversationKey: 'biz_conv_1',
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        tenant_id: 'ten_1',
+        account_id: 'acct_1',
+        business_conversation_key: 'biz_conv_1',
+        channel_id: 'ch_1',
+        end_user_id: 'eu_1',
+        external_end_user_id: 'wxid_1',
+        is_active: true,
+      },
+    });
   });
 
   it('returns 400 for malformed request bodies and does not call helper', async () => {
