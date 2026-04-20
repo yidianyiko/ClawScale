@@ -88,6 +88,11 @@ describe('coke-public-checkout helpers', () => {
 
   it('rejects tokens with invalid public checkout claims', () => {
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T00:00:00.000Z'));
+
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const expiresAt = issuedAt + 24 * 60 * 60;
 
     const wrongPurpose = signJwtLikeToken(
       {
@@ -95,8 +100,8 @@ describe('coke-public-checkout helpers', () => {
         customerId: 'ck_shared_1',
         tokenType: 'action',
         purpose: 'verify_email',
-        iat: 1713571200,
-        exp: 1713657600,
+        iat: issuedAt,
+        exp: expiresAt,
       },
       'customer-secret',
     );
@@ -106,8 +111,8 @@ describe('coke-public-checkout helpers', () => {
         customerId: 'ck_shared_1',
         tokenType: 'access',
         purpose: 'public_checkout',
-        iat: 1713571200,
-        exp: 1713657600,
+        iat: issuedAt,
+        exp: expiresAt,
       },
       'customer-secret',
     );
@@ -117,8 +122,8 @@ describe('coke-public-checkout helpers', () => {
         customerId: 'ck_shared_2',
         tokenType: 'action',
         purpose: 'public_checkout',
-        iat: 1713571200,
-        exp: 1713657600,
+        iat: issuedAt,
+        exp: expiresAt,
       },
       'customer-secret',
     );
