@@ -58,7 +58,7 @@ describe('customer-auth helpers', () => {
           id: 'idt_123',
           email: 'alice@example.com',
           displayName: 'Alice',
-          claimStatus: 'active',
+          claimStatus: 'pending',
         }),
       },
       customer: {
@@ -100,7 +100,7 @@ describe('customer-auth helpers', () => {
         email: 'alice@example.com',
         displayName: 'Alice',
         passwordHash: expect.any(String),
-        claimStatus: 'active',
+        claimStatus: 'pending',
       },
     });
     expect(tx.customer.create).toHaveBeenCalledWith({
@@ -120,7 +120,7 @@ describe('customer-auth helpers', () => {
     expect(result).toEqual({
       customerId: expect.any(String),
       identityId: 'idt_123',
-      claimStatus: 'active',
+      claimStatus: 'pending',
       email: 'alice@example.com',
       membershipRole: 'owner',
       token: expect.any(String),
@@ -315,7 +315,7 @@ describe('customer-auth helpers', () => {
             identity: {
               id: 'idt_123',
               email: 'alice@example.com',
-              claimStatus: 'active',
+              claimStatus: 'pending',
               updatedAt: initialUpdatedAt,
             },
           })

@@ -50,7 +50,7 @@ describe('customer auth routes', () => {
       id: 'idt_123',
       email: 'alice@example.com',
       displayName: 'Alice',
-      claimStatus: 'active',
+      claimStatus: 'pending',
     });
     tx.customer.create.mockImplementation(async ({ data }: { data: { id: string; displayName: string } }) => ({
       id: data.id,
@@ -70,7 +70,7 @@ describe('customer auth routes', () => {
         identity: {
           id: 'idt_123',
           email: 'alice@example.com',
-          claimStatus: 'active',
+          claimStatus: 'pending',
           passwordHash: 'hashed-password',
           updatedAt: new Date('2026-04-16T00:00:00.000Z'),
         },
@@ -108,7 +108,7 @@ describe('customer auth routes', () => {
         email: 'alice@example.com',
         displayName: 'Alice',
         passwordHash: expect.any(String),
-        claimStatus: 'active',
+        claimStatus: 'pending',
       },
     });
     expect(tx.customer.create).toHaveBeenCalledWith({
@@ -135,7 +135,7 @@ describe('customer auth routes', () => {
       data: {
         customerId: expect.any(String),
         identityId: 'idt_123',
-        claimStatus: 'active',
+        claimStatus: 'pending',
         email: 'alice@example.com',
         membershipRole: 'owner',
         token: expect.any(String),
@@ -177,7 +177,7 @@ describe('customer auth routes', () => {
       data: {
         customerId: expect.any(String),
         identityId: 'idt_123',
-        claimStatus: 'active',
+        claimStatus: 'pending',
         email: 'alice@example.com',
         membershipRole: 'owner',
         token: expect.any(String),
@@ -219,7 +219,7 @@ describe('customer auth routes', () => {
       data: {
         customerId: expect.any(String),
         identityId: 'idt_123',
-        claimStatus: 'active',
+        claimStatus: 'pending',
         email: 'alice@example.com',
         membershipRole: 'owner',
         token: expect.any(String),
@@ -291,7 +291,7 @@ describe('customer auth routes', () => {
       identity: {
         id: 'idt_123',
         email: 'alice@example.com',
-        claimStatus: 'active',
+        claimStatus: 'pending',
         updatedAt,
       },
     });

@@ -4,9 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
+import { customerApi } from '../../../../lib/customer-api';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { getCokeUser, storeCokeUserAuth, type CokeAuthResult } from '../../../../lib/coke-user-auth';
-import { clearCustomerAuth, storeCustomerAuth } from '../../../../lib/customer-auth';
+import { getCokeUser, storeCokeUserAuth, type CokeUser } from '../../../../lib/coke-user-auth';
+import {
+  getStoredCustomerSession,
+  storeCustomerAuth,
+  type CustomerAuthResult,
+} from '../../../../lib/customer-auth';
 
 type RecoveryReason = 'manual' | 'expired' | 'retry';
 
@@ -26,12 +31,20 @@ export default function CustomerVerifyEmailPage() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token')?.trim() ?? '';
     const queryEmail = params.get('email')?.trim() ?? '';
-    const storedEmail = getCokeUser()?.email?.trim() ?? '';
+    const storedEmail =
+      getStoredCustomerSession()?.email?.trim() ?? getCokeUser()?.email?.trim() ?? '';
     const recoveryEmail = queryEmail || storedEmail;
 
-    if (!token || !queryEmail) {
+    if (!token) {
       setEmail(recoveryEmail);
-      setRecoveryReason(token || queryEmail ? 'expired' : 'manual');
+      setRecoveryReason('manual');
+      setLoading(false);
+      return;
+    }
+
+    if (!queryEmail) {
+      setEmail(recoveryEmail);
+      setRecoveryReason('expired');
       setLoading(false);
       return;
     }
@@ -40,7 +53,7 @@ export default function CustomerVerifyEmailPage() {
 
     async function verifyEmailLink() {
       try {
-        const res = await cokeUserApi.post<ApiResponse<CokeAuthResult>>('/api/coke/verify-email', {
+        const res = await cokeUserApi.post<ApiResponse<CustomerAuthResult>>('/api/auth/verify-email', {
           token,
           email: queryEmail,
         });
@@ -52,14 +65,20 @@ export default function CustomerVerifyEmailPage() {
           return;
         }
 
-        storeCokeUserAuth(res.data);
-        if (res.data.customerAuth) {
-          storeCustomerAuth(res.data.customerAuth);
-        } else {
-          clearCustomerAuth();
+        storeCustomerAuth(res.data);
+
+        const profile = await customerApi.get<ApiResponse<CokeUser>>('/api/coke/me');
+        if (!profile.ok) {
+          throw new Error('coke_profile_unavailable');
         }
+
+        storeCokeUserAuth({
+          token: res.data.token,
+          user: profile.data,
+        });
+
         router.replace(
-          res.data.user.subscription_active === false
+          profile.data.subscription_active === false
             ? '/channels/wechat-personal?next=renew'
             : '/channels/wechat-personal',
         );
@@ -92,7 +111,7 @@ export default function CustomerVerifyEmailPage() {
     setResending(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/coke/verify-email/resend', {
+      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/auth/resend-verification', {
         email: nextEmail,
       });
 

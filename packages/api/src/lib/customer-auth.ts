@@ -459,7 +459,7 @@ export async function registerCustomer(
           email,
           displayName,
           passwordHash,
-          claimStatus: 'active',
+          claimStatus: 'pending',
         },
       });
       const customer = await tx.customer.create({
@@ -568,7 +568,7 @@ export async function verifyCustomerEmail(
     await tx.identity.update({
       where: { id: membership.identity.id },
       data: {
-        claimStatus: membership.identity.claimStatus,
+        claimStatus: 'active',
       },
     });
   });
@@ -576,7 +576,7 @@ export async function verifyCustomerEmail(
   return buildCustomerAuthResult({
     customerId: membership.customer.id,
     identityId: membership.identity.id,
-    claimStatus: membership.identity.claimStatus,
+    claimStatus: 'active',
     email: membership.identity.email,
     membershipRole: membership.role,
   });

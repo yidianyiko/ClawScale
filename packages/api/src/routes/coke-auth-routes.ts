@@ -3,12 +3,6 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
-import { signCokeToken } from '../lib/coke-auth.js';
-import {
-  CustomerAuthError,
-  authenticateCustomer,
-  type CustomerAuthResult,
-} from '../lib/customer-auth.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 
 const VERIFY_EMAIL_SENT_MESSAGE = 'If the account exists, a verification email has been sent.';
@@ -47,20 +41,6 @@ type CompatibilityCustomerProfile = {
   emailVerified: boolean;
 };
 
-function withCompatibilityCustomerAuth<T extends { token: string; user: object }>(
-  data: T,
-  customerAuth: CustomerAuthResult | null,
-): T & { customerAuth?: CustomerAuthResult } {
-  if (!customerAuth) {
-    return data;
-  }
-
-  return {
-    ...data,
-    customerAuth,
-  };
-}
-
 function applyDeprecationHeaders(c: Context, successorPath: string): void {
   c.header('Deprecation', 'true');
   c.header('Link', `<${successorPath}>; rel="successor-version"`);
@@ -90,28 +70,6 @@ function withSubscriptionState(
     subscription_active: access.subscriptionActive,
     subscription_expires_at: access.subscriptionExpiresAt,
   };
-}
-
-function mapCustomerAuthError(error: unknown): {
-  status: 400 | 401 | 404 | 409;
-  body: { ok: false; error: string };
-} {
-  if (!(error instanceof CustomerAuthError)) {
-    throw error;
-  }
-
-  switch (error.code) {
-    case 'email_already_exists':
-      return { status: 409, body: { ok: false, error: error.code } };
-    case 'invalid_credentials':
-      return { status: 401, body: { ok: false, error: error.code } };
-    case 'invalid_or_expired_token':
-      return { status: 400, body: { ok: false, error: error.code } };
-    case 'account_not_found':
-      return { status: 404, body: { ok: false, error: error.code } };
-    case 'claim_not_allowed':
-      return { status: 409, body: { ok: false, error: error.code } };
-  }
 }
 
 async function loadCompatibilityCustomerProfile(
@@ -163,40 +121,7 @@ export const cokeAuthRouter = new Hono()
     return pausedResponse(c, '/api/auth/register');
   })
   .post('/login', zValidator('json', loginSchema), async (c) => {
-    applyDeprecationHeaders(c, '/api/auth/login');
-    const input = c.req.valid('json');
-
-    try {
-      const result = await authenticateCustomer(db as never, input);
-      const profile = await loadCompatibilityCustomerProfile(result.customerId);
-
-      if (!profile) {
-        return c.json({ ok: false, error: 'account_not_found' }, 404);
-      }
-
-      const access = await resolveCokeAccountAccess({
-        account: {
-          id: profile.customerId,
-          status: 'normal',
-          emailVerified: profile.emailVerified,
-          displayName: profile.displayName,
-        },
-      });
-
-      return c.json({
-        ok: true,
-        data: withCompatibilityCustomerAuth(
-          {
-            token: signCokeToken({ sub: profile.customerId, email: profile.email }),
-            user: withSubscriptionState(serializeCompatibilityCustomer(profile), access),
-          },
-          result,
-        ),
-      });
-    } catch (error) {
-      const failure = mapCustomerAuthError(error);
-      return c.json(failure.body, failure.status);
-    }
+    return pausedResponse(c, '/api/auth/login');
   })
   .post('/verify-email', zValidator('json', verifyEmailSchema), async (c) => {
     return pausedResponse(c, '/api/auth/verify-email');

@@ -1,13 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   assertPostPaymentSubscription,
   assertPrePaymentSubscription,
   extractCheckoutSessionId,
   isRetriableRequestError,
+  login,
 } from './stripe-e2e-smoke.js';
 
 describe('stripe e2e smoke helpers', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('extracts the checkout session id from a hosted checkout url', () => {
     expect(
       extractCheckoutSessionId(
@@ -91,5 +100,70 @@ describe('stripe e2e smoke helpers', () => {
 
   it('does not retry ordinary application errors', () => {
     expect(isRetriableRequestError(new Error('bad request'))).toBe(false);
+  });
+
+  it('logs in through the neutral auth endpoint', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            token: 'customer-token',
+            customerId: 'ck_1',
+            identityId: 'idt_1',
+            email: 'alice@example.com',
+            claimStatus: 'active',
+            membershipRole: 'owner',
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    const result = await login({
+      baseUrl: 'https://coke.example',
+      email: 'alice@example.com',
+      password: 'password123',
+      displayName: 'Alice',
+      headless: true,
+      timeoutMs: 1_000,
+      pollAttempts: 1,
+      pollIntervalMs: 100,
+      artifactsDir: '/tmp/coke-smoke-test',
+      cardNumber: '4242424242424242',
+      cardExpiry: '1234',
+      cardCvc: '123',
+      cardholderName: 'Alice',
+      billingCountry: 'US',
+      billingPostalCode: '10001',
+      requestRetries: 1,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://coke.example/api/auth/login',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'alice@example.com',
+          password: 'password123',
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      token: 'customer-token',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'active',
+      membershipRole: 'owner',
+    });
   });
 });

@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { verifyCokeToken, type CokeJwtPayload } from '../lib/coke-auth.js';
+import { verifyCustomerToken, type CustomerJwtPayload } from '../lib/customer-auth.js';
 
 export interface CokeAuthContext {
   accountId: string;
@@ -28,11 +29,15 @@ export async function requireCokeUserAuth(c: Context, next: Next): Promise<Respo
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  let payload: CokeJwtPayload;
+  let payload: CokeJwtPayload | CustomerJwtPayload;
   try {
     payload = verifyCokeToken(token);
   } catch {
-    return c.json({ ok: false, error: 'invalid_or_expired_token' }, 401);
+    try {
+      payload = verifyCustomerToken(token);
+    } catch {
+      return c.json({ ok: false, error: 'invalid_or_expired_token' }, 401);
+    }
   }
 
   c.set('cokeAuth', { accountId: payload.sub, email: payload.email });

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { LocaleProvider } from '../../../../components/locale-provider';
+import { customerApi } from '../../../../lib/customer-api';
 
 const pushMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
@@ -10,6 +11,7 @@ const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
 const storeCustomerAuthMock = vi.hoisted(() => vi.fn());
 const clearCustomerAuthMock = vi.hoisted(() => vi.fn());
 const getCokeUserMock = vi.hoisted(() => vi.fn());
+const getStoredCustomerSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -32,6 +34,13 @@ vi.mock('../../../../lib/coke-user-auth', () => ({
 vi.mock('../../../../lib/customer-auth', () => ({
   storeCustomerAuth: (...args: unknown[]) => storeCustomerAuthMock(...args),
   clearCustomerAuth: (...args: unknown[]) => clearCustomerAuthMock(...args),
+  getStoredCustomerSession: () => getStoredCustomerSessionMock(),
+}));
+
+vi.mock('../../../../lib/customer-api', () => ({
+  customerApi: {
+    get: vi.fn(),
+  },
 }));
 
 import CustomerVerifyEmailPage from './page';
@@ -54,27 +63,29 @@ describe('CustomerVerifyEmailPage', () => {
     storeCustomerAuthMock.mockReset();
     clearCustomerAuthMock.mockReset();
     getCokeUserMock.mockReset();
+    getStoredCustomerSessionMock.mockReset();
+    vi.mocked(customerApi.get).mockReset();
     postMock.mockResolvedValue({
       ok: true,
       data: {
-        token: 'auth-token',
-        user: {
-          id: 'acct_1',
-          email: 'alice@example.com',
-          display_name: 'Alice',
-          email_verified: true,
-          status: 'normal',
-          subscription_active: true,
-          subscription_expires_at: null,
-        },
-        customerAuth: {
-          token: 'customer-token',
-          customerId: 'ck_1',
-          identityId: 'idt_1',
-          email: 'alice@example.com',
-          claimStatus: 'active',
-          membershipRole: 'owner',
-        },
+        token: 'customer-token',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        email: 'alice@example.com',
+        claimStatus: 'active',
+        membershipRole: 'owner',
+      },
+    });
+    vi.mocked(customerApi.get).mockResolvedValue({
+      ok: true,
+      data: {
+        id: 'ck_1',
+        email: 'alice@example.com',
+        display_name: 'Alice',
+        email_verified: true,
+        status: 'normal',
+        subscription_active: true,
+        subscription_expires_at: null,
       },
     });
     getCokeUserMock.mockReturnValue({
@@ -85,6 +96,13 @@ describe('CustomerVerifyEmailPage', () => {
       status: 'normal',
       subscription_active: false,
       subscription_expires_at: null,
+    });
+    getStoredCustomerSessionMock.mockReturnValue({
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      claimStatus: 'pending',
+      membershipRole: 'owner',
     });
     window.history.pushState({}, '', '/auth/verify-email?token=verify-token&email=alice@example.com');
 
@@ -110,9 +128,22 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email', {
+    expect(postMock).toHaveBeenCalledWith('/api/auth/verify-email', {
       token: 'verify-token',
       email: 'alice@example.com',
+    });
+    expect(vi.mocked(customerApi.get)).toHaveBeenCalledWith('/api/coke/me');
+    expect(storeCokeUserAuthMock).toHaveBeenCalledWith({
+      token: 'customer-token',
+      user: {
+        id: 'ck_1',
+        email: 'alice@example.com',
+        display_name: 'Alice',
+        email_verified: true,
+        status: 'normal',
+        subscription_active: true,
+        subscription_expires_at: null,
+      },
     });
     expect(storeCustomerAuthMock).toHaveBeenCalledWith({
       token: 'customer-token',
@@ -130,27 +161,16 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   it('routes renewal-required verification success through the neutral channel path', async () => {
-    postMock.mockResolvedValueOnce({
+    vi.mocked(customerApi.get).mockResolvedValueOnce({
       ok: true,
       data: {
-        token: 'auth-token',
-        user: {
-          id: 'acct_1',
-          email: 'alice@example.com',
-          display_name: 'Alice',
-          email_verified: true,
-          status: 'normal',
-          subscription_active: false,
-          subscription_expires_at: null,
-        },
-        customerAuth: {
-          token: 'customer-token',
-          customerId: 'ck_1',
-          identityId: 'idt_1',
-          email: 'alice@example.com',
-          claimStatus: 'active',
-          membershipRole: 'owner',
-        },
+        id: 'ck_1',
+        email: 'alice@example.com',
+        display_name: 'Alice',
+        email_verified: true,
+        status: 'normal',
+        subscription_active: false,
+        subscription_expires_at: null,
       },
     });
 
@@ -166,6 +186,7 @@ describe('CustomerVerifyEmailPage', () => {
 
     expect(storeCokeUserAuthMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        token: 'customer-token',
         user: expect.objectContaining({
           subscription_active: false,
         }),
@@ -183,22 +204,10 @@ describe('CustomerVerifyEmailPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('clears stale customer auth when legacy-only verification succeeds', async () => {
-    postMock.mockReset();
-    postMock.mockResolvedValue({
-      ok: true,
-      data: {
-        token: 'auth-token',
-        user: {
-          id: 'acct_legacy_1',
-          email: 'legacy@example.com',
-          display_name: 'Legacy User',
-          email_verified: true,
-          status: 'normal',
-          subscription_active: true,
-          subscription_expires_at: null,
-        },
-      },
+  it('redirects to retry recovery when the compatibility Coke profile cannot be loaded', async () => {
+    vi.mocked(customerApi.get).mockResolvedValueOnce({
+      ok: false,
+      error: 'profile_unavailable',
     });
 
     flushSync(() => {
@@ -211,13 +220,11 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(clearCustomerAuthMock).toHaveBeenCalled();
-    expect(storeCustomerAuthMock).not.toHaveBeenCalled();
-    expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal');
+    expect(replaceMock).toHaveBeenCalledWith('/auth/login?email=alice%40example.com&verification=retry');
   });
 
-  it('uses the stored auth email to keep the registration handoff on a working recovery flow', async () => {
-    window.history.pushState({}, '', '/auth/verify-email');
+  it('uses the email query handoff to keep the registration recovery flow working without a token', async () => {
+    window.history.pushState({}, '', '/auth/verify-email?email=alice@example.com');
 
     flushSync(() => {
       root.render(
@@ -244,7 +251,7 @@ describe('CustomerVerifyEmailPage', () => {
     resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
       email: 'alice@example.com',
     });
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
@@ -254,6 +261,7 @@ describe('CustomerVerifyEmailPage', () => {
 
   it('supports manual resend recovery when opened without query params and no stored auth email', async () => {
     getCokeUserMock.mockReturnValue(null);
+    getStoredCustomerSessionMock.mockReturnValue(null);
     window.history.pushState({}, '', '/auth/verify-email');
 
     flushSync(() => {
@@ -283,7 +291,7 @@ describe('CustomerVerifyEmailPage', () => {
     resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/coke/verify-email/resend', {
+    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
       email: 'manual@example.com',
     });
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');

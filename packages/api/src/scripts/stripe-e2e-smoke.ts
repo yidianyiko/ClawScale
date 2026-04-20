@@ -23,25 +23,13 @@ type RegisterResponse = ApiEnvelope<{
   token: string;
 }>;
 
-type CokeLoginResponse = ApiEnvelope<{
+type CustomerLoginResponse = ApiEnvelope<{
+  customerId: string;
+  identityId: string;
+  claimStatus: string;
+  email: string;
+  membershipRole: string;
   token: string;
-  user: {
-    id: string;
-    email: string;
-    display_name: string;
-    email_verified: boolean;
-    status: string;
-    subscription_active: boolean;
-    subscription_expires_at: string | null;
-  };
-  customerAuth: {
-    customerId: string;
-    identityId: string;
-    claimStatus: string;
-    email: string;
-    membershipRole: string;
-    token: string;
-  };
 }>;
 
 type CheckoutResponse = ApiEnvelope<{
@@ -328,10 +316,10 @@ async function register(config: StripeSmokeConfig): Promise<RegisterResponse['da
   return result.data;
 }
 
-async function login(config: StripeSmokeConfig): Promise<CokeLoginResponse['data']> {
-  const result = await requestJson<CokeLoginResponse>(
+export async function login(config: StripeSmokeConfig): Promise<CustomerLoginResponse['data']> {
+  const result = await requestJson<CustomerLoginResponse>(
     config,
-    `${config.baseUrl}/api/coke/login`,
+    `${config.baseUrl}/api/auth/login`,
     {
       method: 'POST',
       headers: {
@@ -345,7 +333,7 @@ async function login(config: StripeSmokeConfig): Promise<CokeLoginResponse['data
   );
 
   if (!result.ok) {
-    throw new Error(`Coke login failed: ${result.error ?? 'unknown_error'}`);
+    throw new Error(`Customer login failed: ${result.error ?? 'unknown_error'}`);
   }
 
   return result.data;

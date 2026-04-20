@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
 import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCokeUserAuth } from '../../../../lib/coke-user-auth';
+import { clearCokeUserAuth, storeCokeUserAuth } from '../../../../lib/coke-user-auth';
 import { storeCustomerAuth } from '../../../../lib/customer-auth';
 
 const pushMock = vi.hoisted(() => vi.fn());
@@ -31,6 +31,7 @@ vi.mock('../../../../lib/coke-user-api', () => ({
 
 vi.mock('../../../../lib/coke-user-auth', () => ({
   storeCokeUserAuth: vi.fn(),
+  clearCokeUserAuth: vi.fn(),
 }));
 
 vi.mock('../../../../lib/customer-auth', () => ({
@@ -55,6 +56,7 @@ describe('CustomerRegisterPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
     vi.mocked(cokeUserApi.post).mockReset();
+    vi.mocked(clearCokeUserAuth).mockReset();
     vi.mocked(storeCokeUserAuth).mockReset();
     vi.mocked(storeCustomerAuth).mockReset();
     window.history.replaceState({}, '', '/auth/register');
@@ -87,28 +89,16 @@ describe('CustomerRegisterPage', () => {
     expect(container.textContent).not.toContain('Create your Coke account');
   });
 
-  it('submits through the legacy Coke register API and routes to /auth/verify-email on success', async () => {
+  it('submits through the neutral register API and routes to /auth/verify-email with the email handoff', async () => {
     vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
       ok: true,
       data: {
-        token: 'auth-token',
-        user: {
-          id: 'acct_1',
-          email: 'alice@example.com',
-          display_name: 'Alice',
-          email_verified: false,
-          status: 'normal',
-          subscription_active: false,
-          subscription_expires_at: null,
-        },
-        customerAuth: {
-          token: 'customer-token',
-          customerId: 'ck_1',
-          identityId: 'idt_1',
-          email: 'alice@example.com',
-          claimStatus: 'active',
-          membershipRole: 'owner',
-        },
+        token: 'customer-token',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        email: 'alice@example.com',
+        claimStatus: 'pending',
+        membershipRole: 'owner',
       },
     });
 
@@ -127,24 +117,21 @@ describe('CustomerRegisterPage', () => {
     container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await waitForEffects();
 
-    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/coke/register', {
+    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/auth/register', {
       displayName: 'Alice',
       email: 'alice@example.com',
       password: 'password-123',
     });
-    expect(vi.mocked(storeCokeUserAuth)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        token: 'auth-token',
-      }),
-    );
+    expect(vi.mocked(clearCokeUserAuth)).toHaveBeenCalled();
+    expect(vi.mocked(storeCokeUserAuth)).not.toHaveBeenCalled();
     expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith({
       token: 'customer-token',
       customerId: 'ck_1',
       identityId: 'idt_1',
       email: 'alice@example.com',
-      claimStatus: 'active',
+      claimStatus: 'pending',
       membershipRole: 'owner',
     });
-    expect(pushMock).toHaveBeenCalledWith('/auth/verify-email');
+    expect(pushMock).toHaveBeenCalledWith('/auth/verify-email?email=alice%40example.com');
   });
 });
