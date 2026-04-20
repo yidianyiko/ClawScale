@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
+import { verifyPublicCheckoutToken } from '../lib/coke-public-checkout.js';
 import {
   calculateStackedAccessWindow,
   calculateTrialExpiresAt,
@@ -42,7 +43,81 @@ function toDate(value: number | string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
+function renderPublicCheckoutHtml(input: {
+  title: string;
+  heading: string;
+  message: string;
+}): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${input.title}</title>
+  </head>
+  <body>
+    <main>
+      <h1>${input.heading}</h1>
+      <p>${input.message}</p>
+    </main>
+  </body>
+</html>`;
+}
+
+function publicCheckoutErrorResponse(
+  status: number,
+  title: string,
+  heading: string,
+  message: string,
+): Response {
+  return new Response(
+    renderPublicCheckoutHtml({
+      title,
+      heading,
+      message,
+    }),
+    {
+      status,
+      headers: {
+        'content-type': 'text/html; charset=UTF-8',
+      },
+    },
+  );
+}
+
+function invalidPublicCheckoutLinkResponse(): Response {
+  return publicCheckoutErrorResponse(
+    400,
+    'Invalid checkout link',
+    'Checkout link unavailable',
+    'Go back to WhatsApp and request a new link.',
+  );
+}
+
+function missingPublicCheckoutAccountResponse(): Response {
+  return publicCheckoutErrorResponse(
+    404,
+    'Invalid checkout link',
+    'Checkout link unavailable',
+    'Go back to WhatsApp and request a new link.',
+  );
+}
+
+function unavailablePublicCheckoutResponse(): Response {
+  return publicCheckoutErrorResponse(
+    503,
+    'Checkout unavailable',
+    'Checkout temporarily unavailable',
+    'This checkout is temporarily unavailable. Please try again later.',
+  );
+}
+
+async function loadCompatibilityCustomerAccount(
+  customerId: string,
+  options?: {
+    requireEmailBearingIdentity?: boolean;
+  },
+): Promise<{
   id: string;
   displayName: string;
   email: string;
@@ -71,20 +146,89 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
   });
 
   const email = membership?.identity.email?.trim();
-  if (!membership || !email || !membership.customer.id.startsWith('ck_')) {
+  if (
+    !membership ||
+    (!email && options?.requireEmailBearingIdentity !== false) ||
+    !membership.customer.id.startsWith('ck_')
+  ) {
     return null;
   }
 
   return {
     id: membership.customer.id,
     displayName: membership.customer.displayName,
-    email,
+    email: email ?? '',
     emailVerified: membership.identity.claimStatus === 'active',
     status: 'normal',
   };
 }
 
 export const cokePaymentRouter = new Hono()
+  .get('/public-checkout', async (c) => {
+    const token = c.req.query('token')?.trim();
+    if (!token) {
+      return invalidPublicCheckoutLinkResponse();
+    }
+
+    let payload: { customerId: string };
+    try {
+      payload = verifyPublicCheckoutToken(token);
+    } catch {
+      return invalidPublicCheckoutLinkResponse();
+    }
+
+    const account = await loadCompatibilityCustomerAccount(payload.customerId, {
+      requireEmailBearingIdentity: false,
+    });
+
+    if (!account) {
+      return missingPublicCheckoutAccountResponse();
+    }
+
+    try {
+      const access = await resolveCokeAccountAccess({
+        account: {
+          id: account.id,
+          status: account.status,
+          emailVerified: account.emailVerified,
+          displayName: account.displayName,
+        },
+        requireEmailVerified: false,
+      });
+
+      if (access.accountAccessDeniedReason === 'account_suspended') {
+        return unavailablePublicCheckoutResponse();
+      }
+    } catch {
+      return unavailablePublicCheckoutResponse();
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: readPriceId(),
+            quantity: 1,
+          },
+        ],
+        success_url: buildSuccessUrl(),
+        cancel_url: buildCancelUrl(),
+        metadata: {
+          customerId: account.id,
+        },
+      });
+
+      if (!session.url) {
+        return unavailablePublicCheckoutResponse();
+      }
+
+      return c.redirect(session.url, 302);
+    } catch {
+      return unavailablePublicCheckoutResponse();
+    }
+  })
   .post('/checkout', requireCokeUserAuth, async (c) => {
     const auth = c.get('cokeAuth');
     const account = await loadCompatibilityCustomerAccount(auth.accountId);

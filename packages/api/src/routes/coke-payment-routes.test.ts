@@ -21,6 +21,7 @@ const calculateStackedAccessWindow = vi.hoisted(() => vi.fn());
 const calculateTrialExpiresAt = vi.hoisted(() =>
   vi.fn((createdAt: Date) => new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000)),
 );
+const verifyPublicCheckoutToken = vi.hoisted(() => vi.fn());
 const verifyCokeToken = vi.hoisted(() => vi.fn());
 const stripeCheckoutSessionsCreate = vi.hoisted(() => vi.fn());
 const stripeConstructEvent = vi.hoisted(() => vi.fn());
@@ -38,6 +39,7 @@ const stripeCtor = vi.hoisted(() =>
 );
 
 vi.mock('../db/index.js', () => ({ db }));
+vi.mock('../lib/coke-public-checkout.js', () => ({ verifyPublicCheckoutToken }));
 vi.mock('../lib/coke-auth.js', () => ({ verifyCokeToken }));
 vi.mock('../lib/coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('../lib/coke-subscription.js', () => ({
@@ -48,7 +50,10 @@ vi.mock('stripe', () => ({ default: stripeCtor }));
 
 import { cokePaymentRouter } from './coke-payment-routes.js';
 
-function makeOwnerMembership(claimStatus: 'active' | 'pending' | 'unclaimed') {
+function makeOwnerMembership(
+  claimStatus: 'active' | 'pending' | 'unclaimed',
+  email: string | null = 'alice@example.com',
+) {
   return {
     role: 'owner',
     customer: {
@@ -57,10 +62,16 @@ function makeOwnerMembership(claimStatus: 'active' | 'pending' | 'unclaimed') {
     },
     identity: {
       id: 'idt_1',
-      email: 'alice@example.com',
+      email,
       claimStatus,
     },
   };
+}
+
+function createApp(): Hono {
+  const app = new Hono();
+  app.route('/api/coke', cokePaymentRouter);
+  return app;
 }
 
 describe('coke payment routes', () => {
@@ -70,6 +81,166 @@ describe('coke payment routes', () => {
     process.env.STRIPE_PRICE_ID = 'price_coke_monthly';
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_123';
+  });
+
+  it('redirects a valid public token to Stripe with the customer metadata', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+    stripeCheckoutSessionsCreate.mockResolvedValue({
+      url: 'https://stripe.example/checkout/session_123',
+    });
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://stripe.example/checkout/session_123');
+    expect(verifyPublicCheckoutToken).toHaveBeenCalledWith('signed-token');
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: 'price_coke_monthly',
+          quantity: 1,
+        },
+      ],
+      success_url: 'https://coke.example/coke/payment-success',
+      cancel_url: 'https://coke.example/coke/payment-cancel',
+      metadata: {
+        customerId: 'ck_1',
+      },
+    });
+  });
+
+  it('returns an HTML invalid-link page for an invalid public token', async () => {
+    verifyPublicCheckoutToken.mockImplementation(() => {
+      throw new Error('invalid_or_expired_token');
+    });
+
+    const res = await createApp().request('/api/coke/public-checkout?token=bad-token');
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
+    expect(db.membership.findFirst).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns an HTML invalid-link page when the customer owner is missing', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_missing',
+      customerId: 'ck_missing',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(null);
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
+    expect(resolveCokeAccountAccess).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns an HTML unavailable page when the public account is suspended', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'suspended',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'account_suspended',
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns an HTML temporary-unavailable page when Stripe checkout creation fails', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+    stripeCheckoutSessionsCreate.mockRejectedValue(new Error('stripe unavailable'));
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: 'price_coke_monthly',
+          quantity: 1,
+        },
+      ],
+      success_url: 'https://coke.example/coke/payment-success',
+      cancel_url: 'https://coke.example/coke/payment-cancel',
+      metadata: {
+        customerId: 'ck_1',
+      },
+    });
   });
 
   it('rejects checkout requests without Coke auth', async () => {
