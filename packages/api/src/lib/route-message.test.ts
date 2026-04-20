@@ -921,6 +921,58 @@ describe('routeInboundMessage', () => {
     );
   });
 
+  it('does not persist an empty assistant message when a backend defers to async delivery', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'whatsapp_evolution',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: '8617807028761',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    generateReply.mockResolvedValueOnce({ text: '', outputId: 'out_late_1' });
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: '8617807028761',
+      displayName: 'Alice',
+      text: 'this one should fall back async',
+      meta: { platform: 'whatsapp_evolution' },
+    });
+
+    expect(result).toEqual({
+      conversationId: 'conv_1',
+      replies: [],
+      reply: '',
+    });
+    expect(db.message.create).toHaveBeenCalledTimes(1);
+    expect(db.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          conversationId: 'conv_1',
+          role: 'user',
+          content: 'this one should fall back async',
+        }),
+      }),
+    );
+  });
+
   it('uses the current conversation directly for ordinary inbound messages', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',

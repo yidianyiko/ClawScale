@@ -508,6 +508,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       if (result.status === 'fulfilled') {
         const { backend, backendReply, bindingErrorCode, bindingErrorMessage } = result.value;
         const replyText = backendReply.text;
+        if (!replyText.trim()) {
+          continue;
+        }
         replies.push({ backendId: backend.id, backendName: backend.name, reply: replyText });
         await db.message.create({
           data: {
