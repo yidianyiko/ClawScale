@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
 const db = vi.hoisted(() => ({
@@ -50,6 +50,8 @@ vi.mock('stripe', () => ({ default: stripeCtor }));
 
 import { cokePaymentRouter } from './coke-payment-routes.js';
 
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
 function makeOwnerMembership(
   claimStatus: 'active' | 'pending' | 'unclaimed',
   email: string | null = 'alice@example.com',
@@ -77,10 +79,15 @@ function createApp(): Hono {
 describe('coke payment routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     process.env.DOMAIN_CLIENT = 'https://coke.example';
     process.env.STRIPE_PRICE_ID = 'price_coke_monthly';
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_123';
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('redirects a valid public token to Stripe with the customer metadata', async () => {
@@ -147,6 +154,7 @@ describe('coke payment routes', () => {
     await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
     expect(db.membership.findFirst).not.toHaveBeenCalled();
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it('returns an HTML invalid-link page when the customer owner is missing', async () => {
@@ -165,6 +173,55 @@ describe('coke payment routes', () => {
     await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
     expect(resolveCokeAccountAccess).not.toHaveBeenCalled();
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs and returns unavailable when public account access resolution throws', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockRejectedValue(new Error('access failed'));
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('logs and returns unavailable when Stripe checkout creation succeeds without a URL', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+    stripeCheckoutSessionsCreate.mockResolvedValue({
+      id: 'cs_test_123',
+      url: undefined,
+    });
+
+    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
 
   it('returns an HTML unavailable page when the public account is suspended', async () => {
@@ -200,6 +257,7 @@ describe('coke payment routes', () => {
       requireEmailVerified: false,
     });
     expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it('returns an HTML temporary-unavailable page when Stripe checkout creation fails', async () => {
@@ -226,21 +284,7 @@ describe('coke payment routes', () => {
     expect(res.status).toBe(503);
     expect(res.headers.get('content-type')).toContain('text/html');
     await expect(res.text()).resolves.toContain('temporarily unavailable');
-    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: 'price_coke_monthly',
-          quantity: 1,
-        },
-      ],
-      success_url: 'https://coke.example/coke/payment-success',
-      cancel_url: 'https://coke.example/coke/payment-cancel',
-      metadata: {
-        customerId: 'ck_1',
-      },
-    });
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
 
   it('rejects checkout requests without Coke auth', async () => {

@@ -39,6 +39,26 @@ function buildCancelUrl(): string {
   return `${readDomainClient()}/coke/payment-cancel`;
 }
 
+function buildCokeCheckoutSessionCreateParams(
+  customerId: string,
+): Stripe.Checkout.SessionCreateParams {
+  return {
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price: readPriceId(),
+        quantity: 1,
+      },
+    ],
+    success_url: buildSuccessUrl(),
+    cancel_url: buildCancelUrl(),
+    metadata: {
+      customerId,
+    },
+  };
+}
+
 function toDate(value: number | string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
@@ -110,6 +130,10 @@ function unavailablePublicCheckoutResponse(): Response {
     'Checkout temporarily unavailable',
     'This checkout is temporarily unavailable. Please try again later.',
   );
+}
+
+function logPublicCheckoutError(message: string, details: Record<string, unknown>): void {
+  console.error(`[coke-payment] ${message}`, details);
 }
 
 async function loadCompatibilityCustomerAccount(
@@ -199,33 +223,33 @@ export const cokePaymentRouter = new Hono()
       if (access.accountAccessDeniedReason === 'account_suspended') {
         return unavailablePublicCheckoutResponse();
       }
-    } catch {
+    } catch (error) {
+      logPublicCheckoutError('public checkout access resolution failed', {
+        customerId: account.id,
+        error,
+      });
       return unavailablePublicCheckoutResponse();
     }
 
     try {
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price: readPriceId(),
-            quantity: 1,
-          },
-        ],
-        success_url: buildSuccessUrl(),
-        cancel_url: buildCancelUrl(),
-        metadata: {
-          customerId: account.id,
-        },
-      });
+      const session = await stripe.checkout.sessions.create(
+        buildCokeCheckoutSessionCreateParams(account.id),
+      );
 
       if (!session.url) {
+        logPublicCheckoutError('public checkout session missing url', {
+          customerId: account.id,
+          sessionId: session.id ?? null,
+        });
         return unavailablePublicCheckoutResponse();
       }
 
       return c.redirect(session.url, 302);
-    } catch {
+    } catch (error) {
+      logPublicCheckoutError('public checkout session creation failed', {
+        customerId: account.id,
+        error,
+      });
       return unavailablePublicCheckoutResponse();
     }
   })
@@ -241,21 +265,9 @@ export const cokePaymentRouter = new Hono()
       return c.json({ ok: false, error: 'email_not_verified' }, 403);
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: readPriceId(),
-          quantity: 1,
-        },
-      ],
-      success_url: buildSuccessUrl(),
-      cancel_url: buildCancelUrl(),
-      metadata: {
-        customerId: account.id,
-      },
-    });
+    const session = await stripe.checkout.sessions.create(
+      buildCokeCheckoutSessionCreateParams(account.id),
+    );
 
     return c.json({
       ok: true,
