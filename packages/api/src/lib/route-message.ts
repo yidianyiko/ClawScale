@@ -19,6 +19,7 @@ import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
 import { bindBusinessConversation } from './business-conversation.js';
 import { resolveCokeAccountAccess } from './coke-account-access.js';
+import { buildPublicCheckoutUrl, issuePublicCheckoutToken } from './coke-public-checkout.js';
 import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
 import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
@@ -181,10 +182,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.clawscaleUserId ?? endUser.clawscaleUserId ?? null;
   const resolvedCokeAccountId =
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
-  const resolvedCokeAccountOwner = resolvedCokeAccountId
+  const accessCustomerId =
+    channel.ownershipKind === 'shared' ? resolvedChannelCustomerId : resolvedCokeAccountId;
+  const resolvedAccessAccountOwner = accessCustomerId
     ? await db.membership.findFirst({
         where: {
-          customerId: resolvedCokeAccountId,
+          customerId: accessCustomerId,
           role: 'owner',
         },
         include: {
@@ -202,24 +205,36 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         },
       })
     : null;
-  const resolvedCokeAccount = resolvedCokeAccountId && resolvedCokeAccountOwner
+  const resolvedAccessAccount = accessCustomerId && resolvedAccessAccountOwner
     ? {
-        id: resolvedCokeAccountId,
-        displayName: resolvedCokeAccountOwner.customer.displayName,
-        emailVerified: resolvedCokeAccountOwner.identity.claimStatus === 'active',
+        id: accessCustomerId,
+        displayName: resolvedAccessAccountOwner.customer.displayName,
+        emailVerified: resolvedAccessAccountOwner.identity.claimStatus === 'active',
         status: 'normal' as const,
       }
     : null;
-  const resolvedCokeAccountAccess = resolvedCokeAccount
+  const resolvedAccessAccountDecision = resolvedAccessAccount
     ? await resolveCokeAccountAccess({
         account: {
-          id: resolvedCokeAccount.id,
-          emailVerified: resolvedCokeAccount.emailVerified,
-          displayName: resolvedCokeAccount.displayName,
-          status: resolvedCokeAccount.status,
+          id: resolvedAccessAccount.id,
+          emailVerified: resolvedAccessAccount.emailVerified,
+          displayName: resolvedAccessAccount.displayName,
+          status: resolvedAccessAccount.status,
         },
+        ...(channel.ownershipKind === 'shared' ? { requireEmailVerified: false } : {}),
       })
     : null;
+  const resolvedAccessAccountMetadata =
+    channel.ownershipKind === 'shared' &&
+    resolvedAccessAccountDecision?.accountAccessDeniedReason === 'subscription_required' &&
+    resolvedChannelCustomerId
+      ? {
+          ...resolvedAccessAccountDecision,
+          renewalUrl: buildPublicCheckoutUrl(
+            issuePublicCheckoutToken({ customerId: resolvedChannelCustomerId }),
+          ),
+        }
+      : resolvedAccessAccountDecision;
 
   // 4. Enforce access policy
   const access = settings.endUserAccess ?? 'anonymous';
@@ -448,16 +463,16 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
             ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
             : {}),
           ...(personalChannelOwnership ?? {}),
-          ...(resolvedCokeAccount && resolvedCokeAccountAccess
+          ...(resolvedAccessAccount && resolvedAccessAccountMetadata
             ? {
-                cokeAccountDisplayName: resolvedCokeAccount.displayName,
-                accountStatus: resolvedCokeAccountAccess.accountStatus,
-                emailVerified: resolvedCokeAccountAccess.emailVerified,
-                subscriptionActive: resolvedCokeAccountAccess.subscriptionActive,
-                subscriptionExpiresAt: resolvedCokeAccountAccess.subscriptionExpiresAt,
-                accountAccessAllowed: resolvedCokeAccountAccess.accountAccessAllowed,
-                accountAccessDeniedReason: resolvedCokeAccountAccess.accountAccessDeniedReason,
-                renewalUrl: resolvedCokeAccountAccess.renewalUrl,
+                cokeAccountDisplayName: resolvedAccessAccount.displayName,
+                accountStatus: resolvedAccessAccountMetadata.accountStatus,
+                emailVerified: resolvedAccessAccountMetadata.emailVerified,
+                subscriptionActive: resolvedAccessAccountMetadata.subscriptionActive,
+                subscriptionExpiresAt: resolvedAccessAccountMetadata.subscriptionExpiresAt,
+                accountAccessAllowed: resolvedAccessAccountMetadata.accountAccessAllowed,
+                accountAccessDeniedReason: resolvedAccessAccountMetadata.accountAccessDeniedReason,
+                renewalUrl: resolvedAccessAccountMetadata.renewalUrl,
               }
             : {}),
         }, palmosCtx, {

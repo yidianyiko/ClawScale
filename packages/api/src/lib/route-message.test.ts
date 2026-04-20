@@ -18,6 +18,8 @@ const getUnifiedConversationIds = vi.hoisted(() => vi.fn());
 const bindEndUserToCokeAccount = vi.hoisted(() => vi.fn());
 const bindBusinessConversation = vi.hoisted(() => vi.fn());
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
+const issuePublicCheckoutToken = vi.hoisted(() => vi.fn());
+const buildPublicCheckoutUrl = vi.hoisted(() => vi.fn());
 const provisionSharedChannelCustomer = vi.hoisted(() => vi.fn());
 const createRouteBindingSnapshot = vi.hoisted(() => vi.fn());
 
@@ -26,6 +28,10 @@ vi.mock('./ai-backend.js', () => ({ generateReply }));
 vi.mock('./clawscale-user.js', () => ({ getUnifiedConversationIds, bindEndUserToCokeAccount }));
 vi.mock('./business-conversation.js', () => ({ bindBusinessConversation }));
 vi.mock('./coke-account-access.js', () => ({ resolveCokeAccountAccess }));
+vi.mock('./coke-public-checkout.js', () => ({
+  issuePublicCheckoutToken,
+  buildPublicCheckoutUrl,
+}));
 vi.mock('./shared-channel-provisioning.js', () => ({ provisionSharedChannelCustomer }));
 vi.mock('./route-binding.js', async () => {
   const actual = await vi.importActual<typeof import('./route-binding.js')>('./route-binding.js');
@@ -134,6 +140,8 @@ describe('routeInboundMessage', () => {
       accountAccessDeniedReason: null,
       renewalUrl: 'https://coke.example/coke/renew',
     });
+    issuePublicCheckoutToken.mockReturnValue('signed-public-token');
+    buildPublicCheckoutUrl.mockReturnValue('https://coke.example/api/coke/public-checkout?token=signed-public-token');
     getUnifiedConversationIds.mockResolvedValue(['conv_1', 'conv_2']);
     provisionSharedChannelCustomer.mockResolvedValue({
       customerId: 'ck_shared_1',
@@ -276,6 +284,114 @@ describe('routeInboundMessage', () => {
             customer_id: 'ck_shared_1',
           }),
         }),
+      }),
+    );
+  });
+
+  it('resolves shared WhatsApp access against the provisioned customer owner without email gating', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello shared channel',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_shared_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            claimStatus: true,
+          },
+        },
+      },
+    });
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_shared_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        customerId: 'ck_shared_1',
+        customer_id: 'ck_shared_1',
+        accountStatus: 'normal',
+        emailVerified: true,
+        subscriptionActive: true,
+        subscriptionExpiresAt: null,
+        accountAccessAllowed: true,
+        accountAccessDeniedReason: null,
+        renewalUrl: 'https://coke.example/coke/renew',
+      }),
+    );
+    expect(issuePublicCheckoutToken).not.toHaveBeenCalled();
+    expect(buildPublicCheckoutUrl).not.toHaveBeenCalled();
+  });
+
+  it('injects a signed public renewal link for shared subscription_required access', async () => {
+    resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: '2026-04-01T00:00:00.000Z',
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'subscription_required',
+      renewalUrl: 'https://coke.example/coke/renew',
+    });
+    issuePublicCheckoutToken.mockReturnValueOnce('signed-public-token');
+    buildPublicCheckoutUrl.mockReturnValueOnce(
+      'https://coke.example/api/coke/public-checkout?token=signed-public-token',
+    );
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello renewal',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(issuePublicCheckoutToken).toHaveBeenCalledWith({
+      customerId: 'ck_shared_1',
+    });
+    expect(buildPublicCheckoutUrl).toHaveBeenCalledWith('signed-public-token');
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        accountAccessDeniedReason: 'subscription_required',
+        renewalUrl: 'https://coke.example/api/coke/public-checkout?token=signed-public-token',
       }),
     );
   });
