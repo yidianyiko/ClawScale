@@ -1,18 +1,17 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const PUBLIC_CHECKOUT_TTL_SECONDS = 24 * 60 * 60;
-const JWT_HEADER = {
-  alg: 'HS256',
-  typ: 'JWT',
-} as const;
+const PUBLIC_CHECKOUT_EXPIRES_IN = '24h';
 
 export interface PublicCheckoutTokenPayload {
   sub: string;
   customerId: string;
   tokenType: 'action';
   purpose: 'public_checkout';
-  iat: number;
-  exp: number;
+  iat?: number;
+  exp?: number;
 }
 
 export class PublicCheckoutTokenError extends Error {
@@ -23,6 +22,13 @@ export class PublicCheckoutTokenError extends Error {
     this.name = 'PublicCheckoutTokenError';
   }
 }
+
+type JsonWebTokenModule = {
+  sign(payload: Record<string, unknown>, secret: string, options?: { expiresIn?: string }): string;
+  verify(token: string, secret: string): unknown;
+};
+
+let jwtModule: JsonWebTokenModule | null = null;
 
 function readCustomerJwtSecret(): string {
   const secret =
@@ -35,103 +41,126 @@ function readCustomerJwtSecret(): string {
   return secret;
 }
 
-function base64UrlEncode(value: object): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
+function findJsonWebTokenPackageDir(): string | null {
+  const startDir = path.dirname(fileURLToPath(import.meta.url));
+  let currentDir = startDir;
+
+  while (true) {
+    const localNodeModules = path.join(currentDir, 'node_modules');
+    const directPackageDir = path.join(localNodeModules, 'jsonwebtoken');
+    if (fs.existsSync(path.join(directPackageDir, 'package.json'))) {
+      return directPackageDir;
+    }
+
+    const pnpmDir = path.join(localNodeModules, '.pnpm');
+    if (fs.existsSync(pnpmDir)) {
+      for (const entry of fs.readdirSync(pnpmDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !entry.name.startsWith('jsonwebtoken@')) {
+          continue;
+        }
+
+        const packageDir = path.join(pnpmDir, entry.name, 'node_modules', 'jsonwebtoken');
+        if (fs.existsSync(path.join(packageDir, 'package.json'))) {
+          return packageDir;
+        }
+      }
+    }
+
+    const gatewayDir = path.join(currentDir, 'gateway');
+    const gatewayNodeModules = path.join(gatewayDir, 'node_modules');
+    const gatewayPackageDir = path.join(gatewayNodeModules, 'jsonwebtoken');
+    if (fs.existsSync(path.join(gatewayPackageDir, 'package.json'))) {
+      return gatewayPackageDir;
+    }
+
+    const gatewayPnpmDir = path.join(gatewayNodeModules, '.pnpm');
+    if (fs.existsSync(gatewayPnpmDir)) {
+      for (const entry of fs.readdirSync(gatewayPnpmDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !entry.name.startsWith('jsonwebtoken@')) {
+          continue;
+        }
+
+        const packageDir = path.join(gatewayPnpmDir, entry.name, 'node_modules', 'jsonwebtoken');
+        if (fs.existsSync(path.join(packageDir, 'package.json'))) {
+          return packageDir;
+        }
+      }
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+
+    currentDir = parentDir;
+  }
 }
 
-function signJwt(payload: PublicCheckoutTokenPayload, secret: string): string {
-  const encodedHeader = base64UrlEncode(JWT_HEADER);
-  const encodedPayload = base64UrlEncode(payload);
-  const signature = createHmac('sha256', secret)
-    .update(`${encodedHeader}.${encodedPayload}`)
-    .digest('base64url');
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
-}
-
-function decodeJwt(token: string): {
-  header: { alg?: string; typ?: string };
-  payload: Partial<PublicCheckoutTokenPayload>;
-  signature: string;
-  signingInput: string;
-} {
-  const parts = token.split('.');
-  if (parts.length !== 3) {
-    throw new PublicCheckoutTokenError();
+function loadJsonWebToken(): JsonWebTokenModule {
+  if (jwtModule) {
+    return jwtModule;
   }
 
-  const [encodedHeader, encodedPayload, signature] = parts;
+  const require = createRequire(import.meta.url);
 
   try {
-    return {
-      header: JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8')) as {
-        alg?: string;
-        typ?: string;
-      },
-      payload: JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as Partial<PublicCheckoutTokenPayload>,
-      signature,
-      signingInput: `${encodedHeader}.${encodedPayload}`,
-    };
+    jwtModule = require('jsonwebtoken') as JsonWebTokenModule;
+    return jwtModule;
   } catch {
-    throw new PublicCheckoutTokenError();
+    const packageDir = findJsonWebTokenPackageDir();
+    if (!packageDir) {
+      throw new Error('jsonwebtoken package is required');
+    }
+
+    jwtModule = require(packageDir) as JsonWebTokenModule;
+    return jwtModule;
   }
 }
 
 export function issuePublicCheckoutToken(input: { customerId: string }): string {
-  const iat = Math.floor(Date.now() / 1000);
+  const jwt = loadJsonWebToken();
 
-  return signJwt(
+  return jwt.sign(
     {
       sub: input.customerId,
       customerId: input.customerId,
       tokenType: 'action',
       purpose: 'public_checkout',
-      iat,
-      exp: iat + PUBLIC_CHECKOUT_TTL_SECONDS,
     },
     readCustomerJwtSecret(),
+    { expiresIn: PUBLIC_CHECKOUT_EXPIRES_IN },
   );
 }
 
 export function verifyPublicCheckoutToken(token: string): PublicCheckoutTokenPayload {
-  const { header, payload, signature, signingInput } = decodeJwt(token);
-  const secret = readCustomerJwtSecret();
-  const expectedSignature = createHmac('sha256', secret).update(signingInput).digest();
-  const actualSignature = Buffer.from(signature, 'base64url');
+  const jwt = loadJsonWebToken();
 
+  let payload: unknown;
   try {
-    if (header.alg !== 'HS256' || header.typ !== 'JWT') {
-      throw new PublicCheckoutTokenError();
-    }
-
-    if (expectedSignature.length !== actualSignature.length) {
-      throw new PublicCheckoutTokenError();
-    }
-
-    if (!timingSafeEqual(expectedSignature, actualSignature)) {
-      throw new PublicCheckoutTokenError();
-    }
-
-    if (
-      payload.sub !== payload.customerId ||
-      typeof payload.sub !== 'string' ||
-      typeof payload.customerId !== 'string' ||
-      payload.tokenType !== 'action' ||
-      payload.purpose !== 'public_checkout' ||
-      typeof payload.iat !== 'number' ||
-      typeof payload.exp !== 'number'
-    ) {
-      throw new PublicCheckoutTokenError();
-    }
-
-    if (payload.exp <= Math.floor(Date.now() / 1000)) {
-      throw new PublicCheckoutTokenError();
-    }
-
-    return payload as PublicCheckoutTokenPayload;
+    payload = jwt.verify(token, readCustomerJwtSecret());
   } catch {
     throw new PublicCheckoutTokenError();
   }
+
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    (payload as Record<string, unknown>).sub !== (payload as Record<string, unknown>).customerId ||
+    typeof (payload as Record<string, unknown>).sub !== 'string' ||
+    typeof (payload as Record<string, unknown>).customerId !== 'string' ||
+    (payload as Record<string, unknown>).tokenType !== 'action' ||
+    (payload as Record<string, unknown>).purpose !== 'public_checkout' ||
+    typeof (payload as Record<string, unknown>).iat !== 'number' ||
+    typeof (payload as Record<string, unknown>).exp !== 'number'
+  ) {
+    throw new PublicCheckoutTokenError();
+  }
+
+  if ((payload as Record<string, unknown>).exp <= Math.floor(Date.now() / 1000)) {
+    throw new PublicCheckoutTokenError();
+  }
+
+  return payload as PublicCheckoutTokenPayload;
 }
 
 export function buildPublicCheckoutUrl(token: string): string {
