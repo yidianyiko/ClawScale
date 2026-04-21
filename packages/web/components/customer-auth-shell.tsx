@@ -11,12 +11,21 @@ function getActiveAuthCta(pathname: string | null): 'signIn' | 'register' | null
     return null;
   }
 
-  if (pathname.startsWith('/auth/register') || pathname.startsWith('/auth/claim')) {
+  if (pathname === '/auth/login') {
+    return 'signIn';
+  }
+
+  if (pathname === '/auth/register') {
     return 'register';
   }
 
-  if (pathname.startsWith('/auth/')) {
-    return 'signIn';
+  if (
+    pathname === '/auth/forgot-password' ||
+    pathname === '/auth/reset-password' ||
+    pathname === '/auth/verify-email' ||
+    pathname === '/auth/claim'
+  ) {
+    return null;
   }
 
   return null;
@@ -33,6 +42,7 @@ export function CustomerAuthShell({ children }: { children: ReactNode }) {
         <section className="auth-hero" aria-label={copy.title}>
           <p className="auth-hero__brand">{copy.brandName}</p>
           <p className="auth-hero__tagline">{copy.brandTagline}</p>
+          <p className="auth-hero__nav-label">{copy.navLabel}</p>
           <p className="auth-hero__eyebrow">{copy.eyebrow}</p>
           <h1 className="auth-hero__title">{copy.title}</h1>
           <p className="auth-hero__body">{copy.body}</p>

@@ -248,6 +248,12 @@
   line-height: 1.45;
   color: var(--fg-muted);
 }
+.coke-site .auth-hero__nav-label {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
 .coke-site .auth-hero__eyebrow {
   margin: 28px 0 0;
   display: inline-flex;
