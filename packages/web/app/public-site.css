@@ -1,0 +1,2097 @@
+/* =========================================================================
+   Coke public site — design tokens + page styles
+   All selectors are scoped under `.coke-site` so admin / customer pages
+   keep their existing styling untouched.
+   ========================================================================= */
+
+.coke-site {
+  --cream-50:  #FBF8F2;
+  --cream-100: #F6F1E8;
+  --cream-200: #EEE6D5;
+  --cream-300: #E3D7BE;
+
+  --ink-1000: #120C0A;
+  --ink-900:  #1B1410;
+  --ink-700:  #4A3D36;
+  --ink-500:  #7A6B62;
+  --ink-300:  #A89A90;
+
+  --claw-50:  #FDEDE2;
+  --claw-200: #F6BFA0;
+  --claw-400: #EE8B5F;
+  --claw-500: #E8693C;
+  --claw-600: #CE5026;
+  --claw-700: #A23C1A;
+
+  --teal-200: #B8D3CF;
+  --olive-200: #D7D6AC;
+  --olive-500: #7A7A3D;
+
+  --ink-06: rgba(27, 20, 16, 0.06);
+  --ink-08: rgba(27, 20, 16, 0.08);
+  --ink-20: rgba(27, 20, 16, 0.20);
+
+  --bg-page:      var(--cream-100);
+  --fg-default:   var(--ink-900);
+  --fg-muted:     var(--ink-500);
+  --fg-subtle:    var(--ink-300);
+
+  --font-display: var(--font-fraunces, 'Fraunces', 'Source Serif 4', ui-serif, Georgia, serif);
+  --font-body:    var(--font-inter, 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif);
+  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+
+  --radius-sm:  10px;
+  --radius-md:  14px;
+  --radius-lg:  22px;
+  --radius-pill: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(27, 20, 16, 0.06);
+  --shadow-md: 0 8px 24px -8px rgba(27, 20, 16, 0.12);
+  --shadow-lg: 0 24px 48px -16px rgba(27, 20, 16, 0.18);
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+
+  --space-3: 12px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --max-content: 1180px;
+  --gutter: 32px;
+
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 900px 420px at 20% -12%, rgba(232, 105, 60, 0.10), transparent 60%),
+    radial-gradient(ellipse 700px 360px at 92% -6%, rgba(63, 123, 117, 0.08), transparent 60%),
+    var(--bg-page);
+  color: var(--fg-default);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.coke-site *,
+.coke-site *::before,
+.coke-site *::after { box-sizing: border-box; }
+
+.coke-site a { color: inherit; text-decoration: none; }
+
+/* ---------------- Header ---------------- */
+
+.coke-site .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(246, 241, 232, 0.86);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  border-bottom: 1px solid var(--ink-08);
+}
+.coke-site .site-header__inner {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 18px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.coke-site .brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 30;
+}
+.coke-site .brand__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  transform: translateY(-1px);
+}
+
+.coke-site .site-nav {
+  display: flex;
+  gap: var(--space-5);
+  margin-left: var(--space-5);
+}
+.coke-site .site-nav__link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  transition: color var(--dur-base) var(--ease-standard);
+  padding: 6px 2px;
+}
+.coke-site .site-nav__link:hover { color: var(--fg-default); }
+
+.coke-site .site-header__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.coke-site .locale-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--ink-08);
+  background: transparent;
+  font-family: var(--font-body);
+}
+.coke-site .locale-switch__opt {
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--dur-base), background var(--dur-base);
+}
+.coke-site .locale-switch__opt[aria-pressed="true"] {
+  background: var(--ink-900);
+  color: var(--cream-100);
+}
+
+.coke-site .header-signin {
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-default);
+  white-space: nowrap;
+  transition: color var(--dur-base);
+}
+.coke-site .header-signin:hover { color: var(--claw-600); }
+.coke-site .header-signin[aria-current="page"] {
+  color: var(--ink-1000);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.coke-site .header-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-standard), transform 120ms;
+}
+.coke-site .header-cta:hover { background: var(--ink-1000); }
+.coke-site .header-cta:active { transform: scale(0.98); }
+.coke-site .header-cta[aria-current="page"] {
+  background: var(--claw-500);
+  color: var(--cream-100);
+  box-shadow: 0 0 0 1px rgba(232, 105, 60, 0.18);
+}
+
+/* ---------------- Auth shell ---------------- */
+
+.coke-site .auth-shell {
+  padding: 72px 0 96px;
+}
+.coke-site .auth-shell__grid {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
+  gap: 32px;
+  align-items: start;
+}
+.coke-site .auth-shell__content {
+  min-width: 0;
+}
+
+.coke-site .auth-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 32px;
+  border-radius: 28px;
+  border: 1px solid var(--ink-08);
+  background:
+    radial-gradient(ellipse 520px 260px at 8% 0%, rgba(232, 105, 60, 0.08), transparent 65%),
+    rgba(255, 255, 255, 0.56);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.coke-site .auth-hero__brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink-900);
+}
+.coke-site .auth-hero__tagline {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+.coke-site .auth-hero__nav-label {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.coke-site .auth-hero__eyebrow {
+  margin: 28px 0 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--cream-200);
+  border: 1px solid var(--ink-06);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-700);
+}
+.coke-site .auth-hero__title {
+  margin: 20px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 3.8vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  font-weight: 500;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40, 'opsz' 120;
+}
+.coke-site .auth-hero__body {
+  margin: 20px 0 0;
+  font-size: 17px;
+  line-height: 1.62;
+  color: var(--ink-700);
+}
+.coke-site .auth-hero__secondary {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+.coke-site .auth-hero__trust-list {
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.coke-site .auth-hero__trust-item {
+  position: relative;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.coke-site .auth-hero__trust-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  box-shadow: 0 0 0 3px var(--claw-50);
+}
+
+.coke-site .auth-card {
+  max-width: 560px;
+  padding: 40px 36px;
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+.coke-site .auth-card__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.6vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  font-weight: 500;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40, 'opsz' 120;
+}
+.coke-site .auth-card__eyebrow {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+.coke-site .auth-card__desc {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+
+/* ---------------- Customer channel setup ---------------- */
+
+.coke-site.customer-channel-page {
+  min-height: 0;
+  background: transparent;
+  color: var(--fg-default);
+}
+
+.coke-site .customer-channel-page__card {
+  max-width: none;
+  padding: 36px;
+}
+
+.coke-site .customer-channel-page__section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ink-08);
+}
+
+.coke-site .customer-channel-page__surface {
+  padding: 20px 22px;
+  border-radius: 22px;
+  border: 1px solid var(--ink-08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.coke-site .customer-channel-page__surface--neutral {
+  background:
+    radial-gradient(ellipse 420px 200px at 0% 0%, rgba(232, 105, 60, 0.06), transparent 65%),
+    rgba(255, 255, 255, 0.72);
+}
+
+.coke-site .customer-channel-page__surface--success {
+  background: #EEF8F1;
+  border-color: rgba(36, 96, 59, 0.18);
+}
+
+.coke-site .customer-channel-page__surface--danger {
+  background: #FCEEEB;
+  border-color: rgba(206, 80, 38, 0.18);
+}
+
+.coke-site .customer-channel-page__surface-eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+
+.coke-site .customer-channel-page__surface-copy {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink-700);
+}
+
+.coke-site .customer-channel-page__qr-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 1px dashed rgba(27, 20, 16, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(250, 245, 236, 0.78));
+}
+
+.coke-site .customer-channel-page__qr-image {
+  width: min(100%, 288px);
+  height: auto;
+  border-radius: 20px;
+  border: 1px solid var(--ink-08);
+  background: #fff;
+}
+
+.coke-site .customer-channel-page__meta {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+
+.coke-site .customer-channel-page__alert {
+  margin-top: 24px;
+}
+
+.coke-site .customer-channel-page__section-title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
+
+.coke-site .customer-channel-page__steps {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.coke-site .customer-channel-page__step {
+  position: relative;
+  padding-left: 18px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink-700);
+}
+
+.coke-site .customer-channel-page__step::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.72em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  box-shadow: 0 0 0 3px var(--claw-50);
+}
+
+.coke-site .customer-channel-page__button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.coke-site .customer-channel-page__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 11px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 600;
+  transition:
+    background var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard),
+    transform 120ms;
+}
+
+.coke-site .customer-channel-page__button:hover { transform: translateY(-1px); }
+.coke-site .customer-channel-page__button:active { transform: scale(0.98); }
+
+.coke-site .customer-channel-page__button:disabled {
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.52;
+}
+
+.coke-site .customer-channel-page__button--primary {
+  background: var(--ink-900);
+  color: var(--cream-100);
+}
+
+.coke-site .customer-channel-page__button--primary:hover {
+  background: var(--ink-1000);
+}
+
+.coke-site .customer-channel-page__button--secondary {
+  border-color: var(--ink-08);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-700);
+}
+
+.coke-site .customer-channel-page__button--secondary:hover {
+  border-color: rgba(27, 20, 16, 0.16);
+  color: var(--ink-900);
+}
+
+.coke-site .customer-channel-page__footer {
+  padding-bottom: 2px;
+}
+
+.coke-site .customer-channel-page__footer-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-700);
+}
+
+.coke-site .customer-channel-page__footer-link {
+  font-weight: 600;
+  color: var(--claw-600);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+@media (max-width: 640px) {
+  .coke-site .customer-channel-page__card {
+    padding: 28px 24px;
+  }
+
+  .coke-site .customer-channel-page__qr-frame {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  .coke-site .customer-channel-page__button-row {
+    flex-direction: column;
+  }
+
+  .coke-site .customer-channel-page__button {
+    width: 100%;
+  }
+}
+
+.coke-site .auth-alert {
+  margin-top: 20px;
+  padding: 18px 18px 16px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+}
+.coke-site .auth-alert--warning {
+  background: var(--claw-50);
+  border-color: rgba(232, 105, 60, 0.18);
+  color: var(--ink-700);
+}
+.coke-site .auth-alert--error {
+  background: #FCEEEB;
+  border-color: rgba(206, 80, 38, 0.18);
+  color: var(--claw-700);
+}
+.coke-site .auth-alert--success {
+  background: #EEF8F1;
+  border-color: rgba(36, 96, 59, 0.18);
+  color: #24603B;
+}
+.coke-site .auth-alert--info {
+  background: var(--cream-100);
+  border-color: var(--ink-08);
+  color: var(--ink-700);
+}
+.coke-site .auth-alert__body {
+  display: grid;
+  gap: 8px;
+}
+.coke-site .auth-alert__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
+  color: inherit;
+}
+.coke-site .auth-alert__copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: inherit;
+}
+.coke-site .auth-alert__field {
+  margin-top: 18px;
+}
+.coke-site .auth-alert__actions {
+  margin-top: 16px;
+}
+.coke-site .auth-submit--compact {
+  width: auto;
+  min-width: 180px;
+}
+.coke-site .auth-alert__status {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.coke-site .auth-alert__status--success {
+  color: #24603B;
+}
+.coke-site .auth-alert__status--error {
+  color: var(--claw-700);
+}
+
+.coke-site .auth-form {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+}
+.coke-site .auth-field {
+  display: grid;
+  gap: 8px;
+}
+.coke-site .auth-label {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.coke-site .auth-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-20);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--ink-900);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color var(--dur-base) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard), transform 120ms;
+}
+.coke-site .auth-input::placeholder {
+  color: var(--ink-300);
+}
+.coke-site .auth-input:focus {
+  border-color: var(--claw-500);
+  box-shadow: 0 0 0 4px var(--claw-50);
+}
+
+.coke-site .auth-submit {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-standard), transform 120ms, opacity var(--dur-base);
+}
+.coke-site .auth-submit:hover { background: var(--ink-1000); }
+.coke-site .auth-submit:active { transform: scale(0.985); }
+.coke-site .auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+  transform: none;
+}
+
+.coke-site .auth-linkrow {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.coke-site .auth-linkrow__text {
+  color: inherit;
+}
+.coke-site .auth-linkrow__link {
+  font-weight: 700;
+  color: var(--claw-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.coke-site .auth-linkrow__link:hover {
+  color: var(--claw-600);
+}
+
+/* ---------------- Hero ---------------- */
+
+.coke-site .hero { padding: 80px 0 96px; }
+.coke-site .hero__grid {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.95fr);
+  gap: 64px;
+  align-items: center;
+}
+
+.coke-site .hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--cream-200);
+  border: 1px solid var(--ink-06);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-700);
+  font-family: var(--font-body);
+}
+.coke-site .hero__eyebrow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  box-shadow: 0 0 0 3px var(--claw-50);
+}
+
+.coke-site .hero__title {
+  margin: 28px 0 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(44px, 5.6vw, 76px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40, 'opsz' 144;
+}
+.coke-site .hero__title-em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--claw-600);
+  font-variation-settings: 'SOFT' 80, 'opsz' 144;
+}
+
+.coke-site .hero__lede {
+  margin: 28px 0 0;
+  max-width: 520px;
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+
+.coke-site .hero__ctas {
+  margin-top: 36px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.coke-site .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+  transition: background var(--dur-base) var(--ease-standard), border-color var(--dur-base), color var(--dur-base), transform 120ms;
+}
+.coke-site .btn--primary { background: var(--claw-500); color: #fff; }
+.coke-site .btn--primary:hover { background: var(--claw-600); }
+.coke-site .btn--primary:active { transform: scale(0.985); }
+.coke-site .btn--lg { padding: 15px 26px; font-size: 15px; }
+.coke-site .btn--link {
+  background: transparent;
+  color: var(--ink-700);
+  padding: 13px 6px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--ink-20);
+}
+.coke-site .btn--link:hover { color: var(--ink-900); border-bottom-color: var(--ink-900); }
+
+.coke-site .hero__foot {
+  margin-top: 40px;
+  font-size: 13px;
+  color: var(--fg-subtle);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- Chat peek ---------------- */
+
+.coke-site .hero__peek { position: relative; }
+
+.coke-site .chat-peek {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--ink-900);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(246, 241, 232, 0.06);
+  transform: rotate(-0.6deg);
+}
+.coke-site .chat-peek::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 320px 140px at 80% 0%, rgba(232, 105, 60, 0.16), transparent 70%);
+}
+
+.coke-site .chat-peek__chrome {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #0E0A08;
+  border-bottom: 1px solid rgba(246, 241, 232, 0.06);
+  color: var(--cream-100);
+}
+.coke-site .chat-peek__dots { display: flex; gap: 6px; }
+.coke-site .chat-peek__dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(246, 241, 232, 0.12);
+}
+.coke-site .chat-peek__dots span:nth-child(1) { background: #F6BFA0; }
+.coke-site .chat-peek__dots span:nth-child(2) { background: rgba(246, 241, 232, 0.2); }
+.coke-site .chat-peek__dots span:nth-child(3) { background: rgba(246, 241, 232, 0.18); }
+
+.coke-site .chat-peek__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 8px;
+}
+.coke-site .chat-peek__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--claw-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.coke-site .chat-peek__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cream-100);
+  line-height: 1.2;
+}
+.coke-site .chat-peek__meta {
+  font-size: 11px;
+  color: #A89A90;
+  line-height: 1.2;
+  font-family: var(--font-mono);
+}
+
+.coke-site .chat-peek__platform {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--teal-200);
+  border: 1px solid rgba(184, 211, 207, 0.22);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+}
+
+.coke-site .chat-peek__body {
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: linear-gradient(180deg, #151010 0%, #0E0A08 100%);
+}
+
+.coke-site .bubble {
+  max-width: 86%;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  border-radius: 16px;
+}
+.coke-site .bubble--user {
+  align-self: flex-end;
+  background: rgba(246, 241, 232, 0.08);
+  color: var(--cream-100);
+  border-bottom-right-radius: 6px;
+  border: 1px solid rgba(246, 241, 232, 0.06);
+}
+.coke-site .bubble--coke {
+  align-self: flex-start;
+  background: var(--cream-100);
+  color: var(--ink-900);
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 12px 28px -18px rgba(0,0,0,0.5);
+}
+.coke-site .bubble__sender { margin-bottom: 6px; }
+.coke-site .bubble__tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--claw-600);
+  padding: 2px 7px;
+  background: var(--claw-50);
+  border-radius: var(--radius-pill);
+}
+.coke-site .bubble__status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.coke-site .chat-peek__composer {
+  padding: 14px 16px;
+  background: #0B0706;
+  border-top: 1px solid rgba(246, 241, 232, 0.06);
+}
+.coke-site .chat-peek__composer-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(246, 241, 232, 0.05);
+  border: 1px solid rgba(246, 241, 232, 0.08);
+  font-size: 12px;
+  color: #A89A90;
+  font-style: italic;
+}
+
+/* ---------------- Generic section shell ---------------- */
+
+.coke-site .section { padding: 88px 0; position: relative; }
+.coke-site .section--flush { padding: 48px 0 96px; }
+.coke-site .section--invert {
+  background: var(--ink-900);
+  color: var(--cream-100);
+  margin: 40px var(--gutter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .coke-site .section--invert { margin: 32px 16px; border-radius: var(--radius-md); }
+}
+
+.coke-site .section__head {
+  max-width: var(--max-content);
+  margin: 0 auto 56px;
+  padding: 0 var(--gutter);
+}
+.coke-site .section--invert .section__head { padding: 0 var(--space-7); }
+
+.coke-site .section__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--fg-muted);
+  font-family: var(--font-body);
+}
+.coke-site .section__eyebrow--invert { color: var(--cream-300); }
+
+.coke-site .section__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.coke-site .section__title {
+  margin: 20px 0 28px;
+  max-width: 760px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(32px, 3.8vw, 48px);
+  line-height: 1.08;
+  letter-spacing: -0.028em;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40, 'opsz' 120;
+}
+.coke-site .section__title--invert { color: var(--cream-100); }
+
+.coke-site .section__sub {
+  margin: 28px 0 0;
+  max-width: 620px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.coke-site .section__sub--invert { color: var(--cream-300); }
+
+/* ---------------- Platforms ---------------- */
+
+.coke-site .platforms {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media (max-width: 900px) { .coke-site .platforms { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .coke-site .platforms { grid-template-columns: 1fr; } }
+
+.coke-site .platform {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  background: var(--cream-50);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-md);
+  transition: all var(--dur-base) var(--ease-standard);
+  cursor: pointer;
+}
+.coke-site .platform:hover {
+  border-color: var(--claw-500);
+  background: #fff;
+  transform: translateY(-1px);
+}
+.coke-site .platform:hover .platform__arrow { color: var(--claw-500); transform: translate(2px, -2px); }
+
+.coke-site .platform__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--cream-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-900);
+  flex-shrink: 0;
+}
+.coke-site .platform__body { flex: 1; min-width: 0; }
+.coke-site .platform__name { font-size: 15px; font-weight: 600; color: var(--ink-900); }
+.coke-site .platform__note { font-size: 12px; color: var(--fg-muted); margin-top: 3px; font-family: var(--font-mono); }
+.coke-site .platform__arrow {
+  color: var(--fg-subtle);
+  transition: all var(--dur-base) var(--ease-standard);
+}
+
+/* ---------------- Features ---------------- */
+
+.coke-site .features {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+@media (max-width: 760px) { .coke-site .features { grid-template-columns: 1fr; } }
+
+.coke-site .feature {
+  padding: 34px 32px 38px;
+  background: var(--cream-50);
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+  position: relative;
+  overflow: hidden;
+}
+.coke-site .feature:hover { border-color: var(--ink-20); box-shadow: var(--shadow-md); }
+
+.coke-site .feature__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.coke-site .feature__num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--fg-subtle);
+  padding: 3px 8px;
+  border: 1px solid var(--ink-08);
+  border-radius: var(--radius-pill);
+}
+.coke-site .feature__kicker {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--claw-600);
+}
+.coke-site .feature__icon {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--claw-50);
+  color: var(--claw-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.coke-site .feature__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 30px;
+  letter-spacing: -0.024em;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 60;
+}
+.coke-site .feature__body {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+
+/* ---------------- Architecture (inverted) ---------------- */
+
+.coke-site .arch {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 60px;
+  padding: 68px var(--space-7);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .coke-site .arch { grid-template-columns: 1fr; gap: 48px; padding: 48px 28px; }
+}
+
+.coke-site .arch__diagram {
+  margin-top: 36px;
+  padding: 22px;
+  border: 1px solid rgba(246, 241, 232, 0.10);
+  border-radius: var(--radius-md);
+  background: rgba(246, 241, 232, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.coke-site .arch__layer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--cream-300);
+}
+.coke-site .arch__layer > span:first-child {
+  font-weight: 600;
+  color: var(--cream-100);
+  margin-right: 8px;
+}
+.coke-site .arch__chip {
+  padding: 5px 10px;
+  border: 1px solid rgba(246, 241, 232, 0.18);
+  border-radius: var(--radius-pill);
+  background: rgba(246, 241, 232, 0.04);
+  font-size: 11px;
+  color: var(--cream-300);
+}
+.coke-site .arch__chip--brand {
+  background: rgba(232, 105, 60, 0.14);
+  border-color: rgba(232, 105, 60, 0.35);
+  color: var(--claw-200);
+}
+.coke-site .arch__pill {
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--claw-500);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.coke-site .arch__line {
+  width: 1px;
+  height: 16px;
+  background: linear-gradient(180deg, rgba(246, 241, 232, 0.25), rgba(246, 241, 232, 0));
+  margin-left: 40px;
+}
+
+.coke-site .arch__points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.coke-site .arch__point {
+  display: flex;
+  gap: 20px;
+  padding: 22px 0;
+  border-top: 1px solid rgba(246, 241, 232, 0.08);
+}
+.coke-site .arch__point:first-child { border-top: none; padding-top: 0; }
+.coke-site .arch__point-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--claw-400);
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+  width: 28px;
+}
+.coke-site .arch__point-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--cream-100);
+  letter-spacing: -0.01em;
+}
+.coke-site .arch__point-body {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--cream-300);
+}
+
+/* ---------------- Contact ---------------- */
+
+.coke-site .contact {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  position: relative;
+}
+.coke-site .contact__inner { max-width: 680px; padding: 48px 0; }
+.coke-site .contact__title {
+  margin: 20px 0 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(32px, 3.8vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.028em;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40;
+}
+.coke-site .contact__body {
+  margin: 18px 0 32px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-700);
+}
+.coke-site .contact__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.coke-site .contact__input {
+  flex: 1 1 260px;
+  padding: 14px 18px;
+  border: 1px solid var(--ink-20);
+  border-radius: var(--radius-pill);
+  background: var(--cream-50);
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--ink-900);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.coke-site .contact__input:focus {
+  outline: none;
+  border-color: var(--claw-500);
+  box-shadow: 0 0 0 4px var(--claw-50);
+}
+.coke-site .contact__input::placeholder { color: var(--fg-subtle); }
+.coke-site .contact__alt {
+  font-size: 14px;
+  color: var(--fg-muted);
+  padding: 13px 4px;
+  border-bottom: 1px solid transparent;
+  transition: all var(--dur-base);
+}
+.coke-site .contact__alt:hover { color: var(--ink-900); border-bottom-color: var(--ink-20); }
+.coke-site .contact__thanks {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--olive-200);
+  color: #4a4a1e;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+}
+.coke-site .contact__note {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+.coke-site .contact__mark {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 32px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(80px, 14vw, 200px);
+  font-weight: 500;
+  letter-spacing: -0.06em;
+  color: var(--cream-200);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  z-index: -1;
+}
+.coke-site .contact__mark-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--cream-300);
+  transform: translateY(-3px);
+}
+@media (max-width: 900px) { .coke-site .contact__mark { display: none; } }
+
+/* ---------------- Footer ---------------- */
+
+.coke-site .site-footer {
+  border-top: 1px solid var(--ink-08);
+  padding: 56px 0 28px;
+  background: var(--cream-50);
+}
+.coke-site .site-footer__inner {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 48px;
+}
+@media (max-width: 760px) {
+  .coke-site .site-footer__inner { grid-template-columns: 1fr; }
+}
+.coke-site .site-footer__brand { font-size: 32px; }
+.coke-site .site-footer__cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+.coke-site .site-footer__h {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--ink-900);
+  margin-bottom: 14px;
+}
+.coke-site .site-footer__cols a {
+  display: block;
+  font-size: 14px;
+  color: var(--fg-muted);
+  padding: 4px 0;
+  cursor: pointer;
+}
+.coke-site .site-footer__cols a:hover { color: var(--ink-900); }
+
+.coke-site .site-footer__bar {
+  max-width: var(--max-content);
+  margin: 40px auto 0;
+  padding: 24px var(--gutter) 0;
+  border-top: 1px solid var(--ink-08);
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* ---------------- Responsive hero ---------------- */
+
+@media (max-width: 960px) {
+  .coke-site .auth-shell__grid { grid-template-columns: 1fr; gap: 24px; }
+  .coke-site .hero__grid { grid-template-columns: 1fr; gap: 48px; }
+  .coke-site .hero__peek { max-width: 520px; }
+  .coke-site .site-nav { display: none; }
+}
+
+/* ---------------- Locale splash (pre-mount, outside .coke-site scope) ---------------- */
+.coke-site-splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 900px 420px at 20% -12%, rgba(232, 105, 60, 0.12), transparent 60%),
+    radial-gradient(ellipse 700px 360px at 92% -6%, rgba(63, 123, 117, 0.08), transparent 60%),
+    #F6F1E8;
+  z-index: 100;
+  font-family: var(--font-inter, 'Inter', system-ui, sans-serif);
+}
+.coke-site-splash__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  box-shadow: 0 8px 24px -8px rgba(27, 20, 16, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.coke-site-splash__mark {
+  font-family: var(--font-fraunces, 'Fraunces', Georgia, serif);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: #1B1410;
+}
+.coke-site-splash__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #E8693C;
+  transform: translateY(-4px);
+}
+.coke-site-splash__body {
+  margin: 0 0 0 4px;
+  font-size: 13px;
+  color: #7A6B62;
+}
+
+/* ---------------- Global landing page ---------------- */
+
+.global-site {
+  --global-bg: linear-gradient(180deg, #0F161C 0%, #121E27 38%, #F4EEE3 38%, #F4EEE3 100%);
+  --global-panel: rgba(247, 243, 236, 0.9);
+  --global-panel-strong: rgba(255, 251, 245, 0.95);
+  --global-night: #0F161C;
+  --global-night-soft: #1A2A36;
+  --global-mist: rgba(244, 238, 227, 0.18);
+  --global-accent: #D86A3C;
+  --global-accent-soft: rgba(216, 106, 60, 0.18);
+  --global-line: rgba(15, 22, 28, 0.08);
+
+  min-height: 100vh;
+  background: var(--global-bg);
+}
+
+.global-site .global-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(15, 22, 28, 0.74);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.global-site .global-header__inner {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 18px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.global-site .global-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: #F7F3EC;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.global-site .global-brand__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--global-accent);
+  transform: translateY(-2px);
+}
+
+.global-site .global-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.global-site .global-nav__link {
+  color: rgba(247, 243, 236, 0.78);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.global-site .global-nav__link:hover { color: #FFFFFF; }
+
+.global-site .global-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 9999px;
+  transition:
+    transform 150ms var(--ease-standard),
+    box-shadow 200ms var(--ease-standard),
+    background 200ms var(--ease-standard);
+}
+
+.global-site .global-cta--primary {
+  padding: 13px 20px;
+  background: #F7F3EC;
+  color: #10181F;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.45);
+}
+
+.global-site .global-cta--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 24px 48px -22px rgba(0, 0, 0, 0.5);
+}
+
+.global-site .global-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 72px 0 92px;
+}
+
+.global-site .global-hero__inner {
+  position: relative;
+  z-index: 1;
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.92fr);
+  gap: 48px;
+  align-items: center;
+}
+
+.global-site .global-hero__aurora {
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  filter: blur(18px);
+  opacity: 0.7;
+}
+
+.global-site .global-hero__aurora--left {
+  top: -120px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(216, 106, 60, 0.34) 0%, rgba(216, 106, 60, 0.02) 68%);
+}
+
+.global-site .global-hero__aurora--right {
+  top: 20px;
+  right: -180px;
+  background: radial-gradient(circle, rgba(132, 177, 191, 0.26) 0%, rgba(132, 177, 191, 0.02) 72%);
+}
+
+.global-site .global-kicker {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(247, 243, 236, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.global-site .global-hero__title {
+  margin: 22px 0 0;
+  max-width: 11ch;
+  color: #F7F3EC;
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw, 5.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+}
+
+.global-site .global-hero__lede {
+  margin: 24px 0 0;
+  color: #F7F3EC;
+  font-size: clamp(1.2rem, 2.4vw, 1.7rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.global-site .global-hero__body {
+  margin: 20px 0 0;
+  max-width: 620px;
+  color: rgba(247, 243, 236, 0.76);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.global-site .global-hero__actions {
+  margin-top: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.global-site .global-proof {
+  list-style: none;
+  padding: 0;
+  margin: 32px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.global-site .global-proof__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(247, 243, 236, 0.84);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.global-site .global-hero__stage {
+  position: relative;
+  min-height: 620px;
+}
+
+.global-site .global-stage-card {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 410px);
+  margin-left: auto;
+  padding: 24px;
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 237, 225, 0.92) 100%);
+  box-shadow:
+    0 28px 90px -36px rgba(0, 0, 0, 0.75),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.global-site .global-stage-card__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.global-site .global-stage-card__avatar {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--global-accent-soft) 0%, rgba(132, 177, 191, 0.2) 100%);
+  color: #162029;
+}
+
+.global-site .global-stage-card__name {
+  color: #162029;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.global-site .global-stage-card__meta {
+  margin-top: 4px;
+  color: rgba(22, 32, 41, 0.6);
+  font-size: 12px;
+}
+
+.global-site .global-thread {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.global-site .global-thread__bubble {
+  max-width: 86%;
+  padding: 14px 14px 12px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.global-site .global-thread__bubble p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.global-site .global-thread__bubble--user {
+  margin-left: auto;
+  background: #162029;
+  color: #F7F3EC;
+  border-bottom-right-radius: 8px;
+}
+
+.global-site .global-thread__bubble--coke {
+  background: #FFFFFF;
+  color: #162029;
+  border: 1px solid rgba(15, 22, 28, 0.08);
+  border-bottom-left-radius: 8px;
+}
+
+.global-site .global-thread__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(22, 32, 41, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.global-site .global-stage-card__composer {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(22, 32, 41, 0.06);
+  color: rgba(22, 32, 41, 0.72);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.global-site .global-stage-note {
+  position: absolute;
+  max-width: 220px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 50px -38px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.global-site .global-stage-note p {
+  margin: 8px 0 0;
+  color: rgba(247, 243, 236, 0.82);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.global-site .global-stage-note__label {
+  color: #F7F3EC;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.global-site .global-stage-note--upper {
+  top: 48px;
+  left: 0;
+}
+
+.global-site .global-stage-note--lower {
+  right: 24px;
+  bottom: 32px;
+}
+
+.global-site .global-section {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.global-site .global-section__head {
+  max-width: 760px;
+}
+
+.global-site .global-section__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(22, 32, 41, 0.62);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.global-site .global-section__eyebrow--light { color: rgba(247, 243, 236, 0.75); }
+
+.global-site .global-section__title {
+  margin: 14px 0 0;
+  color: #162029;
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 4.2vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.global-site .global-section__body {
+  margin: 18px 0 0;
+  color: rgba(22, 32, 41, 0.68);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.global-site .global-promise-grid {
+  margin-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.global-site .global-promise-card {
+  min-height: 220px;
+  padding: 26px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(15, 22, 28, 0.08);
+  box-shadow: 0 18px 44px -34px rgba(15, 22, 28, 0.42);
+}
+
+.global-site .global-promise-card__marker {
+  display: inline-flex;
+  width: 38px;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--global-accent) 0%, rgba(132, 177, 191, 0.92) 100%);
+}
+
+.global-site .global-promise-card h3 {
+  margin: 24px 0 0;
+  color: #162029;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.global-site .global-promise-card p {
+  margin: 14px 0 0;
+  color: rgba(22, 32, 41, 0.68);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.global-site .global-inline-cta {
+  margin-top: 28px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.global-site .global-section--workflow {
+  padding-top: 108px;
+  padding-bottom: 108px;
+}
+
+.global-site .global-workflow {
+  margin-top: 34px;
+  display: grid;
+  gap: 20px;
+}
+
+.global-site .global-workflow__step {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  padding: 28px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(15, 22, 28, 0.08);
+}
+
+.global-site .global-workflow__index {
+  width: 76px;
+  height: 76px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: #17222B;
+  color: #F7F3EC;
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.global-site .global-workflow__label {
+  margin: 0;
+  color: rgba(22, 32, 41, 0.52);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.global-site .global-workflow__copy h3 {
+  margin: 10px 0 0;
+  color: #162029;
+  font-size: 26px;
+  line-height: 1.18;
+  letter-spacing: -0.03em;
+}
+
+.global-site .global-workflow__copy p:last-child {
+  margin: 12px 0 0;
+  color: rgba(22, 32, 41, 0.68);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.global-site .global-close {
+  padding: 0 var(--gutter) 112px;
+}
+
+.global-site .global-close__inner {
+  max-width: var(--max-content);
+  margin: 0 auto;
+  padding: 40px;
+  border-radius: 34px;
+  background:
+    linear-gradient(135deg, rgba(19, 31, 40, 0.96) 0%, rgba(27, 44, 56, 0.92) 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  box-shadow: 0 28px 72px -40px rgba(0, 0, 0, 0.75);
+}
+
+.global-site .global-close__title {
+  margin: 12px 0 0;
+  max-width: 13ch;
+  color: #F7F3EC;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3vw, 3.6rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.global-site .global-close__body {
+  margin: 16px 0 0;
+  max-width: 620px;
+  color: rgba(247, 243, 236, 0.72);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.global-site .global-close__cta {
+  align-self: center;
+  justify-self: end;
+}
+
+@media (max-width: 1080px) {
+  .global-site .global-hero__inner,
+  .global-site .global-close__inner,
+  .global-site .global-promise-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .global-site .global-hero__stage {
+    min-height: auto;
+  }
+
+  .global-site .global-stage-card {
+    margin: 0 auto;
+  }
+
+  .global-site .global-stage-note {
+    position: static;
+    max-width: none;
+    margin-top: 16px;
+  }
+
+  .global-site .global-close__cta {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 820px) {
+  .global-site .global-header__inner {
+    flex-wrap: wrap;
+  }
+
+  .global-site .global-nav {
+    order: 3;
+    width: 100%;
+    margin: 0;
+    justify-content: space-between;
+  }
+
+  .global-site .global-workflow__step {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .global-site .global-header__inner,
+  .global-site .global-hero__inner,
+  .global-site .global-section,
+  .global-site .global-close {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .global-site .global-nav {
+    gap: 14px;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .global-site .global-hero {
+    padding-top: 40px;
+    padding-bottom: 72px;
+  }
+
+  .global-site .global-stage-card {
+    padding: 18px;
+    border-radius: 26px;
+  }
+
+  .global-site .global-promise-card,
+  .global-site .global-workflow__step,
+  .global-site .global-close__inner {
+    padding: 22px;
+  }
+
+  .global-site .global-close {
+    padding-bottom: 72px;
+  }
+}

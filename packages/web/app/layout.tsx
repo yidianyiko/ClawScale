@@ -4,6 +4,7 @@ import Script from "next/script";
 import { LocaleProvider } from "../components/locale-provider";
 import { getLocaleBootstrapScript } from "../lib/i18n";
 import "./globals.css";
+import "./public-site.css";
 
 export const metadata: Metadata = {
   title: "coke | An AI Partner That Grows With You",
