@@ -17,6 +17,7 @@ const generateReply = vi.hoisted(() => vi.fn());
 const getUnifiedConversationIds = vi.hoisted(() => vi.fn());
 const bindEndUserToCokeAccount = vi.hoisted(() => vi.fn());
 const bindBusinessConversation = vi.hoisted(() => vi.fn());
+const upsertDirectDeliveryRoute = vi.hoisted(() => vi.fn());
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 const issuePublicCheckoutToken = vi.hoisted(() => vi.fn());
 const buildPublicCheckoutUrl = vi.hoisted(() => vi.fn());
@@ -26,7 +27,10 @@ const createRouteBindingSnapshot = vi.hoisted(() => vi.fn());
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
 vi.mock('./clawscale-user.js', () => ({ getUnifiedConversationIds, bindEndUserToCokeAccount }));
-vi.mock('./business-conversation.js', () => ({ bindBusinessConversation }));
+vi.mock('./business-conversation.js', () => ({
+  bindBusinessConversation,
+  upsertDirectDeliveryRoute,
+}));
 vi.mock('./coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('./coke-public-checkout.js', () => ({
   issuePublicCheckoutToken,
@@ -118,6 +122,15 @@ describe('routeInboundMessage', () => {
     db.conversation.update.mockResolvedValue({});
     generateReply.mockResolvedValue('bridge ok');
     bindBusinessConversation.mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'wxid_123',
+      isActive: true,
+    });
+    upsertDirectDeliveryRoute.mockResolvedValue({
       tenantId: 'ten_1',
       cokeAccountId: 'acct_1',
       businessConversationKey: 'biz_conv_1',
@@ -436,6 +449,67 @@ describe('routeInboundMessage', () => {
       }),
       businessConversationKey: 'biz_conv_1',
     });
+  });
+
+  it('falls back to a direct delivery route when shared first-turn tenant binding is incompatible', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    generateReply.mockResolvedValueOnce({
+      text: 'bridge ok',
+      businessConversationKey: 'biz_conv_1',
+      outputId: 'out_1',
+    });
+    bindEndUserToCokeAccount.mockRejectedValueOnce({
+      code: 'coke_account_tenant_mismatch',
+      message: 'Coke account belongs to a different tenant',
+    });
+
+    const result = await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello shared channel',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        conversationId: 'conv_1',
+        reply: 'bridge ok',
+      }),
+    );
+    expect(bindBusinessConversation).not.toHaveBeenCalled();
+    expect(upsertDirectDeliveryRoute).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'wxid_123',
+      cokeAccountId: 'ck_shared_1',
+      gatewayConversationId: 'conv_1',
+      businessConversationKey: 'biz_conv_1',
+    });
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          backendId: 'ab_1',
+          content: 'bridge ok',
+          metadata: expect.not.objectContaining({
+            businessConversationBindingErrorCode: 'coke_account_tenant_mismatch',
+          }),
+        }),
+      }),
+    );
   });
 
   it('keeps non-WhatsApp shared channels on the legacy account access path', async () => {

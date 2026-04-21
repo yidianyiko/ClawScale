@@ -17,7 +17,7 @@ import { generateReply, type BackendReplyPayload } from './ai-backend.js';
 import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
 import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
-import { bindBusinessConversation } from './business-conversation.js';
+import { bindBusinessConversation, upsertDirectDeliveryRoute } from './business-conversation.js';
 import { resolveCokeAccountAccess } from './coke-account-access.js';
 import { buildPublicCheckoutUrl, issuePublicCheckoutToken } from './coke-public-checkout.js';
 import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
@@ -504,21 +504,49 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
               businessConversationKey: backendReply.businessConversationKey,
             });
           } catch (error) {
-            const code = (error as { code?: unknown })?.code;
-            bindingErrorCode = typeof code === 'string' ? code : undefined;
-            bindingErrorMessage =
-              error instanceof Error ? error.message : 'business conversation bind failed';
-            console.error('[business conversation bind error]', {
-              tenantId,
-              channelId,
-              endUserId: endUser!.id,
-              externalId: endUser!.externalId,
-              conversationId: conversation!.id,
-              cokeAccountId: routeCokeAccountId,
-              businessConversationKey: backendReply.businessConversationKey,
-              ...(bindingErrorCode ? { code: bindingErrorCode } : {}),
-              message: bindingErrorMessage,
-            });
+            let effectiveError = error;
+            let code = (effectiveError as { code?: unknown })?.code;
+            if (code === 'coke_account_tenant_mismatch') {
+              try {
+                await upsertDirectDeliveryRoute({
+                  tenantId,
+                  channelId,
+                  endUserId: endUser!.id,
+                  externalEndUserId: endUser!.externalId,
+                  cokeAccountId: routeCokeAccountId,
+                  gatewayConversationId:
+                    routeBinding.gatewayConversationId ?? conversation!.id,
+                  businessConversationKey: backendReply.businessConversationKey,
+                });
+              } catch (fallbackError) {
+                effectiveError = fallbackError;
+                code = (effectiveError as { code?: unknown })?.code;
+              }
+            }
+
+            if (code === 'coke_account_tenant_mismatch') {
+              code = undefined;
+              effectiveError = undefined;
+            }
+
+            if (effectiveError !== undefined) {
+              bindingErrorCode = typeof code === 'string' ? code : undefined;
+              bindingErrorMessage =
+                effectiveError instanceof Error
+                  ? effectiveError.message
+                  : 'business conversation bind failed';
+              console.error('[business conversation bind error]', {
+                tenantId,
+                channelId,
+                endUserId: endUser!.id,
+                externalId: endUser!.externalId,
+                conversationId: conversation!.id,
+                cokeAccountId: routeCokeAccountId,
+                businessConversationKey: backendReply.businessConversationKey,
+                ...(bindingErrorCode ? { code: bindingErrorCode } : {}),
+                message: bindingErrorMessage,
+              });
+            }
           }
         }
         return {
