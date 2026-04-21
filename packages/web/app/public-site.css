@@ -338,6 +338,15 @@
   color: var(--ink-900);
   font-variation-settings: 'SOFT' 40, 'opsz' 120;
 }
+.coke-site .auth-card__eyebrow {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-500);
+}
 .coke-site .auth-card__desc {
   margin: 16px 0 0;
   font-size: 16px;

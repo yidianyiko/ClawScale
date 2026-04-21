@@ -79,10 +79,19 @@ describe('ClaimPage', () => {
 
     expect(container.textContent).toContain('Claim your customer account');
     expect(container.textContent).toContain('Activate account');
+    expect(container.textContent).toContain('Shared channel access');
     expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-card__eyebrow')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelector('.auth-linkrow')).toBeTruthy();
+    expect(container.querySelector('.auth-input#token')).toBeTruthy();
+    expect(container.querySelector('.auth-input#password')).toBeTruthy();
+    expect(container.querySelector('.auth-input#confirmPassword')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.textContent).toContain('Claim your customer account');
+    expect(container.textContent).toContain('Activate account');
     expect((container.querySelector('#token') as HTMLInputElement).value).toBe('claim-token-123');
     expect(window.location.search).toBe('');
-    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
   });
 
   it('stores the customer auth payload and routes to the primary customer channel after a successful claim', async () => {
@@ -140,6 +149,7 @@ describe('ClaimPage', () => {
     await waitForEffects();
 
     expect(container.textContent).toContain('This claim link is invalid or has expired.');
+    expect(container.querySelector('.auth-alert--error')).toBeTruthy();
     expect(pushMock).not.toHaveBeenCalled();
     expect(vi.mocked(storeCustomerAuth)).not.toHaveBeenCalled();
   });

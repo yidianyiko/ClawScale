@@ -62,6 +62,8 @@ describe('CustomerForgotPasswordPage', () => {
     expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('.auth-form')).toBeTruthy();
     expect(container.querySelector('.auth-input#email')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelector('.auth-linkrow')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).not.toContain('忘记密码');
   });

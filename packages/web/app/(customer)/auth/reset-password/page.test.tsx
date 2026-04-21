@@ -73,6 +73,8 @@ describe('CustomerResetPasswordPage', () => {
     expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('.auth-input#token')).toBeTruthy();
     expect(container.querySelector('.auth-input#confirmPassword')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelector('.auth-linkrow')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/forgot-password"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Reset your password');
   });
@@ -101,5 +103,27 @@ describe('CustomerResetPasswordPage', () => {
       password: 'password-123',
     });
     expect(pushMock).toHaveBeenCalledWith('/auth/login');
+  });
+
+  it('shows the mismatch validation error without calling the reset-password API', async () => {
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerResetPasswordPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await waitForEffects();
+
+    setInputValue('#password', 'password-123');
+    setInputValue('#confirmPassword', 'password-456');
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(container.textContent).toContain('Passwords do not match.');
+    expect(vi.mocked(cokeUserApi.post)).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

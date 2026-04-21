@@ -63,7 +63,7 @@ export default function CustomerForgotPasswordPage() {
 
         <button
           type="submit"
-          className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          className="auth-submit"
           disabled={loading}
         >
           {loading ? copy.submitting : copy.submit}
