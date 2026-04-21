@@ -152,7 +152,7 @@ export default function CustomerVerifyEmailPage() {
             <p className="auth-alert__copy">{recoveryDescription}</p>
           </div>
 
-          <div className="auth-field">
+          <div className="auth-field auth-alert__field">
             <label htmlFor="email" className="auth-label">
               {loginCopy.emailLabel}
             </label>
@@ -177,16 +177,12 @@ export default function CustomerVerifyEmailPage() {
               {resending ? loginCopy.resendingVerificationEmail : loginCopy.resendVerificationEmail}
             </button>
           </div>
+        </div>
+      ) : null}
 
-          {resendMessage ? (
-            <p
-              className={`auth-alert__status ${
-                resendStatus === 'success' ? 'auth-alert__status--success' : 'auth-alert__status--error'
-              }`}
-            >
-              {resendMessage}
-            </p>
-          ) : null}
+      {resendMessage ? (
+        <div className={`auth-alert ${resendStatus === 'success' ? 'auth-alert--success' : 'auth-alert--error'}`}>
+          {resendMessage}
         </div>
       ) : null}
     </section>

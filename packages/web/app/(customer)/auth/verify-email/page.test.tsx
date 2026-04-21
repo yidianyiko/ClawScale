@@ -242,8 +242,11 @@ describe('CustomerVerifyEmailPage', () => {
     expect(postMock).not.toHaveBeenCalled();
     expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__body')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-field')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__actions')).toBeTruthy();
     expect(container.querySelector('.auth-input#email')).toBeTruthy();
-    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-submit--compact')).toBeTruthy();
     expect(container.textContent).toContain('Verify your email');
     expect(container.textContent).toContain('Resend verification email');
 
@@ -261,6 +264,7 @@ describe('CustomerVerifyEmailPage', () => {
     expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
       email: 'alice@example.com',
     });
+    expect(container.querySelector('.auth-alert--success')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
@@ -301,9 +305,64 @@ describe('CustomerVerifyEmailPage', () => {
     expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
       email: 'manual@example.com',
     });
+    expect(container.querySelector('.auth-alert--success')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('recovers through the expired branch when a token is present but the email is missing', async () => {
+    window.history.pushState({}, '', '/auth/verify-email?token=verify-token');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerVerifyEmailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await flushTicks(2);
+
+    expect(postMock).not.toHaveBeenCalled();
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-submit--compact')).toBeTruthy();
+    expect((container.querySelector('#email') as HTMLInputElement | null)?.value).toBe('alice@example.com');
+    expect(container.textContent).toContain('This link is invalid or expired.');
+    expect(container.textContent).toContain('Resend verification email');
+  });
+
+  it('shows resend failures with the shared error alert styling and keeps recovery controls available', async () => {
+    postMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'resend_failed',
+    });
+    window.history.pushState({}, '', '/auth/verify-email?email=alice@example.com');
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerVerifyEmailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await flushTicks(2);
+
+    const resendButton = container.querySelector('button[type="button"]') as HTMLButtonElement | null;
+    expect(resendButton).toBeTruthy();
+
+    resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushTicks(2);
+
+    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
+      email: 'alice@example.com',
+    });
+    expect(container.querySelectorAll('.auth-alert--warning')).toHaveLength(1);
+    expect(container.querySelector('.auth-alert--error')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--success')).toBeNull();
+    expect(container.textContent).toContain('Unable to resend the verification email right now.');
+    expect(resendButton?.disabled).toBe(false);
   });
 
   it('redirects to login recovery when the verification API returns not ok', async () => {

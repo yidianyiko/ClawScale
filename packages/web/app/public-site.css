@@ -318,15 +318,11 @@
 
 .coke-site .auth-card {
   max-width: 560px;
-  padding: 32px;
+  padding: 40px 36px;
   border: 1px solid var(--ink-08);
-  border-radius: 28px;
-  background:
-    radial-gradient(ellipse 480px 220px at 100% 0%, rgba(232, 105, 60, 0.05), transparent 55%),
-    rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-lg);
+  background: #fff;
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 .coke-site .auth-card__title {
   margin: 0;
@@ -370,6 +366,11 @@
   border-color: rgba(206, 80, 38, 0.18);
   color: var(--claw-700);
 }
+.coke-site .auth-alert--success {
+  background: #EEF8F1;
+  border-color: rgba(36, 96, 59, 0.18);
+  color: #24603B;
+}
 .coke-site .auth-alert--info {
   background: var(--cream-100);
   border-color: var(--ink-08);
@@ -391,6 +392,9 @@
   font-size: 14px;
   line-height: 1.6;
   color: inherit;
+}
+.coke-site .auth-alert__field {
+  margin-top: 18px;
 }
 .coke-site .auth-alert__actions {
   margin-top: 16px;
@@ -431,23 +435,22 @@
   width: 100%;
   min-height: 52px;
   padding: 14px 16px;
-  border: 1px solid var(--ink-08);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--ink-20);
+  border-radius: var(--radius-md);
+  background: #fff;
   color: var(--ink-900);
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.4;
   outline: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   transition: border-color var(--dur-base) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard), transform 120ms;
 }
 .coke-site .auth-input::placeholder {
   color: var(--ink-300);
 }
 .coke-site .auth-input:focus {
-  border-color: rgba(232, 105, 60, 0.44);
-  box-shadow: 0 0 0 4px rgba(232, 105, 60, 0.11);
+  border-color: var(--claw-500);
+  box-shadow: 0 0 0 4px var(--claw-50);
 }
 
 .coke-site .auth-submit {
