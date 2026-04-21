@@ -153,9 +153,12 @@ describe('CustomerVerifyEmailPage', () => {
       claimStatus: 'active',
       membershipRole: 'owner',
     });
+    expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('input#token')).toBeNull();
     expect(container.querySelector('input#email')).toBeNull();
-    expect(container.querySelector('button')).toBeNull();
+    expect(container.querySelector('.auth-alert--warning')).toBeNull();
+    expect(container.querySelector('.auth-input#email')).toBeNull();
+    expect(container.querySelector('.auth-submit')).toBeNull();
     expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal');
     expect(pushMock).not.toHaveBeenCalled();
   });
@@ -237,6 +240,10 @@ describe('CustomerVerifyEmailPage', () => {
     await flushTicks(2);
 
     expect(postMock).not.toHaveBeenCalled();
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
+    expect(container.querySelector('.auth-input#email')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
     expect(container.textContent).toContain('Verify your email');
     expect(container.textContent).toContain('Resend verification email');
 

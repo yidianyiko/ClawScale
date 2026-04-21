@@ -141,27 +141,25 @@ export default function CustomerVerifyEmailPage() {
         : copy.description;
 
   return (
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">
-        {loading && !isRecoveryMode ? copy.verifyingDescription : copy.description}
-      </p>
+    <section className="auth-card">
+      <h1 className="auth-card__title">{copy.title}</h1>
+      <p className="auth-card__desc">{loading && !isRecoveryMode ? copy.verifyingDescription : copy.description}</p>
 
       {isRecoveryMode ? (
-        <div className="mt-6">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-medium">{loginCopy.verificationRecoveryTitle}</p>
-            <p className="mt-2 leading-6">{recoveryDescription}</p>
+        <div className="auth-alert auth-alert--warning">
+          <div className="auth-alert__body">
+            <p className="auth-alert__title">{loginCopy.verificationRecoveryTitle}</p>
+            <p className="auth-alert__copy">{recoveryDescription}</p>
           </div>
 
-          <div className="mt-6">
-            <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">
+          <div className="auth-field">
+            <label htmlFor="email" className="auth-label">
               {loginCopy.emailLabel}
             </label>
             <input
               id="email"
               type="email"
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
+              className="auth-input"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder={loginCopy.emailPlaceholder}
@@ -169,17 +167,23 @@ export default function CustomerVerifyEmailPage() {
             />
           </div>
 
-          <button
-            type="button"
-            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-            disabled={resending || email.trim() === ''}
-            onClick={handleResendVerification}
-          >
-            {resending ? loginCopy.resendingVerificationEmail : loginCopy.resendVerificationEmail}
-          </button>
+          <div className="auth-alert__actions">
+            <button
+              type="button"
+              className="auth-submit auth-submit--compact"
+              disabled={resending || email.trim() === ''}
+              onClick={handleResendVerification}
+            >
+              {resending ? loginCopy.resendingVerificationEmail : loginCopy.resendVerificationEmail}
+            </button>
+          </div>
 
           {resendMessage ? (
-            <p className={`mt-3 text-sm ${resendStatus === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>
+            <p
+              className={`auth-alert__status ${
+                resendStatus === 'success' ? 'auth-alert__status--success' : 'auth-alert__status--error'
+              }`}
+            >
               {resendMessage}
             </p>
           ) : null}
