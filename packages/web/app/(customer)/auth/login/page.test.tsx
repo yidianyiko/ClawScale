@@ -135,11 +135,15 @@ describe('CustomerLoginPage', () => {
     expect(container.querySelector('.auth-form')).toBeTruthy();
     expect(container.querySelector('.auth-input#email')).toBeTruthy();
     expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelectorAll('.auth-linkrow')).toHaveLength(2);
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/"]')).toBeFalsy();
 
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.getAttribute('href'));
 
     expect(container.textContent).toContain('Sign in to Coke');
+    expect(container.textContent).not.toContain('Return to your Coke account');
+    expect(container.textContent).not.toContain('Back to homepage');
     expect(links).toContain('/auth/forgot-password');
     expect(links).toContain('/auth/register');
   });
@@ -156,6 +160,10 @@ describe('CustomerLoginPage', () => {
     });
     await flushTicks(1);
 
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__body')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__actions')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-submit--compact')).toBeTruthy();
     expect((container.querySelector('#email') as HTMLInputElement).value).toBe('alice@example.com');
     expect(container.textContent).toContain('This link is invalid or expired.');
     expect(container.textContent).toContain('Resend verification email');

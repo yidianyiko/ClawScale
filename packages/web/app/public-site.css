@@ -386,7 +386,7 @@
 .coke-site .auth-alert__actions {
   margin-top: 16px;
 }
-.coke-site .auth-alert__actions .auth-submit {
+.coke-site .auth-submit--compact {
   width: auto;
   min-width: 180px;
 }

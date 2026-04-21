@@ -83,7 +83,9 @@ describe('CustomerRegisterPage', () => {
     expect(container.querySelector('.auth-form')).toBeTruthy();
     expect(container.querySelector('.auth-input#displayName')).toBeTruthy();
     expect(container.querySelector('.auth-input#password')).toBeTruthy();
+    expect(container.querySelectorAll('.auth-linkrow')).toHaveLength(1);
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/"]')).toBeFalsy();
 
     expect(container.textContent).toContain('创建你的 Coke 账号');
     expect(container.textContent).toContain('已经注册？');
@@ -93,6 +95,7 @@ describe('CustomerRegisterPage', () => {
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Register / 注册');
     expect(container.textContent).not.toContain('Create your Coke account');
+    expect(container.textContent).not.toContain('返回首页');
   });
 
   it('submits through the neutral register API and routes to /auth/verify-email with the email handoff', async () => {

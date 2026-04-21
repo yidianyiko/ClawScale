@@ -162,7 +162,7 @@ export default function CustomerLoginPage() {
           <div className="auth-alert__actions">
             <button
               type="button"
-              className="auth-submit"
+              className="auth-submit auth-submit--compact"
               disabled={resending || email.trim() === ''}
               onClick={handleResendVerification}
             >
