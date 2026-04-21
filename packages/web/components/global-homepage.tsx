@@ -36,7 +36,13 @@ const WORKFLOW_STEPS = [
   },
 ] as const;
 
-const CHAT_THREAD = [
+type ChatThreadMessage = {
+  who: 'user' | 'coke';
+  text: string;
+  status?: string;
+};
+
+const CHAT_THREAD: ReadonlyArray<ChatThreadMessage> = [
   { who: 'user', text: 'Need a clean plan for tomorrow before 10am.' },
   {
     who: 'coke',
