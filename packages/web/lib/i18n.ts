@@ -474,6 +474,11 @@ export const messages: MessagesCatalog = {
       title: 'Keep your Coke service active',
       body: 'Handle renewal, payment follow-up, and the business-side steps that still stay under Coke-specific routes.',
       secondaryBody: 'Generic sign-in, recovery, and customer channel setup now live under the neutral customer routes.',
+      trustLines: [
+        'Billing and delivery state stay visible in one place',
+        'Renewal and payment follow-up remain on Coke routes',
+        'Account access and channel setup stay separated by design',
+      ],
     },
     customerPages: {
       login: {
@@ -847,6 +852,11 @@ export const messages: MessagesCatalog = {
       title: '保持你的 Coke 服务处于启用状态',
       body: '在这里处理续费、支付后续动作，以及仍然保留在 Coke 专属路由下的业务步骤。',
       secondaryBody: '通用登录、找回访问和客户通道设置现在都放在中立的 customer 路由下。',
+      trustLines: [
+        '账单与交付状态集中展示',
+        '续费与支付后续动作仍保留在 Coke 路由下',
+        '账号访问与通道设置按职责分离',
+      ],
     },
     customerPages: {
       login: {
