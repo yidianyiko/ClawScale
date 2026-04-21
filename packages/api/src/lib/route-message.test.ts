@@ -396,6 +396,48 @@ describe('routeInboundMessage', () => {
     );
   });
 
+  it('binds the first shared WhatsApp business route against the provisioned customer account', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    generateReply.mockResolvedValueOnce({
+      text: 'bridge ok',
+      businessConversationKey: 'biz_conv_1',
+      outputId: 'out_1',
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello shared channel',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(bindEndUserToCokeAccount).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      cokeAccountId: 'ck_shared_1',
+    });
+    expect(bindBusinessConversation).toHaveBeenCalledWith({
+      routeBinding: expect.objectContaining({
+        cokeAccountId: 'ck_shared_1',
+        customerId: 'ck_shared_1',
+      }),
+      businessConversationKey: 'biz_conv_1',
+    });
+  });
+
   it('keeps non-WhatsApp shared channels on the legacy account access path', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',

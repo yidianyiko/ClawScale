@@ -189,6 +189,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.clawscaleUserId ?? endUser.clawscaleUserId ?? null;
   const resolvedCokeAccountId =
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
+  const routeCokeAccountId =
+    resolvedCokeAccountId ??
+    (isSharedWhatsAppChannel ? resolvedChannelCustomerId : null);
   const accessCustomerId =
     isSharedWhatsAppChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
   const resolvedAccessAccountOwner = accessCustomerId
@@ -262,14 +265,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     });
   }
   const inboundEventId = generateId('in_evt');
-  const activeDeliveryRoute = resolvedCokeAccountId
+  const activeDeliveryRoute = routeCokeAccountId
     ? await db.deliveryRoute.findFirst({
         where: {
           tenantId,
           channelId,
           endUserId: endUser.id,
           externalEndUserId: endUser.externalId,
-          cokeAccountId: resolvedCokeAccountId,
+          cokeAccountId: routeCokeAccountId,
           isActive: true,
         },
         orderBy: { updatedAt: 'desc' },
@@ -283,7 +286,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     channelId,
     endUserId: endUser.id,
     externalEndUserId: endUser.externalId,
-    cokeAccountId: resolvedCokeAccountId,
+    cokeAccountId: routeCokeAccountId,
     customerId: resolvedChannelCustomerId,
     gatewayConversationId: conversation.id,
     previousBusinessConversationKey: conversation.businessConversationKey ?? null,
@@ -466,8 +469,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           ...(channelCustomerId
             ? { customerId: channelCustomerId, customer_id: channelCustomerId }
             : {}),
-          ...(resolvedCokeAccountId
-            ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
+          ...(routeCokeAccountId
+            ? { cokeAccountId: routeCokeAccountId, coke_account_id: routeCokeAccountId }
             : {}),
           ...(personalChannelOwnership ?? {}),
           ...(resolvedAccessAccount && resolvedAccessAccountMetadata
@@ -488,13 +491,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         });
         let bindingErrorCode: string | undefined;
         let bindingErrorMessage: string | undefined;
-        if (backendReply.businessConversationKey && resolvedCokeAccountId) {
+        if (backendReply.businessConversationKey && routeCokeAccountId) {
           try {
             await bindEndUserToCokeAccount({
               tenantId,
               channelId,
               externalId: endUser!.externalId,
-              cokeAccountId: resolvedCokeAccountId,
+              cokeAccountId: routeCokeAccountId,
             });
             await bindBusinessConversation({
               routeBinding,
@@ -511,7 +514,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
               endUserId: endUser!.id,
               externalId: endUser!.externalId,
               conversationId: conversation!.id,
-              cokeAccountId: resolvedCokeAccountId,
+              cokeAccountId: routeCokeAccountId,
               businessConversationKey: backendReply.businessConversationKey,
               ...(bindingErrorCode ? { code: bindingErrorCode } : {}),
               message: bindingErrorMessage,
