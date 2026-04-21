@@ -70,6 +70,9 @@ describe('CustomerResetPasswordPage', () => {
     expect(container.textContent).toContain('重置密码');
     expect(container.textContent).toContain('确认密码');
     expect(container.textContent).toContain('申请新的重置链接');
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-input#token')).toBeTruthy();
+    expect(container.querySelector('.auth-input#confirmPassword')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/forgot-password"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Reset your password');
   });

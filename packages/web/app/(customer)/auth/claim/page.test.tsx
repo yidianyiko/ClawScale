@@ -79,6 +79,7 @@ describe('ClaimPage', () => {
 
     expect(container.textContent).toContain('Claim your customer account');
     expect(container.textContent).toContain('Activate account');
+    expect(container.querySelector('.auth-card')).toBeTruthy();
     expect((container.querySelector('#token') as HTMLInputElement).value).toBe('claim-token-123');
     expect(window.location.search).toBe('');
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();

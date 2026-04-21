@@ -59,6 +59,9 @@ describe('CustomerForgotPasswordPage', () => {
     expect(container.textContent).toContain('Forgot your password');
     expect(container.textContent).toContain('Send reset link');
     expect(container.textContent).toContain('Remembered your password?');
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-form')).toBeTruthy();
+    expect(container.querySelector('.auth-input#email')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).not.toContain('忘记密码');
   });
