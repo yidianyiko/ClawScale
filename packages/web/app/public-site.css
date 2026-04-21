@@ -366,11 +366,6 @@
   border-color: var(--ink-08);
   color: var(--ink-700);
 }
-.coke-site .auth-alert--success {
-  background: #EEF7F1;
-  border-color: rgba(64, 129, 93, 0.18);
-  color: #24603B;
-}
 .coke-site .auth-alert__body {
   display: grid;
   gap: 8px;
