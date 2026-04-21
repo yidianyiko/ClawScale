@@ -138,11 +138,11 @@ describe('CustomerWechatPersonalPage renewal compatibility', () => {
     container?.remove();
   });
 
-  it('redirects renewal compatibility requests back into the legacy renew page', async () => {
+  it('redirects renewal compatibility requests into the active payment page', async () => {
     renderWithLocale(root, 'en');
     await flushTicks(2);
 
-    expect(replaceMock).toHaveBeenCalledWith('/coke/renew');
+    expect(replaceMock).toHaveBeenCalledWith('/coke/payment');
     expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
   });
 });
@@ -192,6 +192,58 @@ describe('CustomerWechatPersonalPage initial load failure', () => {
     expect(container.textContent).toContain('Retry');
     expect(container.textContent).not.toContain('Reconnect');
     expect(container.textContent).not.toContain('Archive channel');
+  });
+});
+
+describe('CustomerWechatPersonalPage branded layout', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    replaceMock.mockReset();
+    getCokeUserTokenMock.mockReset();
+    getCokeUserMock.mockReset();
+    clearCokeUserAuthMock.mockReset();
+    getCokeUserWechatChannelStatusMock.mockReset();
+
+    getCokeUserTokenMock.mockReturnValue('token');
+    searchParamsMock.mockReturnValue(new URLSearchParams());
+    getCokeUserMock.mockReturnValue({
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: '2026-05-01T00:00:00.000Z',
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    root?.unmount();
+    container?.remove();
+  });
+
+  it('renders the missing-channel flow inside the branded channel setup card', async () => {
+    getCokeUserWechatChannelStatusMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        status: 'missing',
+      },
+    });
+
+    renderWithLocale(root, 'en');
+    await waitForText(container, 'Create my WeChat channel');
+
+    expect(container.querySelector('.customer-channel-page')).toBeTruthy();
+    expect(container.querySelector('.customer-channel-page__card')).toBeTruthy();
+    expect(container.querySelector('.customer-channel-page__section')).toBeTruthy();
+    expect(container.querySelector('.customer-channel-page__actions')).toBeTruthy();
+    expect(container.textContent).toContain('What you can do next');
+    expect(container.textContent).toContain('Need an account?');
   });
 });
 
@@ -284,7 +336,7 @@ describe('CustomerWechatPersonalPage blocked access states', () => {
     expect(getCokeUserWechatChannelStatusMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain('先完成邮箱验证和订阅续费');
     expect(container.querySelector('a[href="/auth/verify-email"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/coke/renew"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/coke/payment"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Verify your email and renew your subscription');
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -38,11 +38,89 @@ type BlockedAccessState = {
   actions: Array<{ href: string; label: string }>;
 };
 
+type BindWechatCopy = ReturnType<typeof useLocale>['messages']['customerPages']['bindWechat'];
+
+const primaryButtonClass = 'customer-channel-page__button customer-channel-page__button--primary';
+const secondaryButtonClass = 'customer-channel-page__button customer-channel-page__button--secondary';
+
 function formatTemplate(template: string, values: Record<string, string>) {
   return Object.entries(values).reduce(
     (result, [key, value]) => result.replace(`{${key}}`, value),
     template,
   );
+}
+
+function ChannelSetupCard({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="coke-site customer-channel-page">
+      <section className="auth-card customer-channel-page__card">
+        {eyebrow ? <p className="auth-card__eyebrow">{eyebrow}</p> : null}
+        <h1 className="auth-card__title">{title}</h1>
+        {description ? <p className="auth-card__desc">{description}</p> : null}
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function getChannelStatusDescription(
+  status: CokeUserWechatChannelState['status'],
+  copy: BindWechatCopy,
+): string | null {
+  if (status === 'missing') {
+    return copy.statusDescriptions.missing;
+  }
+
+  if (status === 'archived') {
+    return copy.statusDescriptions.archived;
+  }
+
+  if (status === 'disconnected') {
+    return copy.statusDescriptions.disconnected;
+  }
+
+  return null;
+}
+
+function getChannelNextSteps(
+  status: CokeUserWechatChannelState['status'],
+  copy: BindWechatCopy,
+): string[] {
+  if (status === 'missing') {
+    return [copy.nextSteps.missing];
+  }
+
+  if (status === 'disconnected') {
+    return [copy.nextSteps.disconnected];
+  }
+
+  if (status === 'pending') {
+    return [copy.nextSteps.pending];
+  }
+
+  if (status === 'connected') {
+    return [copy.nextSteps.connected];
+  }
+
+  if (status === 'error') {
+    return [copy.nextSteps.error];
+  }
+
+  if (status === 'archived') {
+    return [copy.nextSteps.archived];
+  }
+
+  return [];
 }
 
 function getBlockedAccessState(
@@ -62,7 +140,7 @@ function getBlockedAccessState(
     actions.push({ href: '/auth/verify-email', label: copy.verifyEmail });
   }
   if (needsCokeSubscriptionRenewal(user)) {
-    actions.push({ href: '/coke/renew', label: copy.renewSubscription });
+    actions.push({ href: '/coke/payment', label: copy.renewSubscription });
   }
 
   if (actions.length === 0) {
@@ -82,7 +160,7 @@ function CustomerWechatPersonalPageContent() {
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const router = useRouter();
   const searchParams = useSearchParams();
-  const compatibilityRedirect = searchParams.get('next') === 'renew' ? '/coke/renew' : null;
+  const compatibilityRedirect = searchParams.get('next') === 'renew' ? '/coke/payment' : null;
   const [channel, setChannel] = useState<CokeUserWechatChannelState | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [hasToken] = useState<boolean>(() => getCokeUserToken() != null);
@@ -293,65 +371,47 @@ function CustomerWechatPersonalPageContent() {
 
   if (blockedAccessState != null) {
     return (
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-200 bg-amber-50 p-8">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-amber-700">
-          {copy.blocked.accessEyebrow}
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{blockedAccessState.title}</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-700">{blockedAccessState.description}</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {blockedAccessState.actions.map((action) => (
-            <Link
-              key={action.href}
-              href={action.href}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              {action.label}
-            </Link>
-          ))}
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
-            {messages.common.signOutLabel}
-          </button>
+      <ChannelSetupCard
+        eyebrow={copy.blocked.accessEyebrow}
+        title={blockedAccessState.title}
+        description={blockedAccessState.description}
+      >
+        <div className="customer-channel-page__section customer-channel-page__actions">
+          <div className="customer-channel-page__button-row">
+            {blockedAccessState.actions.map((action) => (
+              <Link key={action.href} href={action.href} className={primaryButtonClass}>
+                {action.label}
+              </Link>
+            ))}
+            <button type="button" onClick={handleSignOut} className={secondaryButtonClass}>
+              {messages.common.signOutLabel}
+            </button>
+          </div>
         </div>
-      </section>
+      </ChannelSetupCard>
     );
   }
 
   if (loadError && !channel) {
     return (
-      <section className="mx-auto max-w-3xl rounded-3xl border border-amber-200 bg-amber-50 p-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.loadFailure.title}</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-700">{loadError}</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => void refreshChannel()}
-            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            {messages.common.retryLabel}
-          </button>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
-            {messages.common.signOutLabel}
-          </button>
+      <ChannelSetupCard title={copy.loadFailure.title} description={loadError}>
+        <div className="customer-channel-page__section customer-channel-page__actions">
+          <div className="customer-channel-page__button-row">
+            <button type="button" onClick={() => void refreshChannel()} className={primaryButtonClass}>
+              {messages.common.retryLabel}
+            </button>
+            <button type="button" onClick={handleSignOut} className={secondaryButtonClass}>
+              {messages.common.signOutLabel}
+            </button>
+          </div>
         </div>
-      </section>
+      </ChannelSetupCard>
     );
   }
 
   if (loading && !channel) {
     return (
-      <section className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-slate-50 p-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.loading.title}</h1>
-        <p className="mt-4 text-sm leading-6 text-slate-700">{copy.loading.description}</p>
-      </section>
+      <ChannelSetupCard title={copy.loading.title} description={copy.loading.description} />
     );
   }
 
@@ -359,40 +419,34 @@ function CustomerWechatPersonalPageContent() {
     return null;
   }
 
+  const statusDescription = getChannelStatusDescription(channel.status, copy);
+  const nextSteps = getChannelNextSteps(channel.status, copy);
+
   return (
-    <section className="grid gap-6 lg:grid-cols-[1.35fr_0.95fr]">
-      <div className="rounded-3xl border border-slate-200 bg-slate-50 p-8">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">{channelViewModel.eyebrow}</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-          {channelViewModel.title}
-        </h1>
-        <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-700">
-          {channelViewModel.description}
-          {userName && channel.status === 'connected'
-            ? ` ${formatTemplate(copy.connectedCard.accountOwnershipSuffix, { name: userName })}`
-            : ''}
-        </p>
+    <ChannelSetupCard
+      eyebrow={channelViewModel.eyebrow}
+      title={channelViewModel.title}
+      description={`${channelViewModel.description}${
+        userName && channel.status === 'connected'
+          ? ` ${formatTemplate(copy.connectedCard.accountOwnershipSuffix, { name: userName })}`
+          : ''
+      }`}
+    >
+      {actionError ? (
+        <div className="auth-alert auth-alert--warning customer-channel-page__alert">{actionError}</div>
+      ) : null}
 
-        {actionError ? (
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {actionError}
+      {statusDescription ? (
+        <div className="customer-channel-page__section">
+          <div className="customer-channel-page__surface customer-channel-page__surface--neutral">
+            <p className="customer-channel-page__surface-copy">{statusDescription}</p>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {channel.status === 'missing' || channel.status === 'disconnected' || channel.status === 'archived' ? (
-          <div className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-white p-6">
-            <p className="text-sm leading-6 text-slate-600">
-              {channel.status === 'missing'
-                ? copy.statusDescriptions.missing
-                : channel.status === 'archived'
-                  ? copy.statusDescriptions.archived
-                  : copy.statusDescriptions.disconnected}
-            </p>
-          </div>
-        ) : null}
-
-        {channel.status === 'pending' ? (
-          <div className="mt-8 flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white p-6">
+      {channel.status === 'pending' ? (
+        <div className="customer-channel-page__section">
+          <div className="customer-channel-page__qr-frame">
             {qrDataUrl ? (
               <Image
                 src={qrDataUrl}
@@ -400,32 +454,32 @@ function CustomerWechatPersonalPageContent() {
                 width={288}
                 height={288}
                 unoptimized
-                className="h-72 w-72 rounded-2xl border border-slate-200"
+                className="customer-channel-page__qr-image"
               />
             ) : (
-              <p className="text-sm text-slate-500">{copy.qr.preparing}</p>
+              <p className="customer-channel-page__surface-copy">{copy.qr.preparing}</p>
             )}
           </div>
-        ) : null}
 
-        {channel.status === 'pending' && channel.expires_at ? (
-          <p className="mt-4 text-xs text-slate-500">
-            {copy.qr.expiresPrefix} {normalizeExpiresAt(channel.expires_at).toLocaleString(dateLocale)}.
-          </p>
-        ) : null}
-
-        {channel.status === 'pending' && refreshError ? (
-          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {refreshError} {copy.qr.activeSuffix}
-          </p>
-        ) : null}
-
-        {channel.status === 'connected' ? (
-          <div className="mt-8 rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-700">
-              {copy.connectedCard.eyebrow}
+          {channel.expires_at ? (
+            <p className="customer-channel-page__meta">
+              {copy.qr.expiresPrefix} {normalizeExpiresAt(channel.expires_at).toLocaleString(dateLocale)}.
             </p>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
+          ) : null}
+
+          {refreshError ? (
+            <p className="auth-alert auth-alert--warning customer-channel-page__alert">
+              {refreshError} {copy.qr.activeSuffix}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {channel.status === 'connected' ? (
+        <div className="customer-channel-page__section">
+          <div className="customer-channel-page__surface customer-channel-page__surface--success">
+            <p className="customer-channel-page__surface-eyebrow">{copy.connectedCard.eyebrow}</p>
+            <p className="customer-channel-page__surface-copy">
               {channel.masked_identity
                 ? formatTemplate(copy.connectedCard.descriptionWithIdentity, {
                     identity: channel.masked_identity,
@@ -433,38 +487,37 @@ function CustomerWechatPersonalPageContent() {
                 : copy.connectedCard.descriptionWithoutIdentity}
             </p>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {channel.status === 'error' ? (
-          <div className="mt-8 rounded-3xl border border-red-200 bg-red-50 p-6">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-red-700">
-              {copy.errorCard.eyebrow}
-            </p>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
-              {copy.errorCard.fallbackDescription}
-            </p>
+      {channel.status === 'error' ? (
+        <div className="customer-channel-page__section">
+          <div className="customer-channel-page__surface customer-channel-page__surface--danger">
+            <p className="customer-channel-page__surface-eyebrow">{copy.errorCard.eyebrow}</p>
+            <p className="customer-channel-page__surface-copy">{copy.errorCard.fallbackDescription}</p>
           </div>
-        ) : null}
+        </div>
+      ) : null}
+
+      <div className="customer-channel-page__section">
+        <p className="customer-channel-page__section-title">{copy.nextSteps.title}</p>
+        <ul className="customer-channel-page__steps">
+          {nextSteps.map((step) => (
+            <li key={step} className="customer-channel-page__step">
+              {step}
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-8">
-        <h2 className="text-lg font-semibold text-slate-950">{copy.nextSteps.title}</h2>
-        <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-          {channel.status === 'missing' ? <li>{copy.nextSteps.missing}</li> : null}
-          {channel.status === 'disconnected' ? <li>{copy.nextSteps.disconnected}</li> : null}
-          {channel.status === 'pending' ? <li>{copy.nextSteps.pending}</li> : null}
-          {channel.status === 'connected' ? <li>{copy.nextSteps.connected}</li> : null}
-          {channel.status === 'error' ? <li>{copy.nextSteps.error}</li> : null}
-          {channel.status === 'archived' ? <li>{copy.nextSteps.archived}</li> : null}
-        </ul>
-
-        <div className="mt-8 flex flex-wrap gap-3">
+      <div className="customer-channel-page__section customer-channel-page__actions">
+        <div className="customer-channel-page__button-row">
           {channel.status === 'missing' ? (
             <button
               type="button"
               onClick={handleCreateChannel}
               disabled={busyAction != null}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className={primaryButtonClass}
             >
               {busyAction === 'create' ? copy.busyActions.create : channelViewModel.primaryActionLabel}
             </button>
@@ -475,7 +528,7 @@ function CustomerWechatPersonalPageContent() {
               type="button"
               onClick={handleConnectChannel}
               disabled={busyAction != null}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className={primaryButtonClass}
             >
               {busyAction === 'connect' ? copy.busyActions.connect : channelViewModel.primaryActionLabel}
             </button>
@@ -486,7 +539,7 @@ function CustomerWechatPersonalPageContent() {
               type="button"
               onClick={handleConnectChannel}
               disabled={busyAction != null}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className={primaryButtonClass}
             >
               {busyAction === 'connect' ? copy.busyActions.refresh : channelViewModel.primaryActionLabel}
             </button>
@@ -497,7 +550,7 @@ function CustomerWechatPersonalPageContent() {
               type="button"
               onClick={handleDisconnectChannel}
               disabled={busyAction != null}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className={primaryButtonClass}
             >
               {busyAction === 'disconnect'
                 ? copy.busyActions.disconnect
@@ -511,7 +564,7 @@ function CustomerWechatPersonalPageContent() {
                 type="button"
                 onClick={handleConnectChannel}
                 disabled={busyAction != null}
-                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                className={primaryButtonClass}
               >
                 {busyAction === 'connect'
                   ? copy.busyActions.reconnect
@@ -521,7 +574,7 @@ function CustomerWechatPersonalPageContent() {
                 type="button"
                 onClick={handleArchiveChannel}
                 disabled={busyAction != null}
-                className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                className={secondaryButtonClass}
               >
                 {busyAction === 'archive'
                   ? copy.busyActions.archive
@@ -535,29 +588,27 @@ function CustomerWechatPersonalPageContent() {
               type="button"
               onClick={handleCreateChannel}
               disabled={busyAction != null}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              className={primaryButtonClass}
             >
               {busyAction === 'create' ? copy.busyActions.create : channelViewModel.primaryActionLabel}
             </button>
           ) : null}
 
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
+          <button type="button" onClick={handleSignOut} className={secondaryButtonClass}>
             {messages.common.signOutLabel}
           </button>
         </div>
+      </div>
 
-        <div className="mt-8 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+      <div className="customer-channel-page__section customer-channel-page__footer">
+        <p className="customer-channel-page__footer-copy">
           {copy.accountPrompt}{' '}
-          <Link href="/auth/register" className="font-medium text-slate-950 underline underline-offset-4">
+          <Link href="/auth/register" className="customer-channel-page__footer-link">
             {copy.createAccount}
           </Link>
-        </div>
+        </p>
       </div>
-    </section>
+    </ChannelSetupCard>
   );
 }
 
