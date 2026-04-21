@@ -8,10 +8,6 @@ import {
 } from './customer-wechat-channel';
 import { messages } from './i18n';
 import {
-  archiveCokeUserWechatChannel,
-  connectCokeUserWechatChannel,
-  createCokeUserWechatChannel,
-  disconnectCokeUserWechatChannel,
   getCokeUserWechatChannelStatus,
   getCokeUserWechatChannelViewModel,
 } from './coke-user-wechat-channel';

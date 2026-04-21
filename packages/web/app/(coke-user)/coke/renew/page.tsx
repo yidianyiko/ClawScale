@@ -50,7 +50,7 @@ export default function RenewPage() {
     return () => {
       cancelled = true;
     };
-  }, [getGenericError, hasToken, router]);
+  }, [hasToken, router]);
 
   if (!hasToken) {
     return null;

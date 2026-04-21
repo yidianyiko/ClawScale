@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type SearchParamsLike = { toString(): string } | null;
@@ -10,7 +10,7 @@ export function buildLegacyRedirectPath(pathname: string, searchParams: SearchPa
   return query ? `${pathname}?${query}` : pathname;
 }
 
-export default function LegacyRedirectPage({ pathname }: { pathname: string }) {
+function LegacyRedirectPageContent({ pathname }: { pathname: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -19,4 +19,12 @@ export default function LegacyRedirectPage({ pathname }: { pathname: string }) {
   }, [pathname, router, searchParams]);
 
   return null;
+}
+
+export default function LegacyRedirectPage({ pathname }: { pathname: string }) {
+  return (
+    <Suspense fallback={null}>
+      <LegacyRedirectPageContent pathname={pathname} />
+    </Suspense>
+  );
 }

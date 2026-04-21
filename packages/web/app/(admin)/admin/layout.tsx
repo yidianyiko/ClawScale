@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useReducer, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -30,24 +30,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { locale, messages } = useLocale();
-  const [ready, setReady] = useState(false);
+  const [, forceSessionCheck] = useReducer((count: number) => count + 1, 0);
   const copy = getAdminCopy(locale);
   const admin = getStoredAdminSession();
   const isLoginRoute = pathname === '/admin/login';
+  const isAuthenticated = isAdminAuthenticated();
 
   useEffect(() => {
-    if (isLoginRoute) {
-      setReady(true);
-      return;
-    }
-
-    if (!isAdminAuthenticated()) {
+    if (!isLoginRoute && !isAuthenticated) {
       router.replace('/admin/login');
-      return;
     }
-
-    setReady(true);
-  }, [isLoginRoute, router]);
+  }, [isAuthenticated, isLoginRoute, router]);
 
   useEffect(() => {
     if (isLoginRoute) {
@@ -55,7 +48,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     function handleSessionCleared() {
-      setReady(false);
+      // Admin auth lives outside React state, so force one re-render before redirecting.
+      forceSessionCheck();
       router.replace('/admin/login');
     }
 
@@ -71,12 +65,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     router.push('/admin/login');
   }
 
-  if (!ready) {
-    return null;
-  }
-
   if (isLoginRoute) {
     return <>{children}</>;
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   return (

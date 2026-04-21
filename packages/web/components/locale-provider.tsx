@@ -11,7 +11,6 @@ import {
 } from 'react';
 
 import {
-  DEFAULT_LOCALE,
   LOCALE_COOKIE_NAME,
   LOCALE_STORAGE_KEY,
   type Locale,
@@ -57,34 +56,29 @@ export function LocaleProvider({
   initialLocale?: Locale | string;
 }) {
   const providedLocale = initialLocale !== undefined ? normalizeLocale(initialLocale) : null;
-  const [locale, setLocaleState] = useState<Locale | null>(providedLocale);
+  const [locale, setLocaleState] = useState<Locale>(
+    () => providedLocale ?? getBootstrappedLocale() ?? detectClientLocale(),
+  );
 
   useEffect(() => {
-    const resolvedLocale = providedLocale ?? getBootstrappedLocale() ?? detectClientLocale();
-    setLocaleState((currentLocale) => currentLocale ?? resolvedLocale);
-    applyLocaleEffects(resolvedLocale);
+    applyLocaleEffects(locale);
     document.getElementById('locale-splash')?.remove();
-  }, [providedLocale]);
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
     const normalized = normalizeLocale(next);
     setLocaleState(normalized);
     applyLocaleEffects(normalized);
   }, []);
-  const resolvedLocale = locale ?? DEFAULT_LOCALE;
 
   const value = useMemo<LocaleContextValue>(
     () => ({
-      locale: resolvedLocale,
+      locale,
       setLocale,
-      messages: messages[resolvedLocale],
+      messages: messages[locale],
     }),
-    [resolvedLocale, setLocale],
+    [locale, setLocale],
   );
-
-  if (locale === null) {
-    return null;
-  }
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }

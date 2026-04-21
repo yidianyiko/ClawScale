@@ -22,7 +22,9 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('next/image', () => ({
-  default: (props: ComponentProps<'img'>) => <img {...props} />,
+  default: ({ src, className }: ComponentProps<'img'>) => (
+    <span data-next-image={typeof src === 'string' ? src : ''} className={className} />
+  ),
 }));
 
 vi.mock('../../../../lib/admin-api', () => ({

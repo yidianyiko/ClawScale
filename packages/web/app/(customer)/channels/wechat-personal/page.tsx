@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -76,7 +76,7 @@ function getBlockedAccessState(
   };
 }
 
-export default function CustomerWechatPersonalPage() {
+function CustomerWechatPersonalPageContent() {
   const { locale, messages } = useLocale();
   const copy = messages.customerPages.bindWechat;
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
@@ -164,7 +164,7 @@ export default function CustomerWechatPersonalPage() {
         setLoading(false);
       }
     }
-  }, [copy.errorCard.fallbackDescription, copy.loadFailure.title]);
+  }, [copy.loadFailure.title]);
 
   useEffect(() => {
     if (compatibilityRedirect) {
@@ -558,5 +558,13 @@ export default function CustomerWechatPersonalPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function CustomerWechatPersonalPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomerWechatPersonalPageContent />
+    </Suspense>
   );
 }
