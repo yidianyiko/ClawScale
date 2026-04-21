@@ -316,6 +316,182 @@
   box-shadow: 0 0 0 3px var(--claw-50);
 }
 
+.coke-site .auth-card {
+  max-width: 560px;
+  padding: 32px;
+  border: 1px solid var(--ink-08);
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse 480px 220px at 100% 0%, rgba(232, 105, 60, 0.05), transparent 55%),
+    rgba(255, 255, 255, 0.8);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.coke-site .auth-card__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.6vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  font-weight: 500;
+  color: var(--ink-900);
+  font-variation-settings: 'SOFT' 40, 'opsz' 120;
+}
+.coke-site .auth-card__desc {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-700);
+}
+
+.coke-site .auth-alert {
+  margin-top: 20px;
+  padding: 18px 18px 16px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+}
+.coke-site .auth-alert--warning {
+  background: var(--claw-50);
+  border-color: rgba(232, 105, 60, 0.18);
+  color: var(--ink-700);
+}
+.coke-site .auth-alert--error {
+  background: #FCEEEB;
+  border-color: rgba(206, 80, 38, 0.18);
+  color: var(--claw-700);
+}
+.coke-site .auth-alert--info {
+  background: var(--cream-100);
+  border-color: var(--ink-08);
+  color: var(--ink-700);
+}
+.coke-site .auth-alert--success {
+  background: #EEF7F1;
+  border-color: rgba(64, 129, 93, 0.18);
+  color: #24603B;
+}
+.coke-site .auth-alert__body {
+  display: grid;
+  gap: 8px;
+}
+.coke-site .auth-alert__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
+  color: inherit;
+}
+.coke-site .auth-alert__copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: inherit;
+}
+.coke-site .auth-alert__actions {
+  margin-top: 16px;
+}
+.coke-site .auth-alert__actions .auth-submit {
+  width: auto;
+  min-width: 180px;
+}
+.coke-site .auth-alert__status {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.coke-site .auth-alert__status--success {
+  color: #24603B;
+}
+.coke-site .auth-alert__status--error {
+  color: var(--claw-700);
+}
+
+.coke-site .auth-form {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+}
+.coke-site .auth-field {
+  display: grid;
+  gap: 8px;
+}
+.coke-site .auth-label {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.coke-site .auth-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink-900);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.4;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: border-color var(--dur-base) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard), transform 120ms;
+}
+.coke-site .auth-input::placeholder {
+  color: var(--ink-300);
+}
+.coke-site .auth-input:focus {
+  border-color: rgba(232, 105, 60, 0.44);
+  box-shadow: 0 0 0 4px rgba(232, 105, 60, 0.11);
+}
+
+.coke-site .auth-submit {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 20px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-standard), transform 120ms, opacity var(--dur-base);
+}
+.coke-site .auth-submit:hover { background: var(--ink-1000); }
+.coke-site .auth-submit:active { transform: scale(0.985); }
+.coke-site .auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+  transform: none;
+}
+
+.coke-site .auth-linkrow {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-700);
+}
+.coke-site .auth-linkrow__text {
+  color: inherit;
+}
+.coke-site .auth-linkrow__link {
+  font-weight: 700;
+  color: var(--claw-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.coke-site .auth-linkrow__link:hover {
+  color: var(--claw-600);
+}
+
 /* ---------------- Hero ---------------- */
 
 .coke-site .hero { padding: 80px 0 96px; }

@@ -79,6 +79,12 @@ describe('CustomerRegisterPage', () => {
       );
     });
 
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-form')).toBeTruthy();
+    expect(container.querySelector('.auth-input#displayName')).toBeTruthy();
+    expect(container.querySelector('.auth-input#password')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+
     expect(container.textContent).toContain('创建你的 Coke 账号');
     expect(container.textContent).toContain('已经注册？');
     expect((container.querySelector('input#password') as HTMLInputElement | null)?.placeholder).toBe(

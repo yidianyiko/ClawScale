@@ -131,9 +131,15 @@ describe('CustomerLoginPage', () => {
     });
     await flushTicks(1);
 
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-form')).toBeTruthy();
+    expect(container.querySelector('.auth-input#email')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.getAttribute('href'));
 
-    expect(container.textContent).toContain('Return to your Coke account');
+    expect(container.textContent).toContain('Sign in to Coke');
     expect(links).toContain('/auth/forgot-password');
     expect(links).toContain('/auth/register');
   });
