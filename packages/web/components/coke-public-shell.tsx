@@ -12,10 +12,18 @@ interface CokePublicShellProps {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
+  activeAuthCta?: 'signIn' | 'register' | null;
 }
 
-export function CokePublicShell({ children, className, contentClassName }: CokePublicShellProps) {
+export function CokePublicShell({
+  children,
+  className,
+  contentClassName,
+  activeAuthCta = null,
+}: CokePublicShellProps) {
   const { messages } = useLocale();
+  const signInCurrent = activeAuthCta === 'signIn' ? 'page' : undefined;
+  const registerCurrent = activeAuthCta === 'register' ? 'page' : undefined;
 
   return (
     <div className={cn('coke-site', className)}>
@@ -36,10 +44,10 @@ export function CokePublicShell({ children, className, contentClassName }: CokeP
 
           <div className="site-header__actions">
             <LocaleSwitch />
-            <Link href="/auth/login" className="header-signin">
+            <Link href="/auth/login" className="header-signin" aria-current={signInCurrent}>
               {messages.publicShell.cta.signIn}
             </Link>
-            <Link href="/auth/register" className="header-cta">
+            <Link href="/auth/register" className="header-cta" aria-current={registerCurrent}>
               {messages.publicShell.cta.register}
               <ArrowRight size={14} aria-hidden="true" />
             </Link>

@@ -60,6 +60,7 @@ type CustomerLayoutMessages = {
   title: string;
   body: string;
   secondaryBody: string;
+  trustLines: string[];
 };
 
 type CokeUserLayoutMessages = CustomerLayoutMessages;
@@ -459,6 +460,11 @@ export const messages: MessagesCatalog = {
       title: 'Enter your customer workspace',
       body: 'Use the neutral customer routes for sign-in, registration, password recovery, email verification, and personal WeChat setup.',
       secondaryBody: 'Legacy /coke/* generic routes stay in place as compatibility redirects until every internal caller moves.',
+      trustLines: [
+        'End-to-end encrypted transport',
+        'Sign-in and channel access stay on one path',
+        'Designed for customer and personal setup',
+      ],
     },
     cokeUserLayout: {
       brandName: 'Coke AI',
@@ -827,6 +833,11 @@ export const messages: MessagesCatalog = {
       title: '进入你的客户工作区',
       body: '在中立的 customer 路由下完成登录、注册、密码找回、邮箱验证和个人微信接入。',
       secondaryBody: '旧的 /coke/* 通用入口会暂时保留为兼容跳转，直到所有内部调用都迁移完成。',
+      trustLines: [
+        '全程加密传输',
+        '登录、验证与接入保持同一路径',
+        '为客户与个人通道统一设计',
+      ],
     },
     cokeUserLayout: {
       brandName: 'Coke AI',

@@ -34,7 +34,7 @@ describe('CokePublicShell', () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="en">
-          <CokePublicShell>
+          <CokePublicShell activeAuthCta="signIn">
             <div>shell body</div>
           </CokePublicShell>
         </LocaleProvider>,
@@ -42,6 +42,7 @@ describe('CokePublicShell', () => {
     });
 
     expect(container.querySelector('.coke-site')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.textContent).toContain('Platforms');
