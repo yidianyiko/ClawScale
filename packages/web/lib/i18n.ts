@@ -274,9 +274,13 @@ export type LocaleMessages = {
       eyebrow: string;
       title: string;
       subtitle: string;
+      titleLine1: string;
+      titleItalicMiddle: string;
+      titleLine3: string;
       body: string;
       primaryCta: string;
       secondaryCta: string;
+      foot: string;
     };
     stats: Array<{ value: string; label: string }>;
     spotlight: {
@@ -311,6 +315,19 @@ export type LocaleMessages = {
       body: string;
       primaryCta: string;
       secondaryCta: string;
+      placeholder: string;
+      note: string;
+      thanks: string;
+    };
+    footer: {
+      productHeading: string;
+      accountHeading: string;
+      companyHeading: string;
+      copyright: string;
+      tagline: string;
+      productLinks: string[];
+      accountLinks: string[];
+      companyLinks: string[];
     };
   };
   customerLayout: CustomerLayoutMessages;
@@ -348,9 +365,13 @@ export const messages: MessagesCatalog = {
         eyebrow: 'Evolves With You',
         title: 'Your AI assistant that grows with you',
         subtitle: 'An AI Partner That Grows With You',
+        titleLine1: 'An AI partner',
+        titleItalicMiddle: 'that grows',
+        titleLine3: 'with you.',
         body: 'Coke AI is more than a tool. It becomes a sharper partner as it learns your rhythm, priorities, and context over time.',
         primaryCta: 'Register',
         secondaryCta: 'Sign in',
+        foot: 'Six platforms · 99.9% uptime · <100ms latency',
       },
       stats: [
         { value: '6+', label: 'Platforms' },
@@ -415,6 +436,19 @@ export const messages: MessagesCatalog = {
         body: 'Join our beta program, create an account, verify your email, and continue into your personal WeChat binding flow.',
         primaryCta: 'Join beta',
         secondaryCta: 'Existing account',
+        placeholder: 'your email',
+        note: "We won't share your email with anyone else.",
+        thanks: "Thanks. We'll be in touch within 24 hours.",
+      },
+      footer: {
+        productHeading: 'Product',
+        accountHeading: 'Account',
+        companyHeading: 'Company',
+        copyright: '© 2026 Coke AI',
+        tagline: 'Built to grow with you.',
+        productLinks: ['Platforms', 'Features', 'Architecture'],
+        accountLinks: ['Sign in', 'Register', 'Renew'],
+        companyLinks: ['About', 'Contact', 'Privacy'],
       },
     },
     customerLayout: {
@@ -707,9 +741,13 @@ export const messages: MessagesCatalog = {
         eyebrow: '与您共同成长',
         title: '会随着使用不断进化的 AI 助手',
         subtitle: '与您共同成长的 AI 助手',
+        titleLine1: '会随着使用',
+        titleItalicMiddle: '不断进化的',
+        titleLine3: 'AI 助手。',
         body: 'Coke AI 不只是工具，更会在长期使用中逐渐理解你的节奏、优先级和上下文，成为更懂你的智能伙伴。',
         primaryCta: '注册',
         secondaryCta: '登录',
+        foot: '六个平台 · 99.9% 可用性 · <100ms 响应',
       },
       stats: [
         { value: '6+', label: '平台' },
@@ -766,6 +804,19 @@ export const messages: MessagesCatalog = {
         body: '加入我们的内测计划，注册账号、验证邮箱，然后继续进入你的个人微信绑定流程。',
         primaryCta: '加入内测',
         secondaryCta: '已有账号',
+        placeholder: '你的邮箱',
+        note: '我们不会把你的邮箱分享给第三方。',
+        thanks: '谢谢。我们会在 24 小时内联系你。',
+      },
+      footer: {
+        productHeading: '产品',
+        accountHeading: '账号',
+        companyHeading: '公司',
+        copyright: '© 2026 Coke AI',
+        tagline: '与你一起慢慢变好。',
+        productLinks: ['平台', '功能', '架构'],
+        accountLinks: ['登录', '注册', '续费'],
+        companyLinks: ['关于', '联系', '隐私'],
       },
     },
     customerLayout: {
