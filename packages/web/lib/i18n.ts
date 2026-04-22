@@ -166,6 +166,21 @@ type CustomerPagesMessages = {
     signInPrompt: string;
     signInLink: string;
   };
+  claimEntry: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    submit: string;
+    submitting: string;
+    success: string;
+    invalidOrExpiredError: string;
+    emailAlreadyExistsError: string;
+    genericError: string;
+    signInPrompt: string;
+    signInLink: string;
+  };
   channelsIndex: {
     eyebrow: string;
     title: string;
@@ -587,6 +602,23 @@ export const messages: MessagesCatalog = {
         signInPrompt: 'Already claimed your account?',
         signInLink: 'Sign in',
       },
+      claimEntry: {
+        eyebrow: 'Shared channel access',
+        title: 'Claim your customer account',
+        description: 'Enter your email first and we will send a secure claim link so you can continue to calendar import.',
+        emailLabel: 'Email',
+        emailPlaceholder: 'alice@example.com',
+        submit: 'Email me a claim link',
+        submitting: 'Sending...',
+        success: 'Check your inbox for the claim link.',
+        invalidOrExpiredError:
+          'This WhatsApp claim link is invalid or has expired. Request a fresh link from WhatsApp to continue.',
+        emailAlreadyExistsError:
+          'That email address is already in use. Sign in or request a new claim link with a different email.',
+        genericError: 'Unable to send your claim email right now.',
+        signInPrompt: 'Already claimed your account?',
+        signInLink: 'Sign in',
+      },
       channelsIndex: {
         eyebrow: 'Phase 1 channels',
         title: 'Customer channels',
@@ -956,6 +988,21 @@ export const messages: MessagesCatalog = {
         invalidOrExpiredError: '这个认领链接无效或已过期。',
         emailAlreadyExistsError: '该邮箱地址已被占用。请直接登录，或使用其他邮箱重新申请认领链接。',
         genericError: '暂时无法认领你的账号，请稍后再试。',
+        signInPrompt: '已经认领过账号？',
+        signInLink: '去登录',
+      },
+      claimEntry: {
+        eyebrow: '共享通道访问',
+        title: '认领你的客户账号',
+        description: '先输入你的邮箱，我们会发送安全的认领链接，之后你可以继续进入日历导入。',
+        emailLabel: '邮箱',
+        emailPlaceholder: 'alice@example.com',
+        submit: '给我发送认领链接',
+        submitting: '发送中...',
+        success: '认领链接已发送，请查收邮箱。',
+        invalidOrExpiredError: '这个 WhatsApp 认领链接无效或已过期。请回到 WhatsApp 重新获取新的链接。',
+        emailAlreadyExistsError: '该邮箱地址已被占用。请直接登录，或使用其他邮箱重新申请认领链接。',
+        genericError: '暂时无法发送认领邮件，请稍后再试。',
         signInPrompt: '已经认领过账号？',
         signInLink: '去登录',
       },

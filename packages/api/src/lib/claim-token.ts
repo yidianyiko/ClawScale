@@ -9,6 +9,7 @@ import {
 } from './customer-auth.js';
 
 const CLAIM_TOKEN_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '15m';
+const CLAIM_ENTRY_TOKEN_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '15m';
 
 type ClaimOwnershipRecord = {
   role: 'owner' | 'member' | 'viewer';
@@ -29,6 +30,18 @@ interface ClaimTokenPayload {
   email: string;
   tokenType: 'action';
   purpose: 'claim';
+  continueTo?: string;
+  stateFingerprint?: string;
+  iat?: number;
+  exp?: number;
+}
+
+interface ClaimEntryTokenPayload {
+  sub: string;
+  identityId: string;
+  tokenType: 'action';
+  purpose: 'claim_entry';
+  continueTo?: string;
   stateFingerprint?: string;
   iat?: number;
   exp?: number;
@@ -96,6 +109,7 @@ export interface IssueClaimTokenInput {
   customerId: string;
   identityId: string;
   email: string;
+  continueTo?: string;
 }
 
 export interface IssuedClaimToken {
@@ -109,6 +123,26 @@ export interface IssuedClaimToken {
 export interface CompleteCustomerClaimInput {
   token: string;
   password: string;
+}
+
+export interface IssueClaimEntryTokenInput {
+  customerId: string;
+  identityId: string;
+  continueTo?: string;
+}
+
+export interface VerifiedClaimEntryToken {
+  customerId: string;
+  identityId: string;
+  continueTo?: string;
+}
+
+export function sanitizeContinueTo(value: string | undefined | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.startsWith('/') && !value.startsWith('//') ? value : undefined;
 }
 
 function readCustomerJwtSecret(): string {
@@ -184,6 +218,7 @@ function issueSignedClaimToken(input: {
   identityId: string;
   email: string;
   updatedAt?: Date;
+  continueTo?: string;
 }): string {
   return jwt.sign(
     {
@@ -192,10 +227,25 @@ function issueSignedClaimToken(input: {
       email: normalizeEmail(input.email),
       tokenType: 'action',
       purpose: 'claim',
+      continueTo: sanitizeContinueTo(input.continueTo),
       stateFingerprint: buildStateFingerprint(input.updatedAt),
     },
     readCustomerJwtSecret(),
     { expiresIn: CLAIM_TOKEN_EXPIRES_IN },
+  );
+}
+
+export function issueClaimEntryToken(input: IssueClaimEntryTokenInput): string {
+  return jwt.sign(
+    {
+      sub: input.customerId,
+      identityId: input.identityId,
+      tokenType: 'action',
+      purpose: 'claim_entry',
+      continueTo: sanitizeContinueTo(input.continueTo),
+    },
+    readCustomerJwtSecret(),
+    { expiresIn: CLAIM_ENTRY_TOKEN_EXPIRES_IN },
   );
 }
 
@@ -214,11 +264,31 @@ function verifyClaimToken(token: string): ClaimTokenPayload {
   return payload;
 }
 
+export function verifyClaimEntryToken(token: string): VerifiedClaimEntryToken {
+  let payload: ClaimEntryTokenPayload;
+  try {
+    payload = jwt.verify(token, readCustomerJwtSecret()) as ClaimEntryTokenPayload;
+  } catch {
+    throw new CustomerAuthError('invalid_or_expired_token');
+  }
+
+  if (payload.tokenType !== 'action' || payload.purpose !== 'claim_entry') {
+    throw new CustomerAuthError('invalid_or_expired_token');
+  }
+
+  return {
+    customerId: payload.sub,
+    identityId: payload.identityId,
+    continueTo: sanitizeContinueTo(payload.continueTo),
+  };
+}
+
 function buildCustomerAuthResult(input: {
   customerId: string;
   identityId: string;
   email: string;
   membershipRole: 'owner' | 'member' | 'viewer';
+  continueTo?: string;
 }): CustomerAuthResult {
   return {
     customerId: input.customerId,
@@ -231,6 +301,7 @@ function buildCustomerAuthResult(input: {
       identityId: input.identityId,
       email: input.email,
     }),
+    continueTo: sanitizeContinueTo(input.continueTo),
   };
 }
 
@@ -284,14 +355,15 @@ export async function issueClaimToken(
     customerId: membership.customer.id,
     identityId: membership.identity.id,
     claimStatus: 'pending',
-    email,
-    token: issueSignedClaimToken({
-      customerId: membership.customer.id,
-      identityId: membership.identity.id,
       email,
-      updatedAt: updated.updatedAt ?? membership.identity.updatedAt,
-    }),
-  };
+      token: issueSignedClaimToken({
+        customerId: membership.customer.id,
+        identityId: membership.identity.id,
+        email,
+        updatedAt: updated.updatedAt ?? membership.identity.updatedAt,
+        continueTo: input.continueTo,
+      }),
+    };
 }
 
 export async function completeCustomerClaim(
@@ -352,5 +424,6 @@ export async function completeCustomerClaim(
     identityId: membership.identity.id,
     email,
     membershipRole: membership.role,
+    continueTo: payload.continueTo,
   });
 }

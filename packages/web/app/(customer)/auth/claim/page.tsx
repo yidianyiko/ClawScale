@@ -9,6 +9,10 @@ import { useLocale } from '../../../../components/locale-provider';
 import { customerApi } from '../../../../lib/customer-api';
 import { storeCustomerAuth, type CustomerAuthResult } from '../../../../lib/customer-auth';
 
+function isSafeInternalPath(next: string | undefined): next is string {
+  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//');
+}
+
 export default function ClaimPage() {
   const { messages } = useLocale();
   const copy = messages.customerPages.claim;
@@ -63,7 +67,7 @@ export default function ClaimPage() {
       }
 
       storeCustomerAuth(res.data);
-      router.push('/channels/wechat-personal');
+      router.push(isSafeInternalPath(res.data.continueTo) ? res.data.continueTo : '/channels/wechat-personal');
     } catch {
       setError(copy.genericError);
     } finally {
