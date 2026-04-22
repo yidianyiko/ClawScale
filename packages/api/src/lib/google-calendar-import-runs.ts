@@ -100,10 +100,11 @@ function buildOptionalAssignment<T>(key: string, value: T | undefined): Record<s
   return value === undefined ? {} : { [key]: value } as Record<string, T>;
 }
 
-async function updateCalendarImportRunTransition(
+async function resolveCalendarImportRunTransition(
   client: CalendarImportRunClient,
   id: string,
   fromStatus: CalendarImportRunStatus,
+  targetStatus: CalendarImportRunStatus,
   data: CalendarImportRunUpdateData,
 ): Promise<CalendarImportRunRecord> {
   const updated = await client.calendarImportRun.updateMany({
@@ -111,16 +112,20 @@ async function updateCalendarImportRunTransition(
     data,
   });
 
-  if (updated.count !== 1) {
-    throw new Error(`calendar_import_run_invalid_transition:${id}`);
-  }
-
   const run = await client.calendarImportRun.findUnique({ where: { id } });
   if (!run) {
     throw new Error(`calendar_import_run_missing:${id}`);
   }
 
-  return run;
+  if (updated.count === 1) {
+    return run;
+  }
+
+  if (run.status === targetStatus) {
+    return run;
+  }
+
+  throw new Error(`calendar_import_run_invalid_transition:${id}`);
 }
 
 export async function createCalendarImportRun(
@@ -144,7 +149,7 @@ export async function markCalendarImportRunImporting(
   client: CalendarImportRunClient,
   input: CalendarImportRunImportingInput,
 ) {
-  return updateCalendarImportRunTransition(client, input.id, 'authorizing', {
+  return resolveCalendarImportRunTransition(client, input.id, 'authorizing', 'importing', {
     status: 'importing',
     ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
   });
@@ -154,7 +159,7 @@ export async function markCalendarImportRunFinished(
   client: CalendarImportRunClient,
   input: CalendarImportRunFinishedInput,
 ) {
-  return updateCalendarImportRunTransition(client, input.id, 'importing', {
+  return resolveCalendarImportRunTransition(client, input.id, 'importing', input.status, {
     status: input.status,
     finishedAt: new Date(),
     importedCount: input.importedCount,

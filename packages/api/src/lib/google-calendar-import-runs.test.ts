@@ -72,6 +72,36 @@ describe('google calendar import runs', () => {
     );
   });
 
+  it('treats repeated importing calls as idempotent when the run is already importing', async () => {
+    const current = {
+      id: 'cir_1',
+      status: 'importing',
+      providerAccountEmail: 'user@example.com',
+    };
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue(current),
+      },
+    };
+
+    await expect(
+      markCalendarImportRunImporting(db as never, {
+        id: 'cir_1',
+        providerAccountEmail: 'user@example.com',
+      }),
+    ).resolves.toEqual(current);
+
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cir_1', status: 'authorizing' },
+      }),
+    );
+    expect(db.calendarImportRun.findUnique).toHaveBeenCalledWith({
+      where: { id: 'cir_1' },
+    });
+  });
+
   it('marks a finished import run with summary counts and error details', async () => {
     const db = {
       calendarImportRun: {
@@ -114,6 +144,44 @@ describe('google calendar import runs', () => {
     );
   });
 
+  it('treats repeated finished calls as idempotent when the run is already finished', async () => {
+    const current = {
+      id: 'cir_1',
+      status: 'succeeded_with_errors',
+      importedCount: 10,
+      skippedCount: 1,
+      failedCount: 2,
+      errorSummary: 'partial fetch failure',
+      providerAccountEmail: 'user@example.com',
+    };
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue(current),
+      },
+    };
+
+    await expect(
+      markCalendarImportRunFinished(db as never, {
+        id: 'cir_1',
+        status: 'succeeded_with_errors',
+        importedCount: 10,
+        skippedCount: 1,
+        failedCount: 2,
+        errorSummary: 'partial fetch failure',
+      }),
+    ).resolves.toEqual(current);
+
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cir_1', status: 'importing' },
+      }),
+    );
+    expect(db.calendarImportRun.findUnique).toHaveBeenCalledWith({
+      where: { id: 'cir_1' },
+    });
+  });
+
   it('omits optional fields when marking an import run importing or finished', async () => {
     const db = {
       calendarImportRun: {
@@ -147,7 +215,10 @@ describe('google calendar import runs', () => {
     const db = {
       calendarImportRun: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-        findUnique: vi.fn(),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'cir_terminal',
+          status: 'failed',
+        }),
       },
     };
 
@@ -163,14 +234,19 @@ describe('google calendar import runs', () => {
         where: { id: 'cir_terminal', status: 'authorizing' },
       }),
     );
-    expect(db.calendarImportRun.findUnique).not.toHaveBeenCalled();
+    expect(db.calendarImportRun.findUnique).toHaveBeenCalledWith({
+      where: { id: 'cir_terminal' },
+    });
   });
 
-  it('rejects finishing a run that is no longer importing', async () => {
+  it('rejects finishing a run that is still authorizing', async () => {
     const db = {
       calendarImportRun: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-        findUnique: vi.fn(),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'cir_terminal',
+          status: 'authorizing',
+        }),
       },
     };
 
@@ -189,7 +265,9 @@ describe('google calendar import runs', () => {
         where: { id: 'cir_terminal', status: 'importing' },
       }),
     );
-    expect(db.calendarImportRun.findUnique).not.toHaveBeenCalled();
+    expect(db.calendarImportRun.findUnique).toHaveBeenCalledWith({
+      where: { id: 'cir_terminal' },
+    });
   });
 
   it('loads the latest run with deterministic ordering', async () => {

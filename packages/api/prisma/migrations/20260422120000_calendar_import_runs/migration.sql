@@ -31,6 +31,12 @@ CREATE TABLE "calendar_import_runs" (
 );
 
 -- CreateIndex
+CREATE INDEX "calendar_import_runs_customer_id_started_at_idx" ON "calendar_import_runs"("customer_id", "started_at");
+
+-- CreateIndex
+CREATE INDEX "calendar_import_runs_identity_id_started_at_idx" ON "calendar_import_runs"("identity_id", "started_at");
+
+-- CreateIndex
 CREATE INDEX "calendar_import_runs_customer_id_identity_id_started_at_id_idx" ON "calendar_import_runs"("customer_id", "identity_id", "started_at", "id");
 
 -- AddForeignKey

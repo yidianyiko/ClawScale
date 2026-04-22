@@ -535,6 +535,8 @@ model CalendarImportRun {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
 
+  @@index([customerId, startedAt])
+  @@index([identityId, startedAt])
   @@index([customerId, identityId, startedAt, id])
   @@map("calendar_import_runs")
 }
