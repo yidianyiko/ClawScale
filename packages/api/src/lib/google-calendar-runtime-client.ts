@@ -23,14 +23,23 @@ export interface GoogleCalendarRuntimeImportInput {
   identityId: string;
   runId: string;
   providerAccountEmail?: string | null;
+  targetConversationId: string;
+  targetCharacterId: string;
+  targetTimezone: string;
   calendarDefaults: GooglePrimaryCalendarDefaults;
   events: unknown[];
+}
+
+export interface GoogleCalendarImportWarning {
+  [key: string]: unknown;
 }
 
 export interface GoogleCalendarRuntimeImportResult {
   importedCount: number;
   skippedCount: number;
   failedCount: number;
+  warningCount: number;
+  warnings: GoogleCalendarImportWarning[];
   errorSummary: string | null;
 }
 
@@ -54,6 +63,17 @@ function readString(value: unknown): string | null {
 
 function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readWarnings(value: unknown): GoogleCalendarImportWarning[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is GoogleCalendarImportWarning =>
+      typeof item === 'object' && item !== null && !Array.isArray(item),
+  );
 }
 
 async function readBridgeJson(response: Response): Promise<Record<string, unknown>> {
@@ -169,6 +189,9 @@ export async function runGoogleCalendarImport(
     identity_id: input.identityId,
     run_id: input.runId,
     provider_account_email: input.providerAccountEmail ?? null,
+    target_conversation_id: input.targetConversationId,
+    target_character_id: input.targetCharacterId,
+    target_timezone: input.targetTimezone,
     calendar_defaults: input.calendarDefaults,
     events: input.events,
   });
@@ -192,12 +215,18 @@ export async function runGoogleCalendarImport(
   }
 
   const data = (json.data ?? {}) as Record<string, unknown>;
+  const warnings = readWarnings(data.warnings);
   return {
     ok: true,
     data: {
       importedCount: readNumber(data.importedCount) ?? readNumber(data.imported_count) ?? 0,
       skippedCount: readNumber(data.skippedCount) ?? readNumber(data.skipped_count) ?? 0,
       failedCount: readNumber(data.failedCount) ?? readNumber(data.failed_count) ?? 0,
+      warningCount:
+        readNumber(data.warningCount) ??
+        readNumber(data.warning_count) ??
+        warnings.length,
+      warnings,
       errorSummary: readString(data.errorSummary) ?? readString(data.error_summary),
     },
   };

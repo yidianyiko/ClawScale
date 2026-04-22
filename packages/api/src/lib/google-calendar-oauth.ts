@@ -11,6 +11,7 @@ export interface GoogleCalendarAuthUrlInput {
   runId: string;
   customerId: string;
   identityId: string;
+  targetTimezone: string;
   redirectUri: string;
 }
 
@@ -19,6 +20,7 @@ export interface GoogleCalendarStatePayload {
   customerId: string;
   identityId: string;
   codeVerifier: string;
+  targetTimezone: string;
 }
 
 export interface GoogleCalendarTokenExchangeInput {
@@ -128,6 +130,7 @@ function signGoogleCalendarState(input: GoogleCalendarStatePayload): string {
       identityId: input.identityId,
       runId: input.runId,
       codeVerifier: input.codeVerifier,
+      targetTimezone: input.targetTimezone,
       tokenType: 'action',
       purpose: 'google_calendar_import',
     },
@@ -142,6 +145,7 @@ export function verifyGoogleCalendarState(state: string): GoogleCalendarStatePay
     identityId: string;
     runId: string;
     codeVerifier: string;
+    targetTimezone: string;
     purpose?: string;
   };
 
@@ -150,7 +154,8 @@ export function verifyGoogleCalendarState(state: string): GoogleCalendarStatePay
     !payload.sub ||
     !payload.identityId ||
     !payload.runId ||
-    !payload.codeVerifier
+    !payload.codeVerifier ||
+    !payload.targetTimezone
   ) {
     throw new Error('invalid_google_calendar_state');
   }
@@ -160,6 +165,7 @@ export function verifyGoogleCalendarState(state: string): GoogleCalendarStatePay
     identityId: payload.identityId,
     runId: payload.runId,
     codeVerifier: payload.codeVerifier,
+    targetTimezone: payload.targetTimezone,
   };
 }
 
@@ -173,6 +179,7 @@ export async function buildGoogleCalendarAuthUrl(
     customerId: input.customerId,
     identityId: input.identityId,
     codeVerifier,
+    targetTimezone: input.targetTimezone,
   });
 
   const url = new URL(GOOGLE_OAUTH_AUTHORIZE_URL);

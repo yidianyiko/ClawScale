@@ -211,6 +211,7 @@ export const customerGoogleCalendarImportRouter = new Hono()
       runId: run.id,
       customerId: auth.customerId,
       identityId: auth.identityId,
+      targetTimezone: preflight.data.timezone,
       redirectUri: readGoogleCalendarRedirectUri(),
     });
 

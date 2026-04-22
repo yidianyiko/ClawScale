@@ -71,6 +71,8 @@ describe('customer google calendar import routes', () => {
         id: 'cir_1',
         status: 'importing',
         providerAccountEmail: null,
+        targetConversationId: 'conv_1',
+        targetCharacterId: 'char_1',
       },
     });
     oauth.buildGoogleCalendarAuthUrl.mockResolvedValue(
@@ -81,6 +83,7 @@ describe('customer google calendar import routes', () => {
       customerId: 'ck_123',
       identityId: 'idt_123',
       codeVerifier: 'verifier-123',
+      targetTimezone: 'Asia/Tokyo',
     });
     oauth.exchangeGoogleCalendarCode.mockResolvedValue({
       accessToken: 'access-token',
@@ -140,6 +143,8 @@ describe('customer google calendar import routes', () => {
         importedCount: 1,
         skippedCount: 0,
         failedCount: 0,
+        warningCount: 0,
+        warnings: [],
         errorSummary: null,
       },
     });
@@ -280,6 +285,7 @@ describe('customer google calendar import routes', () => {
       runId: 'cir_1',
       customerId: 'ck_123',
       identityId: 'idt_123',
+      targetTimezone: 'Asia/Tokyo',
       redirectUri: 'https://app.example/api/customer/google-calendar-import/callback/google',
     });
   });
@@ -354,6 +360,9 @@ describe('customer google calendar import routes', () => {
       identityId: 'idt_123',
       runId: 'cir_1',
       providerAccountEmail: 'alice@example.com',
+      targetConversationId: 'conv_1',
+      targetCharacterId: 'char_1',
+      targetTimezone: 'Asia/Tokyo',
       calendarDefaults: {
         timezone: 'America/Los_Angeles',
         defaultReminders: [{ method: 'popup', minutes: 30 }],
@@ -400,6 +409,52 @@ describe('customer google calendar import routes', () => {
         skippedCount: 0,
         failedCount: 0,
         errorSummary: null,
+      },
+    );
+  });
+
+  it('marks the run succeeded with errors when the bridge returns warnings', async () => {
+    runtimeClient.runGoogleCalendarImport.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        importedCount: 1,
+        skippedCount: 1,
+        failedCount: 0,
+        warningCount: 1,
+        warnings: [
+          {
+            reason: 'unsupported_recurring_exceptions',
+            eventId: 'evt_1',
+          },
+        ],
+        errorSummary: null,
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunFinished).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        id: 'cir_1',
+        status: 'succeeded_with_errors',
+        providerAccountEmail: 'alice@example.com',
+        importedCount: 1,
+        skippedCount: 1,
+        failedCount: 0,
+        errorSummary: 'unsupported_recurring_exceptions',
       },
     );
   });

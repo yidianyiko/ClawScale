@@ -51,6 +51,21 @@ function resolveSummaryRedirectStatus(status: 'succeeded' | 'succeeded_with_erro
   return status === 'failed' ? 'error' : 'complete';
 }
 
+function summarizeWarnings(warnings: Array<Record<string, unknown>>): string | null {
+  if (warnings.length === 0) {
+    return null;
+  }
+
+  for (const warning of warnings) {
+    const reason = warning['reason'];
+    if (typeof reason === 'string' && reason.trim()) {
+      return reason;
+    }
+  }
+
+  return 'google_calendar_import_warnings';
+}
+
 export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
   '/callback/google',
   async (c) => {
@@ -105,6 +120,9 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
         identityId: verified.identityId,
         runId: verified.runId,
         providerAccountEmail,
+        targetConversationId: begin.run.targetConversationId,
+        targetCharacterId: begin.run.targetCharacterId,
+        targetTimezone: verified.targetTimezone,
         calendarDefaults: calendar.calendarDefaults,
         events: calendar.events,
       });
@@ -128,14 +146,18 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
         );
       }
 
+      const warningSummary = result.data.errorSummary ?? summarizeWarnings(result.data.warnings);
       await markCalendarImportRunFinished(db as never, {
         id: verified.runId,
-        status: resolveFinishedStatus(result.data),
+        status: resolveFinishedStatus({
+          failedCount: result.data.failedCount,
+          errorSummary: warningSummary,
+        }),
         providerAccountEmail,
         importedCount: result.data.importedCount,
         skippedCount: result.data.skippedCount,
         failedCount: result.data.failedCount,
-        errorSummary: result.data.errorSummary,
+        errorSummary: warningSummary,
       });
 
       return c.redirect(

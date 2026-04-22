@@ -47,7 +47,14 @@ describe('google calendar runtime client', () => {
         customerId: 'ck_123',
         identityId: 'idt_123',
         runId: 'cir_123',
+        targetConversationId: 'conv_123',
+        targetCharacterId: 'char_123',
+        targetTimezone: 'Asia/Tokyo',
         events: [],
+        calendarDefaults: {
+          timezone: 'Asia/Tokyo',
+          defaultReminders: [],
+        },
       }),
     ).resolves.toEqual({
       ok: false,
@@ -105,6 +112,9 @@ describe('google calendar runtime client', () => {
         identityId: 'idt_123',
         runId: 'cir_123',
         providerAccountEmail: 'alice@example.com',
+        targetConversationId: 'conv_123',
+        targetCharacterId: 'char_123',
+        targetTimezone: 'Asia/Tokyo',
         calendarDefaults,
         events: [event],
       }),
@@ -114,6 +124,8 @@ describe('google calendar runtime client', () => {
         importedCount: 1,
         skippedCount: 0,
         failedCount: 0,
+        warningCount: 0,
+        warnings: [],
         errorSummary: null,
       },
     });
@@ -130,6 +142,9 @@ describe('google calendar runtime client', () => {
           identity_id: 'idt_123',
           run_id: 'cir_123',
           provider_account_email: 'alice@example.com',
+          target_conversation_id: 'conv_123',
+          target_character_id: 'char_123',
+          target_timezone: 'Asia/Tokyo',
           calendar_defaults: {
             timezone: 'America/Los_Angeles',
             defaultReminders: [{ method: 'popup', minutes: 30 }],
@@ -138,5 +153,65 @@ describe('google calendar runtime client', () => {
         }),
       }),
     );
+  });
+
+  it('parses bridge warnings and warning counts for partial-success imports', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            importedCount: 1,
+            skippedCount: 1,
+            failedCount: 0,
+            warningCount: 1,
+            warnings: [
+              {
+                reason: 'unsupported_recurring_exceptions',
+                eventId: 'evt_series',
+              },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    await expect(
+      runGoogleCalendarImport({
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        runId: 'cir_123',
+        targetConversationId: 'conv_123',
+        targetCharacterId: 'char_123',
+        targetTimezone: 'Asia/Tokyo',
+        providerAccountEmail: 'alice@example.com',
+        calendarDefaults: {
+          timezone: 'Asia/Tokyo',
+          defaultReminders: [],
+        },
+        events: [],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        importedCount: 1,
+        skippedCount: 1,
+        failedCount: 0,
+        warningCount: 1,
+        warnings: [
+          {
+            reason: 'unsupported_recurring_exceptions',
+            eventId: 'evt_series',
+          },
+        ],
+        errorSummary: null,
+      },
+    });
   });
 });
