@@ -83,7 +83,7 @@ const CHAT_PEEK_META = {
 
 const FOOTER_LINKS = {
   product: ['/#platforms', '/#features', '/#architecture'],
-  account: ['/auth/login', '/auth/register', '/account/subscription'],
+  account: ['/auth/login', '/auth/register', '/channels/wechat-personal', '/account/subscription'],
   company: ['/', '/#contact', '#'],
 } as const;
 

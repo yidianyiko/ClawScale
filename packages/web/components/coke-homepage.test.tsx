@@ -47,6 +47,8 @@ describe('CokeHomepage', () => {
     expect(container.querySelector('.hero__title em')).toBeTruthy();
     expect(container.textContent).toContain('WeChat');
     expect(container.textContent).toContain('Telegram');
+    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
   });
 
   it('renders Chinese hero copy', () => {
