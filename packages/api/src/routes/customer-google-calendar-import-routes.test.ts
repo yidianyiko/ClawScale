@@ -308,7 +308,7 @@ describe('customer google calendar import routes', () => {
       expect.anything(),
       {
         id: 'cir_1',
-        providerAccountEmail: 'alice@example.com',
+        providerAccountEmail: undefined,
       },
     );
     expect(runtimeClient.runGoogleCalendarImport).toHaveBeenCalledWith({
@@ -366,6 +366,107 @@ describe('customer google calendar import routes', () => {
         skippedCount: 0,
         failedCount: 1,
         errorSummary: 'runtime_unavailable',
+      }),
+    );
+  });
+
+  it('marks the run failed when Google returns a provider error before code exchange', async () => {
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&error=access_denied',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        id: 'cir_1',
+        providerAccountEmail: undefined,
+      },
+    );
+    expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
+    expect(importRuns.markCalendarImportRunFinished).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'cir_1',
+        status: 'failed',
+        errorSummary: 'access_denied',
+      }),
+    );
+  });
+
+  it('marks the run failed when the callback is missing the authorization code', async () => {
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        id: 'cir_1',
+        providerAccountEmail: undefined,
+      },
+    );
+    expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
+    expect(importRuns.markCalendarImportRunFinished).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'cir_1',
+        status: 'failed',
+        errorSummary: 'missing_google_calendar_code',
+      }),
+    );
+  });
+
+  it('marks the run failed when token exchange fails before calendar fetch', async () => {
+    oauth.exchangeGoogleCalendarCode.mockRejectedValueOnce(new Error('token_exchange_failed'));
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        id: 'cir_1',
+        providerAccountEmail: undefined,
+      },
+    );
+    expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
+    expect(importRuns.markCalendarImportRunFinished).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'cir_1',
+        status: 'failed',
+        errorSummary: 'token_exchange_failed',
       }),
     );
   });

@@ -54,11 +54,50 @@ function readNumber(value: unknown): number | null {
 }
 
 async function readBridgeJson(response: Response): Promise<Record<string, unknown>> {
-  const json = await response.json();
-  if (typeof json !== 'object' || json === null) {
+  try {
+    const text = await response.text();
+    if (!text.trim()) {
+      throw new Error('google_calendar_bridge_invalid_response');
+    }
+
+    const json = JSON.parse(text) as unknown;
+    if (typeof json !== 'object' || json === null) {
+      throw new Error('google_calendar_bridge_invalid_response');
+    }
+
+    return json as Record<string, unknown>;
+  } catch {
     throw new Error('google_calendar_bridge_invalid_response');
   }
-  return json as Record<string, unknown>;
+}
+
+async function postBridgeJson(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: true; response: Response; json: Record<string, unknown> } | { ok: false; error: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`${readBridgeBaseUrl()}${path}`, {
+      method: 'POST',
+      headers: readBridgeHeaders(),
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return {
+      ok: false,
+      error: 'google_calendar_bridge_transport_failed',
+    };
+  }
+
+  try {
+    const json = await readBridgeJson(response);
+    return { ok: true, response, json };
+  } catch {
+    return {
+      ok: false,
+      error: 'google_calendar_bridge_invalid_response',
+    };
+  }
 }
 
 export async function preflightGoogleCalendarImport(
@@ -67,15 +106,21 @@ export async function preflightGoogleCalendarImport(
   | { ok: true; data: GoogleCalendarImportPreflightReady | GoogleCalendarImportPreflightBlocked }
   | { ok: false; error: string }
 > {
-  const response = await fetch(`${readBridgeBaseUrl()}/bridge/internal/google-calendar-import/preflight`, {
-    method: 'POST',
-    headers: readBridgeHeaders(),
-    body: JSON.stringify({
-      customer_id: input.customerId,
-      identity_id: input.identityId,
-    }),
+  const bridge = await postBridgeJson('/bridge/internal/google-calendar-import/preflight', {
+    customer_id: input.customerId,
+    identity_id: input.identityId,
   });
-  const json = await readBridgeJson(response);
+  if (!bridge.ok) {
+    return {
+      ok: false,
+      error:
+        bridge.error === 'google_calendar_bridge_transport_failed'
+          ? 'google_calendar_import_preflight_transport_failed'
+          : 'google_calendar_import_preflight_invalid_response',
+    };
+  }
+
+  const { response, json } = bridge;
 
   if (!response.ok || json.ok !== true) {
     return {
@@ -116,18 +161,24 @@ export async function preflightGoogleCalendarImport(
 export async function runGoogleCalendarImport(
   input: GoogleCalendarRuntimeImportInput,
 ): Promise<{ ok: true; data: GoogleCalendarRuntimeImportResult } | { ok: false; error: string }> {
-  const response = await fetch(`${readBridgeBaseUrl()}/bridge/internal/google-calendar-import/run`, {
-    method: 'POST',
-    headers: readBridgeHeaders(),
-    body: JSON.stringify({
-      customer_id: input.customerId,
-      identity_id: input.identityId,
-      run_id: input.runId,
-      provider_account_email: input.providerAccountEmail ?? null,
-      events: input.events,
-    }),
+  const bridge = await postBridgeJson('/bridge/internal/google-calendar-import/run', {
+    customer_id: input.customerId,
+    identity_id: input.identityId,
+    run_id: input.runId,
+    provider_account_email: input.providerAccountEmail ?? null,
+    events: input.events,
   });
-  const json = await readBridgeJson(response);
+  if (!bridge.ok) {
+    return {
+      ok: false,
+      error:
+        bridge.error === 'google_calendar_bridge_transport_failed'
+          ? 'google_calendar_import_run_transport_failed'
+          : 'google_calendar_import_run_invalid_response',
+    };
+  }
+
+  const { response, json } = bridge;
 
   if (!response.ok || json.ok !== true) {
     return {

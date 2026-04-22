@@ -54,6 +54,10 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
       const verified = verifyGoogleCalendarState(state);
       runId = verified.runId;
 
+      await markCalendarImportRunImporting(db as never, {
+        id: verified.runId,
+      });
+
       if (providerError) {
         throw new Error(providerError);
       }
@@ -69,11 +73,6 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
       });
       const calendar = await fetchGooglePrimaryCalendarEvents(tokens.accessToken);
       const providerAccountEmail = calendar.providerAccountEmail ?? tokens.providerAccountEmail;
-
-      await markCalendarImportRunImporting(db as never, {
-        id: verified.runId,
-        providerAccountEmail,
-      });
 
       const result = await runGoogleCalendarImport({
         customerId: verified.customerId,
