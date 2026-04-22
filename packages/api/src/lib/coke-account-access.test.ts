@@ -34,7 +34,7 @@ describe('resolveCokeAccountAccess', () => {
           emailVerified: true,
           displayName: 'Alice',
         },
-        now: new Date('2026-04-10T00:00:00.000Z'),
+        now: new Date('2026-05-10T00:00:00.000Z'),
         renewalUrl: 'https://coke.app/account/subscription',
       }),
     ).resolves.toMatchObject({
@@ -56,7 +56,7 @@ describe('resolveCokeAccountAccess', () => {
           emailVerified: false,
           displayName: 'Alice',
         },
-        now: new Date('2026-04-10T00:00:00.000Z'),
+        now: new Date('2026-05-10T00:00:00.000Z'),
         requireEmailVerified: false,
         renewalUrl: 'https://coke.app/api/public/subscription-checkout?token=signed',
       }),

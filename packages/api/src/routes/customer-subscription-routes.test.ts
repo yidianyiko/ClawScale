@@ -19,7 +19,7 @@ const db = vi.hoisted(() => ({
 const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 const calculateStackedAccessWindow = vi.hoisted(() => vi.fn());
 const calculateTrialExpiresAt = vi.hoisted(() =>
-  vi.fn((createdAt: Date) => new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000)),
+  vi.fn((createdAt: Date) => new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)),
 );
 const verifyPublicCheckoutToken = vi.hoisted(() => vi.fn());
 const verifyCustomerToken = vi.hoisted(() => vi.fn());
@@ -656,8 +656,8 @@ describe('customer subscription routes', () => {
     });
     db.subscription.findFirst.mockResolvedValue(null);
     calculateStackedAccessWindow.mockReturnValue({
-      startsAt: '2026-04-08T00:00:00.000Z',
-      expiresAt: '2026-05-08T00:00:00.000Z',
+      startsAt: '2026-05-01T00:00:00.000Z',
+      expiresAt: '2026-05-31T00:00:00.000Z',
     });
     db.subscription.create.mockResolvedValue({ id: 'sub_trial' });
 
@@ -687,7 +687,7 @@ describe('customer subscription routes', () => {
     });
     expect(calculateStackedAccessWindow).toHaveBeenCalledWith(
       expect.objectContaining({
-        latestExpiresAt: new Date('2026-04-08T00:00:00.000Z'),
+        latestExpiresAt: new Date('2026-05-01T00:00:00.000Z'),
       }),
     );
     expect(db.subscription.create).toHaveBeenCalledWith({
@@ -696,8 +696,8 @@ describe('customer subscription routes', () => {
         stripeSessionId: 'cs_test_trial',
         amountPaid: 1299,
         currency: 'usd',
-        startsAt: new Date('2026-04-08T00:00:00.000Z'),
-        expiresAt: new Date('2026-05-08T00:00:00.000Z'),
+        startsAt: new Date('2026-05-01T00:00:00.000Z'),
+        expiresAt: new Date('2026-05-31T00:00:00.000Z'),
       },
     });
   });

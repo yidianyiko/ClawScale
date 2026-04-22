@@ -53,7 +53,7 @@ describe('coke-subscription helpers', () => {
     });
   });
 
-  it('treats newly registered customers as active during the seven-day trial window', async () => {
+  it('treats newly registered customers as active during the thirty-day trial window', async () => {
     db.customer.findUnique.mockResolvedValue({
       createdAt: new Date('2026-04-04T00:00:00.000Z'),
     });
@@ -63,21 +63,21 @@ describe('coke-subscription helpers', () => {
       getSubscriptionSnapshot('ck_1', new Date('2026-04-10T00:00:00.000Z')),
     ).resolves.toMatchObject({
       subscriptionActive: true,
-      subscriptionExpiresAt: '2026-04-11T00:00:00.000Z',
+      subscriptionExpiresAt: '2026-05-04T00:00:00.000Z',
     });
   });
 
-  it('falls back to subscription_required after the seven-day trial window ends', async () => {
+  it('falls back to subscription_required after the thirty-day trial window ends', async () => {
     db.customer.findUnique.mockResolvedValue({
       createdAt: new Date('2026-04-01T00:00:00.000Z'),
     });
     db.subscription.findFirst.mockResolvedValue(null);
 
     await expect(
-      getSubscriptionSnapshot('ck_1', new Date('2026-04-10T00:00:00.000Z')),
+      getSubscriptionSnapshot('ck_1', new Date('2026-05-10T00:00:00.000Z')),
     ).resolves.toMatchObject({
       subscriptionActive: false,
-      subscriptionExpiresAt: '2026-04-08T00:00:00.000Z',
+      subscriptionExpiresAt: '2026-05-01T00:00:00.000Z',
     });
   });
 

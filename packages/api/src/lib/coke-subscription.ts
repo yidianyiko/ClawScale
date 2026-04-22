@@ -1,7 +1,7 @@
 import { db } from '../db/index.js';
 
 const ACCESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const TRIAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const TRIAL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface SubscriptionSnapshot {
   subscriptionActive: boolean;
