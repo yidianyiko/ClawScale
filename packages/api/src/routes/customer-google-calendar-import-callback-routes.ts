@@ -6,6 +6,7 @@ import {
   verifyGoogleCalendarState,
 } from '../lib/google-calendar-oauth.js';
 import {
+  getCalendarImportRunById,
   markCalendarImportRunFinished,
   markCalendarImportRunImporting,
 } from '../lib/google-calendar-import-runs.js';
@@ -37,6 +38,14 @@ function resolveFinishedStatus(input: { failedCount: number; errorSummary: strin
   return 'succeeded';
 }
 
+function isTerminalRunStatus(status: string): status is 'succeeded' | 'succeeded_with_errors' | 'failed' {
+  return status === 'succeeded' || status === 'succeeded_with_errors' || status === 'failed';
+}
+
+function resolveSummaryRedirectStatus(status: 'succeeded' | 'succeeded_with_errors' | 'failed'): 'complete' | 'error' {
+  return status === 'failed' ? 'error' : 'complete';
+}
+
 export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
   '/callback/google',
   async (c) => {
@@ -53,6 +62,17 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
 
       const verified = verifyGoogleCalendarState(state);
       runId = verified.runId;
+
+      const existingRun = await getCalendarImportRunById(db as never, verified.runId);
+      if (existingRun && isTerminalRunStatus(existingRun.status)) {
+        return c.redirect(
+          buildSummaryRedirect({
+            runId: existingRun.id,
+            status: resolveSummaryRedirectStatus(existingRun.status),
+          }),
+          302,
+        );
+      }
 
       await markCalendarImportRunImporting(db as never, {
         id: verified.runId,

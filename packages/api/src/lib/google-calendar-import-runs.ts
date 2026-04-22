@@ -182,3 +182,12 @@ export async function getLatestCalendarImportRun(
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
   });
 }
+
+export async function getCalendarImportRunById(
+  client: CalendarImportRunClient,
+  id: string,
+) {
+  return client.calendarImportRun.findUnique({
+    where: { id },
+  });
+}

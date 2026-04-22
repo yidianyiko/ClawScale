@@ -25,6 +25,7 @@ const oauth = vi.hoisted(() => ({
 const importRuns = vi.hoisted(() => ({
   createCalendarImportRun: vi.fn(),
   getLatestCalendarImportRun: vi.fn(),
+  getCalendarImportRunById: vi.fn(),
   markCalendarImportRunImporting: vi.fn(),
   markCalendarImportRunFinished: vi.fn(),
 }));
@@ -65,6 +66,7 @@ describe('customer google calendar import routes', () => {
       renewalUrl: 'https://app.example/account/subscription',
     });
     importRuns.getLatestCalendarImportRun.mockResolvedValue(null);
+    importRuns.getCalendarImportRunById.mockResolvedValue(null);
     oauth.buildGoogleCalendarAuthUrl.mockResolvedValue(
       'https://accounts.google.com/o/oauth2/v2/auth?state=test-state',
     );
@@ -469,5 +471,36 @@ describe('customer google calendar import routes', () => {
         errorSummary: 'token_exchange_failed',
       }),
     );
+  });
+
+  it('redirects to the existing summary when the callback is revisited after a terminal successful run', async () => {
+    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
+      id: 'cir_1',
+      status: 'succeeded',
+      providerAccountEmail: 'alice@example.com',
+      importedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      errorSummary: null,
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunImporting).not.toHaveBeenCalled();
+    expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
+    expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
+    expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
   });
 });
