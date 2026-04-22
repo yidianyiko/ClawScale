@@ -503,4 +503,35 @@ describe('customer google calendar import routes', () => {
     expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
     expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
   });
+
+  it('redirects to the existing summary when the callback is revisited while the run is already importing', async () => {
+    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
+      id: 'cir_1',
+      status: 'importing',
+      providerAccountEmail: 'alice@example.com',
+      importedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+      errorSummary: null,
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
+    );
+    expect(importRuns.markCalendarImportRunImporting).not.toHaveBeenCalled();
+    expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
+    expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
+    expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
+  });
 });

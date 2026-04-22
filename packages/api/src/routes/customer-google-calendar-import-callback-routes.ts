@@ -42,6 +42,12 @@ function isTerminalRunStatus(status: string): status is 'succeeded' | 'succeeded
   return status === 'succeeded' || status === 'succeeded_with_errors' || status === 'failed';
 }
 
+function isCompletedOrInFlightRunStatus(
+  status: string,
+): status is 'importing' | 'succeeded' | 'succeeded_with_errors' | 'failed' {
+  return status === 'importing' || isTerminalRunStatus(status);
+}
+
 function resolveSummaryRedirectStatus(status: 'succeeded' | 'succeeded_with_errors' | 'failed'): 'complete' | 'error' {
   return status === 'failed' ? 'error' : 'complete';
 }
@@ -64,11 +70,14 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
       runId = verified.runId;
 
       const existingRun = await getCalendarImportRunById(db as never, verified.runId);
-      if (existingRun && isTerminalRunStatus(existingRun.status)) {
+      if (existingRun && isCompletedOrInFlightRunStatus(existingRun.status)) {
         return c.redirect(
           buildSummaryRedirect({
             runId: existingRun.id,
-            status: resolveSummaryRedirectStatus(existingRun.status),
+            status:
+              existingRun.status === 'importing'
+                ? 'complete'
+                : resolveSummaryRedirectStatus(existingRun.status),
           }),
           302,
         );
