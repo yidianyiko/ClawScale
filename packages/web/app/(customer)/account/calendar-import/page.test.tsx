@@ -5,6 +5,10 @@ import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
 
 const openMock = vi.hoisted(() => vi.fn());
+const replaceMock = vi.hoisted(() => vi.fn());
+const routerMock = vi.hoisted(() => ({
+  replace: replaceMock,
+}));
 const searchParamsMock = vi.hoisted(() => vi.fn(() => new URLSearchParams()));
 const getPreflightMock = vi.hoisted(() => vi.fn());
 const startMock = vi.hoisted(() => vi.fn());
@@ -12,6 +16,7 @@ const getStatusMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock(),
+  useRouter: () => routerMock,
 }));
 
 vi.mock('next/link', () => ({
@@ -65,6 +70,7 @@ describe('CustomerCalendarImportPage', () => {
 
   beforeEach(() => {
     openMock.mockReset();
+    replaceMock.mockReset();
     searchParamsMock.mockReset();
     searchParamsMock.mockReturnValue(new URLSearchParams());
     getPreflightMock.mockReset();
@@ -112,6 +118,36 @@ describe('CustomerCalendarImportPage', () => {
     expect(container.textContent).toContain('Start or resume a Coke conversation first');
     expect(container.textContent).toContain('Google Calendar import');
     expect(container.querySelector('button[type="button"]')).toBeNull();
+  });
+
+  it('shows the account recovery card when preflight is blocked for subscription renewal', async () => {
+    getPreflightMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        ready: false,
+        blockedReason: 'subscription_required',
+        latestRun: null,
+      },
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    expect(container.textContent).toContain('Renew your subscription before importing Google Calendar');
+    expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
+    expect(container.querySelector('button[type="button"]')).toBeNull();
+  });
+
+  it('redirects back to login when preflight returns an unauthorized response', async () => {
+    getPreflightMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'invalid_or_expired_token',
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    expect(replaceMock).toHaveBeenCalledWith('/auth/login?next=/account/calendar-import');
   });
 
   it('starts the import flow from the ready state and opens the returned Google auth URL', async () => {
@@ -247,5 +283,36 @@ describe('CustomerCalendarImportPage', () => {
     expect(getStatusMock).toHaveBeenCalledWith();
     expect(container.textContent).toContain('Import complete');
     expect(container.textContent).toContain('Imported 4, skipped 0, failed 0');
+  });
+
+  it('does not replace the current summary with a different callback run result', async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams('googleCalendarImport=complete&runId=cir_3'));
+    getPreflightMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        ready: true,
+        latestRun: null,
+      },
+    });
+    getStatusMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        latestRun: makeRunSummary({
+          id: 'cir_other',
+          status: 'succeeded',
+          importedCount: 9,
+          skippedCount: 0,
+          failedCount: 0,
+          errorSummary: null,
+        }),
+      },
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    expect(getStatusMock).toHaveBeenCalledWith();
+    expect(container.textContent).toContain('Waiting for the matching import summary');
+    expect(container.textContent).not.toContain('Imported 9, skipped 0, failed 0');
   });
 });

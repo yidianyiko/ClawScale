@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   getCustomerGoogleCalendarImportPreflight,
   getCustomerGoogleCalendarImportStatus,
@@ -51,21 +52,64 @@ function getRunDescription(run: CustomerGoogleCalendarImportRunSummary): string 
 }
 
 function getPreflightDescription(preflight: CustomerGoogleCalendarImportPreflightResult): string {
-  if (!preflight.ready && preflight.blockedReason === 'conversation_required') {
-    return 'Start or resume a Coke conversation first, then return here to launch the import.';
+  if (!preflight.ready) {
+    return getBlockedState(preflight.blockedReason)?.description ?? 'Resolve account access before starting the import.';
   }
 
   return 'Connect Google Calendar to the active Coke conversation for this customer account.';
 }
 
+function getBlockedState(blockedReason: string | null | undefined): {
+  title: string;
+  description: string;
+  ctaHref: string;
+  ctaLabel: string;
+} | null {
+  switch (blockedReason) {
+    case 'conversation_required':
+      return {
+        title: 'Conversation required',
+        description: 'Start or resume a Coke conversation first, then return here to launch the Google Calendar import.',
+        ctaHref: '/channels/wechat-personal',
+        ctaLabel: 'Open customer channels',
+      };
+    case 'subscription_required':
+      return {
+        title: 'Subscription required',
+        description: 'Renew your subscription before importing Google Calendar.',
+        ctaHref: '/account/subscription',
+        ctaLabel: 'Manage subscription',
+      };
+    case 'email_not_verified':
+      return {
+        title: 'Email verification required',
+        description: 'Verify your email before importing Google Calendar.',
+        ctaHref: '/account/subscription',
+        ctaLabel: 'Review account access',
+      };
+    case 'account_suspended':
+      return {
+        title: 'Account access is suspended',
+        description: 'This customer account is suspended. Review your account status before importing Google Calendar.',
+        ctaHref: '/account/subscription',
+        ctaLabel: 'Review account status',
+      };
+    default:
+      return null;
+  }
+}
+
 function CustomerCalendarImportPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackState = searchParams.get('googleCalendarImport');
+  const callbackRunId = searchParams.get('runId');
   const [preflight, setPreflight] = useState<CustomerGoogleCalendarImportPreflightResult | null>(null);
   const [latestRun, setLatestRun] = useState<CustomerGoogleCalendarImportRunSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [summaryNotice, setSummaryNotice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +117,7 @@ function CustomerCalendarImportPageContent() {
     async function loadImportState() {
       setLoading(true);
       setError('');
+      setSummaryNotice('');
 
       try {
         const preflightRes = await getCustomerGoogleCalendarImportPreflight();
@@ -82,7 +127,7 @@ function CustomerCalendarImportPageContent() {
         }
 
         if (!preflightRes.ok) {
-          setError('Unable to load your Google Calendar import status right now.');
+          router.replace('/auth/login?next=/account/calendar-import');
           return;
         }
 
@@ -92,7 +137,19 @@ function CustomerCalendarImportPageContent() {
         if (callbackState) {
           const statusRes = await getCustomerGoogleCalendarImportStatus();
           if (!cancelled && statusRes.ok) {
-            setLatestRun(statusRes.data.latestRun ?? preflightRes.data.latestRun);
+            const matchingRun =
+              !callbackRunId || statusRes.data.latestRun?.id === callbackRunId
+                ? statusRes.data.latestRun
+                : preflightRes.data.latestRun?.id === callbackRunId
+                  ? preflightRes.data.latestRun
+                  : null;
+
+            setLatestRun(matchingRun);
+            setSummaryNotice(
+              callbackRunId && !matchingRun
+                ? 'Waiting for the matching import summary for this authorization result.'
+                : '',
+            );
           }
         }
       } catch {
@@ -111,12 +168,12 @@ function CustomerCalendarImportPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [callbackState]);
+  }, [callbackRunId, callbackState, router]);
 
   const readyToStart = preflight?.ready === true;
-  const blockedForConversation = preflight?.ready === false && preflight.blockedReason === 'conversation_required';
+  const blockedState = preflight?.ready === false ? getBlockedState(preflight.blockedReason) : null;
   const importing = latestRun?.status === 'authorizing' || latestRun?.status === 'importing';
-  const showStartButton = readyToStart && !loading && !importing;
+  const showStartButton = readyToStart && !loading && !importing && !summaryNotice;
   const run = latestRun;
 
   async function handleStartImport() {
@@ -164,12 +221,22 @@ function CustomerCalendarImportPageContent() {
         </p>
       ) : null}
 
-      {!loading && !error && preflight && blockedForConversation ? (
+      {!loading && !error && blockedState ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-          <h2 className="text-lg font-semibold tracking-tight text-amber-950">Conversation required</h2>
-          <p className="mt-2 text-sm leading-6 text-amber-900">
-            Start or resume a Coke conversation first, then return here to launch the Google Calendar import.
-          </p>
+          <h2 className="text-lg font-semibold tracking-tight text-amber-950">{blockedState.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-amber-900">{blockedState.description}</p>
+          <Link
+            href={blockedState.ctaHref}
+            className="mt-4 inline-flex rounded-full border border-amber-300 px-4 py-2 text-sm font-medium text-amber-950 transition hover:border-amber-500"
+          >
+            {blockedState.ctaLabel}
+          </Link>
+        </div>
+      ) : null}
+
+      {!loading && !error && summaryNotice ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+          {summaryNotice}
         </div>
       ) : null}
 
@@ -194,7 +261,7 @@ function CustomerCalendarImportPageContent() {
         </div>
       ) : null}
 
-      {!loading && !error && !run ? (
+      {!loading && !error && !blockedState && !run ? (
         <p className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-6 text-slate-600">
           No calendar import has run yet.
         </p>
