@@ -90,12 +90,47 @@ describe('customer google calendar import routes', () => {
     });
     oauth.fetchGooglePrimaryCalendarEvents.mockResolvedValue({
       providerAccountEmail: 'alice@example.com',
+      calendarDefaults: {
+        timezone: 'America/Los_Angeles',
+        defaultReminders: [{ method: 'popup', minutes: 30 }],
+      },
       events: [
         {
           id: 'evt_1',
+          status: 'confirmed',
           summary: 'Planning meeting',
-          start: { dateTime: '2026-04-24T09:00:00.000Z' },
-          end: { dateTime: '2026-04-24T10:00:00.000Z' },
+          description: 'Weekly planning sync',
+          location: 'Room 1',
+          start: {
+            dateTime: '2026-04-24T09:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          },
+          end: {
+            dateTime: '2026-04-24T10:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          },
+          recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=FR'],
+          reminders: {
+            useDefault: false,
+            overrides: [{ method: 'popup', minutes: 10 }],
+          },
+        },
+        {
+          id: 'evt_1_20260424',
+          status: 'cancelled',
+          recurringEventId: 'evt_1',
+          originalStartTime: {
+            dateTime: '2026-04-24T09:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          },
+          start: {
+            dateTime: '2026-04-24T09:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          },
+          end: {
+            dateTime: '2026-04-24T10:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          },
         },
       ],
     });
@@ -319,10 +354,39 @@ describe('customer google calendar import routes', () => {
       identityId: 'idt_123',
       runId: 'cir_1',
       providerAccountEmail: 'alice@example.com',
+      calendarDefaults: {
+        timezone: 'America/Los_Angeles',
+        defaultReminders: [{ method: 'popup', minutes: 30 }],
+      },
       events: [
         expect.objectContaining({
           id: 'evt_1',
+          status: 'confirmed',
           summary: 'Planning meeting',
+          description: 'Weekly planning sync',
+          location: 'Room 1',
+          recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=FR'],
+          reminders: {
+            useDefault: false,
+            overrides: [{ method: 'popup', minutes: 10 }],
+          },
+          start: expect.objectContaining({
+            dateTime: '2026-04-24T09:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          }),
+          end: expect.objectContaining({
+            dateTime: '2026-04-24T10:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          }),
+        }),
+        expect.objectContaining({
+          id: 'evt_1_20260424',
+          status: 'cancelled',
+          recurringEventId: 'evt_1',
+          originalStartTime: expect.objectContaining({
+            dateTime: '2026-04-24T09:00:00.000-07:00',
+            timeZone: 'America/Los_Angeles',
+          }),
         }),
       ],
     });

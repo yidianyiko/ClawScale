@@ -40,6 +40,16 @@ export interface GoogleCalendarEventTime {
   timeZone?: string;
 }
 
+export interface GoogleCalendarDefaultReminder {
+  method?: string;
+  minutes?: number;
+}
+
+export interface GooglePrimaryCalendarDefaults {
+  timezone: string | null;
+  defaultReminders: GoogleCalendarDefaultReminder[];
+}
+
 export interface GoogleCalendarEventRecord {
   id: string;
   status?: string;
@@ -48,16 +58,24 @@ export interface GoogleCalendarEventRecord {
   location?: string;
   start?: GoogleCalendarEventTime;
   end?: GoogleCalendarEventTime;
+  recurrence?: string[];
   recurringEventId?: string;
+  originalStartTime?: GoogleCalendarEventTime;
+  reminders?: {
+    useDefault?: boolean;
+    overrides?: GoogleCalendarDefaultReminder[];
+  };
   recurringEventSource?: {
     url?: string;
     title?: string;
   };
   htmlLink?: string;
+  [key: string]: unknown;
 }
 
 export interface GooglePrimaryCalendarEventsResult {
   providerAccountEmail: string | null;
+  calendarDefaults: GooglePrimaryCalendarDefaults;
   events: GoogleCalendarEventRecord[];
 }
 
@@ -238,6 +256,8 @@ export async function fetchGooglePrimaryCalendarEvents(
     accessToken,
   ) as {
     id?: string;
+    timeZone?: string;
+    defaultReminders?: Array<GoogleCalendarDefaultReminder>;
   };
 
   const events: GoogleCalendarEventRecord[] = [];
@@ -245,9 +265,8 @@ export async function fetchGooglePrimaryCalendarEvents(
 
   do {
     const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
-    url.searchParams.set('singleEvents', 'true');
     url.searchParams.set('maxResults', '2500');
-    url.searchParams.set('orderBy', 'startTime');
+    url.searchParams.set('showDeleted', 'true');
     if (pageToken) {
       url.searchParams.set('pageToken', pageToken);
     }
@@ -266,6 +285,12 @@ export async function fetchGooglePrimaryCalendarEvents(
 
   return {
     providerAccountEmail: primaryCalendar.id ?? null,
+    calendarDefaults: {
+      timezone: primaryCalendar.timeZone ?? null,
+      defaultReminders: Array.isArray(primaryCalendar.defaultReminders)
+        ? primaryCalendar.defaultReminders
+        : [],
+    },
     events,
   };
 }

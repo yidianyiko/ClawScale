@@ -1,3 +1,5 @@
+import type { GooglePrimaryCalendarDefaults } from './google-calendar-oauth.js';
+
 export interface GoogleCalendarImportPreflightInput {
   customerId: string;
   identityId: string;
@@ -21,6 +23,7 @@ export interface GoogleCalendarRuntimeImportInput {
   identityId: string;
   runId: string;
   providerAccountEmail?: string | null;
+  calendarDefaults: GooglePrimaryCalendarDefaults;
   events: unknown[];
 }
 
@@ -166,6 +169,7 @@ export async function runGoogleCalendarImport(
     identity_id: input.identityId,
     run_id: input.runId,
     provider_account_email: input.providerAccountEmail ?? null,
+    calendar_defaults: input.calendarDefaults,
     events: input.events,
   });
   if (!bridge.ok) {

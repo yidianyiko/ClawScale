@@ -105,6 +105,7 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
         identityId: verified.identityId,
         runId: verified.runId,
         providerAccountEmail,
+        calendarDefaults: calendar.calendarDefaults,
         events: calendar.events,
       });
 

@@ -54,4 +54,89 @@ describe('google calendar runtime client', () => {
       error: 'google_calendar_import_run_invalid_response',
     });
   });
+
+  it('sends calendar defaults and raw event payloads to the bridge runtime', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            importedCount: 1,
+            skippedCount: 0,
+            failedCount: 0,
+            errorSummary: null,
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    const calendarDefaults = {
+      timezone: 'America/Los_Angeles',
+      defaultReminders: [{ method: 'popup', minutes: 30 }],
+    };
+    const event = {
+      id: 'evt_series',
+      status: 'confirmed',
+      summary: 'Recurring check-in',
+      start: {
+        dateTime: '2026-04-24T09:00:00-07:00',
+        timeZone: 'America/Los_Angeles',
+      },
+      end: {
+        dateTime: '2026-04-24T09:30:00-07:00',
+        timeZone: 'America/Los_Angeles',
+      },
+      recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=FR'],
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: 'popup', minutes: 10 }],
+      },
+    };
+
+    await expect(
+      runGoogleCalendarImport({
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        runId: 'cir_123',
+        providerAccountEmail: 'alice@example.com',
+        calendarDefaults,
+        events: [event],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        importedCount: 1,
+        skippedCount: 0,
+        failedCount: 0,
+        errorSummary: null,
+      },
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8090/bridge/internal/google-calendar-import/run',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_id: 'ck_123',
+          identity_id: 'idt_123',
+          run_id: 'cir_123',
+          provider_account_email: 'alice@example.com',
+          calendar_defaults: {
+            timezone: 'America/Los_Angeles',
+            defaultReminders: [{ method: 'popup', minutes: 30 }],
+          },
+          events: [event],
+        }),
+      }),
+    );
+  });
 });
