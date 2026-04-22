@@ -121,7 +121,9 @@ function serializeLatestRun(run: Awaited<ReturnType<typeof getLatestCalendarImpo
 }
 
 export const customerGoogleCalendarImportRouter = new Hono()
-  .use('*', requireCustomerImportAuth)
+  .use('/preflight', requireCustomerImportAuth)
+  .use('/start', requireCustomerImportAuth)
+  .use('/status', requireCustomerImportAuth)
   .get('/preflight', async (c) => {
     const auth = c.get('customerImportAuth');
     const [access, latestRun] = await Promise.all([

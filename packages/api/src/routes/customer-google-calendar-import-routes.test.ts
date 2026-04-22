@@ -534,4 +534,33 @@ describe('customer google calendar import routes', () => {
     expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
     expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
   });
+
+  it('keeps the mounted callback reachable without customer bearer auth under the production prefix', async () => {
+    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
+      id: 'cir_1',
+      status: 'succeeded',
+      providerAccountEmail: 'alice@example.com',
+      importedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      errorSummary: null,
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportRouter);
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      {
+        method: 'GET',
+      },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
+    );
+    expect(auth.verifyCustomerToken).not.toHaveBeenCalled();
+  });
 });
