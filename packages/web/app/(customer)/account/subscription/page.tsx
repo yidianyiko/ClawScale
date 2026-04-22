@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ApiResponse } from '../../../../../shared/src/types/api';
 
@@ -48,7 +48,7 @@ function formatExpiry(value: string | null, locale: string): string | null {
   }).format(date);
 }
 
-export default function CustomerSubscriptionPage() {
+function CustomerSubscriptionPageContent() {
   const { locale, messages } = useLocale();
   const renewCopy = messages.cokeUserPages.renew;
   const successCopy = messages.cokeUserPages.paymentSuccess;
@@ -241,12 +241,20 @@ export default function CustomerSubscriptionPage() {
             href="/channels/wechat-personal"
             className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
           >
-            {copy.backToSetup}
+            {renewCopy.backToSetup}
           </Link>
         </div>
       ) : null}
 
       {checkoutLoading ? <p className="mt-4 text-sm text-slate-500">Opening checkout…</p> : null}
     </section>
+  );
+}
+
+export default function CustomerSubscriptionPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomerSubscriptionPageContent />
+    </Suspense>
   );
 }
