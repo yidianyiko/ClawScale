@@ -13,7 +13,7 @@ vi.mock('resend', () => ({
   Resend: mocks.resendCtorMock,
 }));
 
-import { sendCustomerPasswordResetEmail, sendCustomerVerificationEmail } from './customer-email.js';
+import { sendCustomerClaimEmail, sendCustomerPasswordResetEmail, sendCustomerVerificationEmail } from './customer-email.js';
 import { sendCokeEmail, sendEmail } from './email.js';
 
 describe('email delivery', () => {
@@ -139,6 +139,24 @@ describe('email delivery', () => {
         html: expect.stringContaining('/coke/'),
       }),
     );
+  });
+
+  it('builds a neutral claim email without unused continuation fields', async () => {
+    await expect(
+      sendCustomerClaimEmail({
+        to: 'alice@example.com',
+        token: 'claim-token',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.sendMock).toHaveBeenCalledWith({
+      from: '"ClawScale" <noreply@keep4oforever.com>',
+      to: 'alice@example.com',
+      subject: 'Claim your account',
+      html: expect.stringContaining(
+        'https://clawscale.example/auth/claim?token=claim-token',
+      ),
+    });
   });
 
   it('keeps sendCokeEmail as a compatibility alias', async () => {

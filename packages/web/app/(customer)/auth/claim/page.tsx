@@ -10,7 +10,7 @@ import { customerApi } from '../../../../lib/customer-api';
 import { storeCustomerAuth, type CustomerAuthResult } from '../../../../lib/customer-auth';
 
 function isSafeInternalPath(next: string | undefined): next is string {
-  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//');
+  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\');
 }
 
 export default function ClaimPage() {

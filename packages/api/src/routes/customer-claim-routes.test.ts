@@ -91,7 +91,6 @@ describe('customer claim routes', () => {
     expect(sendCustomerClaimEmail).toHaveBeenCalledWith({
       to: 'alice@example.com',
       token: expect.any(String),
-      continueTo: '/account/calendar-import',
     });
   });
 
@@ -117,6 +116,35 @@ describe('customer claim routes', () => {
       error: 'invalid_or_expired_token',
     });
     expect(sendCustomerClaimEmail).not.toHaveBeenCalled();
+  });
+
+  it('drops malformed protocol-relative continuation targets from claim requests', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const entryToken = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/\\/evil.com',
+    });
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken,
+        email: 'alice@example.com',
+        next: '\\\\evil.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendCustomerClaimEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      token: expect.any(String),
+    });
   });
 
   it('completes a claim and returns the active customer auth payload', async () => {

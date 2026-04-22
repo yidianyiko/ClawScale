@@ -142,7 +142,7 @@ export function sanitizeContinueTo(value: string | undefined | null): string | u
     return undefined;
   }
 
-  return value.startsWith('/') && !value.startsWith('//') ? value : undefined;
+  return value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') ? value : undefined;
 }
 
 function readCustomerJwtSecret(): string {

@@ -14,7 +14,6 @@ export interface SendCustomerPasswordResetEmailInput {
 export interface SendCustomerClaimEmailInput {
   to: string;
   token: string;
-  continueTo?: string;
 }
 
 function getDomainClient(): string {

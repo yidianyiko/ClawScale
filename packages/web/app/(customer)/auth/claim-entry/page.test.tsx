@@ -56,6 +56,19 @@ describe('ClaimEntryPage', () => {
     container.remove();
   });
 
+  it('shows recovery guidance immediately when the entry token is missing', async () => {
+    window.history.replaceState({}, '', '/auth/claim-entry');
+
+    renderPage();
+
+    await waitForEffects();
+
+    expect(container.textContent).toContain('This WhatsApp claim link is invalid or has expired.');
+    expect(container.textContent).toContain('Request a fresh link from WhatsApp to continue.');
+    expect(container.querySelector('form')).toBeNull();
+    expect(requestCustomerClaimEmail).not.toHaveBeenCalled();
+  });
+
   it('renders the email-first claim entry page and requests a claim email for calendar import continuation', async () => {
     vi.mocked(requestCustomerClaimEmail).mockResolvedValueOnce({
       ok: true,

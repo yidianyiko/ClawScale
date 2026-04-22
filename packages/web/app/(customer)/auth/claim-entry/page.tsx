@@ -62,7 +62,12 @@ export default function ClaimEntryPage() {
       {submitted ? <div className="auth-alert auth-alert--info">{copy.success}</div> : null}
       {error ? <div className="auth-alert auth-alert--error">{error}</div> : null}
 
-      <form onSubmit={handleSubmit} className="auth-form">
+      {entryToken === '' ? (
+        <div className="auth-alert auth-alert--error">{copy.invalidOrExpiredError}</div>
+      ) : null}
+
+      {entryToken === '' ? null : (
+        <form onSubmit={handleSubmit} className="auth-form">
         <div className="auth-field">
           <label htmlFor="email" className="auth-label">
             {copy.emailLabel}
@@ -81,7 +86,8 @@ export default function ClaimEntryPage() {
         <button type="submit" className="auth-submit" disabled={loading}>
           {loading ? copy.submitting : copy.submit}
         </button>
-      </form>
+        </form>
+      )}
 
       <div className="auth-linkrow">
         <span className="auth-linkrow__text">{copy.signInPrompt}</span>

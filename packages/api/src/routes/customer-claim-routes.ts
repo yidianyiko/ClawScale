@@ -74,7 +74,6 @@ export const customerClaimRouter = new Hono()
       await sendCustomerClaimEmail({
         to: issued.email,
         token: issued.token,
-        continueTo,
       });
 
       return c.json({ ok: true, data: { message: 'claim_email_sent' } });
