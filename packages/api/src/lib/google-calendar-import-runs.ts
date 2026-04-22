@@ -61,6 +61,11 @@ export interface CalendarImportRunImportingInput {
   providerAccountEmail?: string | null;
 }
 
+export interface CalendarImportRunBeginResult {
+  won: boolean;
+  run: CalendarImportRunRecord;
+}
+
 export interface CalendarImportRunFinishedInput {
   id: string;
   status: Exclude<CalendarImportRunStatus, 'authorizing' | 'importing'>;
@@ -153,6 +158,42 @@ export async function markCalendarImportRunImporting(
     status: 'importing',
     ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
   });
+}
+
+export async function beginCalendarImportRun(
+  client: CalendarImportRunClient,
+  input: CalendarImportRunImportingInput,
+): Promise<CalendarImportRunBeginResult> {
+  const updated = await client.calendarImportRun.updateMany({
+    where: { id: input.id, status: 'authorizing' },
+    data: {
+      status: 'importing',
+      ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
+    },
+  });
+
+  const run = await client.calendarImportRun.findUnique({
+    where: { id: input.id },
+  });
+
+  if (!run) {
+    throw new Error(`calendar_import_run_missing:${input.id}`);
+  }
+
+  if (updated.count === 1) {
+    return { won: true, run };
+  }
+
+  if (
+    run.status === 'importing' ||
+    run.status === 'succeeded' ||
+    run.status === 'succeeded_with_errors' ||
+    run.status === 'failed'
+  ) {
+    return { won: false, run };
+  }
+
+  throw new Error(`calendar_import_run_invalid_transition:${input.id}`);
 }
 
 export async function markCalendarImportRunFinished(

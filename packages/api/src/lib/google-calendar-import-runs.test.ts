@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  beginCalendarImportRun,
   createCalendarImportRun,
   getLatestCalendarImportRun,
   markCalendarImportRunFinished,
@@ -99,6 +100,58 @@ describe('google calendar import runs', () => {
     );
     expect(db.calendarImportRun.findUnique).toHaveBeenCalledWith({
       where: { id: 'cir_1' },
+    });
+  });
+
+  it('reports whether the callback won the authorizing to importing transition', async () => {
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'cir_1',
+          status: 'importing',
+          providerAccountEmail: null,
+        }),
+      },
+    };
+
+    await expect(
+      beginCalendarImportRun(db as never, {
+        id: 'cir_1',
+      }),
+    ).resolves.toEqual({
+      won: true,
+      run: {
+        id: 'cir_1',
+        status: 'importing',
+        providerAccountEmail: null,
+      },
+    });
+  });
+
+  it('tells the callback to bail out when another request already moved the run to importing', async () => {
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'cir_1',
+          status: 'importing',
+          providerAccountEmail: 'user@example.com',
+        }),
+      },
+    };
+
+    await expect(
+      beginCalendarImportRun(db as never, {
+        id: 'cir_1',
+      }),
+    ).resolves.toEqual({
+      won: false,
+      run: {
+        id: 'cir_1',
+        status: 'importing',
+        providerAccountEmail: 'user@example.com',
+      },
     });
   });
 

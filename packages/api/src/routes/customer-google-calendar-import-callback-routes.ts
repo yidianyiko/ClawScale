@@ -6,9 +6,8 @@ import {
   verifyGoogleCalendarState,
 } from '../lib/google-calendar-oauth.js';
 import {
-  getCalendarImportRunById,
+  beginCalendarImportRun,
   markCalendarImportRunFinished,
-  markCalendarImportRunImporting,
 } from '../lib/google-calendar-import-runs.js';
 import { runGoogleCalendarImport } from '../lib/google-calendar-runtime-client.js';
 import { readGoogleCalendarRedirectUri } from './customer-google-calendar-import-routes.js';
@@ -69,23 +68,21 @@ export const customerGoogleCalendarImportCallbackRouter = new Hono().get(
       const verified = verifyGoogleCalendarState(state);
       runId = verified.runId;
 
-      const existingRun = await getCalendarImportRunById(db as never, verified.runId);
-      if (existingRun && isCompletedOrInFlightRunStatus(existingRun.status)) {
+      const begin = await beginCalendarImportRun(db as never, {
+        id: verified.runId,
+      });
+      if (!begin.won && isCompletedOrInFlightRunStatus(begin.run.status)) {
         return c.redirect(
           buildSummaryRedirect({
-            runId: existingRun.id,
+            runId: begin.run.id,
             status:
-              existingRun.status === 'importing'
+              begin.run.status === 'importing'
                 ? 'complete'
-                : resolveSummaryRedirectStatus(existingRun.status),
+                : resolveSummaryRedirectStatus(begin.run.status),
           }),
           302,
         );
       }
-
-      await markCalendarImportRunImporting(db as never, {
-        id: verified.runId,
-      });
 
       if (providerError) {
         throw new Error(providerError);

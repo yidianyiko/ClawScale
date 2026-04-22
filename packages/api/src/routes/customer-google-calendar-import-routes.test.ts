@@ -25,8 +25,7 @@ const oauth = vi.hoisted(() => ({
 const importRuns = vi.hoisted(() => ({
   createCalendarImportRun: vi.fn(),
   getLatestCalendarImportRun: vi.fn(),
-  getCalendarImportRunById: vi.fn(),
-  markCalendarImportRunImporting: vi.fn(),
+  beginCalendarImportRun: vi.fn(),
   markCalendarImportRunFinished: vi.fn(),
 }));
 
@@ -66,7 +65,14 @@ describe('customer google calendar import routes', () => {
       renewalUrl: 'https://app.example/account/subscription',
     });
     importRuns.getLatestCalendarImportRun.mockResolvedValue(null);
-    importRuns.getCalendarImportRunById.mockResolvedValue(null);
+    importRuns.beginCalendarImportRun.mockResolvedValue({
+      won: true,
+      run: {
+        id: 'cir_1',
+        status: 'importing',
+        providerAccountEmail: null,
+      },
+    });
     oauth.buildGoogleCalendarAuthUrl.mockResolvedValue(
       'https://accounts.google.com/o/oauth2/v2/auth?state=test-state',
     );
@@ -92,10 +98,6 @@ describe('customer google calendar import routes', () => {
           end: { dateTime: '2026-04-24T10:00:00.000Z' },
         },
       ],
-    });
-    importRuns.markCalendarImportRunImporting.mockResolvedValue({
-      id: 'cir_1',
-      status: 'importing',
     });
     runtimeClient.runGoogleCalendarImport.mockResolvedValue({
       ok: true,
@@ -306,11 +308,10 @@ describe('customer google calendar import routes', () => {
       codeVerifier: 'verifier-123',
       redirectUri: 'https://app.example/api/customer/google-calendar-import/callback/google',
     });
-    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalledWith(
       expect.anything(),
       {
         id: 'cir_1',
-        providerAccountEmail: undefined,
       },
     );
     expect(runtimeClient.runGoogleCalendarImport).toHaveBeenCalledWith({
@@ -387,11 +388,10 @@ describe('customer google calendar import routes', () => {
     expect(res.headers.get('location')).toBe(
       'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
     );
-    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalledWith(
       expect.anything(),
       {
         id: 'cir_1',
-        providerAccountEmail: undefined,
       },
     );
     expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
@@ -420,11 +420,10 @@ describe('customer google calendar import routes', () => {
     expect(res.headers.get('location')).toBe(
       'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
     );
-    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalledWith(
       expect.anything(),
       {
         id: 'cir_1',
-        providerAccountEmail: undefined,
       },
     );
     expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
@@ -455,11 +454,10 @@ describe('customer google calendar import routes', () => {
     expect(res.headers.get('location')).toBe(
       'https://app.example/account/calendar-import?googleCalendarImport=error&runId=cir_1',
     );
-    expect(importRuns.markCalendarImportRunImporting).toHaveBeenCalledWith(
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalledWith(
       expect.anything(),
       {
         id: 'cir_1',
-        providerAccountEmail: undefined,
       },
     );
     expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
@@ -474,14 +472,17 @@ describe('customer google calendar import routes', () => {
   });
 
   it('redirects to the existing summary when the callback is revisited after a terminal successful run', async () => {
-    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
-      id: 'cir_1',
-      status: 'succeeded',
-      providerAccountEmail: 'alice@example.com',
-      importedCount: 1,
-      skippedCount: 0,
-      failedCount: 0,
-      errorSummary: null,
+    importRuns.beginCalendarImportRun.mockResolvedValueOnce({
+      won: false,
+      run: {
+        id: 'cir_1',
+        status: 'succeeded',
+        providerAccountEmail: 'alice@example.com',
+        importedCount: 1,
+        skippedCount: 0,
+        failedCount: 0,
+        errorSummary: null,
+      },
     });
 
     const app = new Hono();
@@ -498,21 +499,24 @@ describe('customer google calendar import routes', () => {
     expect(res.headers.get('location')).toBe(
       'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
     );
-    expect(importRuns.markCalendarImportRunImporting).not.toHaveBeenCalled();
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalled();
     expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
     expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
     expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
   });
 
   it('redirects to the existing summary when the callback is revisited while the run is already importing', async () => {
-    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
-      id: 'cir_1',
-      status: 'importing',
-      providerAccountEmail: 'alice@example.com',
-      importedCount: 0,
-      skippedCount: 0,
-      failedCount: 0,
-      errorSummary: null,
+    importRuns.beginCalendarImportRun.mockResolvedValueOnce({
+      won: false,
+      run: {
+        id: 'cir_1',
+        status: 'importing',
+        providerAccountEmail: 'alice@example.com',
+        importedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        errorSummary: null,
+      },
     });
 
     const app = new Hono();
@@ -529,21 +533,24 @@ describe('customer google calendar import routes', () => {
     expect(res.headers.get('location')).toBe(
       'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
     );
-    expect(importRuns.markCalendarImportRunImporting).not.toHaveBeenCalled();
+    expect(importRuns.beginCalendarImportRun).toHaveBeenCalled();
     expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
     expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
     expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
   });
 
   it('keeps the mounted callback reachable without customer bearer auth under the production prefix', async () => {
-    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
-      id: 'cir_1',
-      status: 'succeeded',
-      providerAccountEmail: 'alice@example.com',
-      importedCount: 1,
-      skippedCount: 0,
-      failedCount: 0,
-      errorSummary: null,
+    importRuns.beginCalendarImportRun.mockResolvedValueOnce({
+      won: false,
+      run: {
+        id: 'cir_1',
+        status: 'succeeded',
+        providerAccountEmail: 'alice@example.com',
+        importedCount: 1,
+        skippedCount: 0,
+        failedCount: 0,
+        errorSummary: null,
+      },
     });
 
     const app = new Hono();
@@ -562,5 +569,37 @@ describe('customer google calendar import routes', () => {
       'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
     );
     expect(auth.verifyCustomerToken).not.toHaveBeenCalled();
+  });
+
+  it('does not continue into token exchange when this callback loses the authorizing to importing race', async () => {
+    importRuns.beginCalendarImportRun.mockResolvedValueOnce({
+      won: false,
+      run: {
+        id: 'cir_1',
+        status: 'importing',
+        providerAccountEmail: 'alice@example.com',
+        importedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        errorSummary: null,
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+
+    const res = await app.request(
+      '/api/customer/google-calendar-import/callback/google?state=signed-state&code=auth-code-123',
+      { method: 'GET' },
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      'https://app.example/account/calendar-import?googleCalendarImport=complete&runId=cir_1',
+    );
+    expect(oauth.exchangeGoogleCalendarCode).not.toHaveBeenCalled();
+    expect(oauth.fetchGooglePrimaryCalendarEvents).not.toHaveBeenCalled();
+    expect(runtimeClient.runGoogleCalendarImport).not.toHaveBeenCalled();
+    expect(importRuns.markCalendarImportRunFinished).not.toHaveBeenCalled();
   });
 });
