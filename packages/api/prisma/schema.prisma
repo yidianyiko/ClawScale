@@ -262,6 +262,7 @@ model Identity {
   updatedAt    DateTime            @updatedAt @map("updated_at")
 
   memberships Membership[]
+  calendarImportRuns CalendarImportRun[]
 
   @@map("identities")
 }
@@ -277,6 +278,7 @@ model Customer {
   channels           Channel[]
   agentBindings      AgentBinding[]
   externalIdentities ExternalIdentity[]
+  calendarImportRuns CalendarImportRun[]
   clawscaleUser      ClawscaleUser?
   subscriptions      Subscription[]
 
@@ -492,6 +494,33 @@ model OutboundDelivery {
   @@index([tenantId])
   @@index([channelId])
   @@map("outbound_deliveries")
+}
+
+model CalendarImportRun {
+  id                   String   @id @default(cuid())
+  customerId           String   @map("customer_id")
+  identityId           String   @map("identity_id")
+  targetConversationId String   @map("target_conversation_id")
+  targetCharacterId    String   @map("target_character_id")
+  provider             String
+  triggerSource        String   @map("trigger_source")
+  status               String
+  providerAccountEmail String?  @map("provider_account_email")
+  importedCount        Int      @default(0) @map("imported_count")
+  skippedCount         Int      @default(0) @map("skipped_count")
+  failedCount          Int      @default(0) @map("failed_count")
+  errorSummary         String?  @map("error_summary")
+  startedAt            DateTime @default(now()) @map("started_at")
+  finishedAt           DateTime? @map("finished_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, startedAt])
+  @@index([identityId, startedAt])
+  @@map("calendar_import_runs")
 }
 
 model AiBackend {
