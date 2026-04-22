@@ -3,9 +3,8 @@
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { requestCustomerPasswordReset } from '../../../../lib/customer-auth';
 
 export default function CustomerForgotPasswordPage() {
   const { messages } = useLocale();
@@ -22,7 +21,7 @@ export default function CustomerForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/coke/forgot-password', { email });
+      const res = await requestCustomerPasswordReset({ email });
       if (!res.ok) {
         setError(copy.genericError);
         return;

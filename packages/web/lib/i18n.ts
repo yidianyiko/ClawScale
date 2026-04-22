@@ -459,7 +459,7 @@ export const messages: MessagesCatalog = {
       eyebrow: 'Customer Account',
       title: 'Enter your customer workspace',
       body: 'Use the neutral customer routes for sign-in, registration, password recovery, email verification, and personal WeChat setup.',
-      secondaryBody: 'Legacy /coke/* generic routes stay in place as compatibility redirects until every internal caller moves.',
+      secondaryBody: 'Customer access now lives on neutral auth, channel, and account routes with the legacy generic Coke entrypoints removed.',
       trustLines: [
         'End-to-end encrypted transport',
         'Sign-in and channel access stay on one path',
@@ -837,7 +837,7 @@ export const messages: MessagesCatalog = {
       eyebrow: '客户账号',
       title: '进入你的客户工作区',
       body: '在中立的 customer 路由下完成登录、注册、密码找回、邮箱验证和个人微信接入。',
-      secondaryBody: '旧的 /coke/* 通用入口会暂时保留为兼容跳转，直到所有内部调用都迁移完成。',
+      secondaryBody: '客户访问现在统一使用中立的 auth、channels 与 account 路由，旧的通用 Coke 入口已经删除。',
       trustLines: [
         '全程加密传输',
         '登录、验证与接入保持同一路径',

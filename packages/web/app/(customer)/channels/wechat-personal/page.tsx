@@ -1,36 +1,34 @@
 'use client';
 
-import { Suspense, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
 import {
-  clearCokeUserAuth,
-  getCokeUser,
-  getCokeUserToken,
-  isCokeUserSuspended,
-  needsCokeEmailVerification,
-  needsCokeSubscriptionRenewal,
-  type CokeUser,
-} from '../../../../lib/coke-user-auth';
-import { clearCustomerAuth } from '../../../../lib/customer-auth';
+  clearCustomerAuth,
+  getCustomerProfile,
+  getCustomerToken,
+  getStoredCustomerProfile,
+  storeCustomerProfile,
+  type CustomerProfile,
+} from '../../../../lib/customer-auth';
 import {
-  archiveCokeUserWechatChannel,
-  connectCokeUserWechatChannel,
-  createCokeUserWechatChannel,
-  disconnectCokeUserWechatChannel,
-  getCokeUserWechatChannelStatus,
-  getCokeUserWechatChannelViewModel,
-  type CokeUserWechatChannelState,
-} from '../../../../lib/coke-user-wechat-channel';
+  archiveCustomerWechatChannel,
+  connectCustomerWechatChannel,
+  createCustomerWechatChannel,
+  disconnectCustomerWechatChannel,
+  getCustomerWechatChannelStatus,
+  getCustomerWechatChannelViewModel,
+  type CustomerWechatChannelState,
+} from '../../../../lib/customer-wechat-channel';
 import {
-  applyCokeUserWechatChannelMutationFailure,
-  applyCokeUserWechatChannelMutationResult,
-  applyCokeUserWechatChannelRefreshFailure,
-} from '../../../../lib/coke-user-wechat-channel-machine';
+  applyCustomerWechatChannelMutationFailure,
+  applyCustomerWechatChannelMutationResult,
+  applyCustomerWechatChannelRefreshFailure,
+} from '../../../../lib/customer-wechat-channel-machine';
 
 type BlockedAccessState = {
   title: string;
@@ -74,7 +72,7 @@ function ChannelSetupCard({
 }
 
 function getChannelStatusDescription(
-  status: CokeUserWechatChannelState['status'],
+  status: CustomerWechatChannelState['status'],
   copy: BindWechatCopy,
 ): string | null {
   if (status === 'missing') {
@@ -93,7 +91,7 @@ function getChannelStatusDescription(
 }
 
 function getChannelNextSteps(
-  status: CokeUserWechatChannelState['status'],
+  status: CustomerWechatChannelState['status'],
   copy: BindWechatCopy,
 ): string[] {
   if (status === 'missing') {
@@ -123,11 +121,23 @@ function getChannelNextSteps(
   return [];
 }
 
+function isCustomerSuspended(user: CustomerProfile | null): boolean {
+  return user?.status === 'suspended';
+}
+
+function needsCustomerEmailVerification(user: CustomerProfile | null): boolean {
+  return user?.email_verified !== true;
+}
+
+function needsCustomerSubscriptionRenewal(user: CustomerProfile | null): boolean {
+  return user?.subscription_active !== true;
+}
+
 function getBlockedAccessState(
-  user: CokeUser | null,
+  user: CustomerProfile | null,
   copy: ReturnType<typeof useLocale>['messages']['customerPages']['bindWechat']['blocked'],
 ): BlockedAccessState | null {
-  if (isCokeUserSuspended(user)) {
+  if (isCustomerSuspended(user)) {
     return {
       title: copy.suspendedTitle,
       description: copy.suspendedDescription,
@@ -136,11 +146,11 @@ function getBlockedAccessState(
   }
 
   const actions: Array<{ href: string; label: string }> = [];
-  if (needsCokeEmailVerification(user)) {
+  if (needsCustomerEmailVerification(user)) {
     actions.push({ href: '/auth/verify-email', label: copy.verifyEmail });
   }
-  if (needsCokeSubscriptionRenewal(user)) {
-    actions.push({ href: '/coke/payment', label: copy.renewSubscription });
+  if (needsCustomerSubscriptionRenewal(user)) {
+    actions.push({ href: '/account/subscription', label: copy.renewSubscription });
   }
 
   if (actions.length === 0) {
@@ -154,27 +164,31 @@ function getBlockedAccessState(
   };
 }
 
-function CustomerWechatPersonalPageContent() {
+function normalizeExpiresAt(expiresAt: number): Date {
+  return new Date(expiresAt < 1_000_000_000_000 ? expiresAt * 1000 : expiresAt);
+}
+
+export default function CustomerWechatPersonalPage() {
   const { locale, messages } = useLocale();
   const copy = messages.customerPages.bindWechat;
   const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const compatibilityRedirect = searchParams.get('next') === 'renew' ? '/coke/payment' : null;
-  const [channel, setChannel] = useState<CokeUserWechatChannelState | null>(null);
+  const [hasToken] = useState<boolean>(() => getCustomerToken() != null);
+  const [user, setUser] = useState<CustomerProfile | null>(() => getStoredCustomerProfile());
+  const [profileReady, setProfileReady] = useState<boolean>(false);
+  const [channel, setChannel] = useState<CustomerWechatChannelState | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [hasToken] = useState<boolean>(() => getCokeUserToken() != null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [user] = useState<CokeUser | null>(() => getCokeUser());
-  const channelRef = useRef<CokeUserWechatChannelState | null>(null);
+  const channelRef = useRef<CustomerWechatChannelState | null>(null);
+  const profileRefreshStartedRef = useRef(false);
   const busyActionRef = useRef<'create' | 'connect' | 'disconnect' | 'archive' | null>(null);
   const channelRevisionRef = useRef(0);
   const channelViewModel = useMemo(
-    () => getCokeUserWechatChannelViewModel(channel, copy.viewModel),
+    () => getCustomerWechatChannelViewModel(channel, copy.viewModel),
     [channel, copy.viewModel],
   );
   const blockedAccessState = useMemo(() => getBlockedAccessState(user, copy.blocked), [copy.blocked, user]);
@@ -184,9 +198,60 @@ function CustomerWechatPersonalPageContent() {
     channelRef.current = channel;
   }, [channel]);
 
-  function normalizeExpiresAt(expiresAt: number): Date {
-    return new Date(expiresAt < 1_000_000_000_000 ? expiresAt * 1000 : expiresAt);
-  }
+  useEffect(() => {
+    if (!hasToken) {
+      router.replace('/auth/login');
+      setLoading(false);
+      setProfileReady(true);
+      return;
+    }
+
+    if (profileRefreshStartedRef.current) {
+      return;
+    }
+
+    profileRefreshStartedRef.current = true;
+
+    let cancelled = false;
+
+    async function hydrateProfile() {
+      try {
+        const res = await getCustomerProfile();
+        if (cancelled) {
+          return;
+        }
+
+        if (!res.ok) {
+          clearCustomerAuth();
+          setUser(null);
+          router.replace('/auth/login');
+          setLoading(false);
+          setProfileReady(true);
+          return;
+        }
+
+        storeCustomerProfile(res.data);
+        setUser(res.data);
+        setProfileReady(true);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        clearCustomerAuth();
+        setUser(null);
+        router.replace('/auth/login');
+        setLoading(false);
+        setProfileReady(true);
+      }
+    }
+
+    void hydrateProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasToken, router]);
 
   const refreshChannel = useCallback(async (options?: { silent?: boolean }) => {
     const requestRevision = channelRevisionRef.current;
@@ -196,8 +261,8 @@ function CustomerWechatPersonalPageContent() {
     }
 
     try {
-      const res = await getCokeUserWechatChannelStatus();
-      if (requestRevision !== channelRevisionRef.current) {
+      const res = await getCustomerWechatChannelStatus();
+      if (requestRevision != channelRevisionRef.current) {
         return;
       }
 
@@ -209,7 +274,7 @@ function CustomerWechatPersonalPageContent() {
           setActionError(null);
           setChannel(null);
         } else {
-          const next = applyCokeUserWechatChannelRefreshFailure(channelRef.current, message);
+          const next = applyCustomerWechatChannelRefreshFailure(channelRef.current, message);
           setChannel(next.channel);
           setRefreshError(next.transientError);
         }
@@ -222,7 +287,7 @@ function CustomerWechatPersonalPageContent() {
       setActionError(null);
       setChannel(res.data);
     } catch {
-      if (requestRevision !== channelRevisionRef.current) {
+      if (requestRevision != channelRevisionRef.current) {
         return;
       }
 
@@ -233,7 +298,7 @@ function CustomerWechatPersonalPageContent() {
         setActionError(null);
         setChannel(null);
       } else {
-        const next = applyCokeUserWechatChannelRefreshFailure(channelRef.current, message);
+        const next = applyCustomerWechatChannelRefreshFailure(channelRef.current, message);
         setChannel(next.channel);
         setRefreshError(next.transientError);
       }
@@ -245,15 +310,15 @@ function CustomerWechatPersonalPageContent() {
   }, [copy.loadFailure.title]);
 
   useEffect(() => {
-    if (compatibilityRedirect) {
-      router.replace(compatibilityRedirect);
-      setLoading(false);
+    if (!hasToken) {
       return;
     }
 
-    if (!hasToken) {
-      router.replace('/auth/login');
-      setLoading(false);
+    if (!profileReady) {
+      return;
+    }
+
+    if (user == null) {
       return;
     }
 
@@ -263,7 +328,7 @@ function CustomerWechatPersonalPageContent() {
     }
 
     void refreshChannel();
-  }, [blockedAccessState, compatibilityRedirect, hasToken, refreshChannel, router]);
+  }, [blockedAccessState, hasToken, profileReady, refreshChannel, user]);
 
   useEffect(() => {
     if (channel?.status !== 'pending' || !channel.connect_url) {
@@ -295,14 +360,13 @@ function CustomerWechatPersonalPageContent() {
   }, [channel?.connect_url, channel?.status, refreshChannel]);
 
   function handleSignOut() {
-    clearCokeUserAuth();
     clearCustomerAuth();
     router.replace('/auth/login');
   }
 
   async function runAction(
     action: 'create' | 'connect' | 'disconnect' | 'archive',
-    operation: () => Promise<ApiResponse<CokeUserWechatChannelState>>,
+    operation: () => Promise<ApiResponse<CustomerWechatChannelState>>,
   ) {
     if (busyActionRef.current != null) {
       return;
@@ -316,7 +380,7 @@ function CustomerWechatPersonalPageContent() {
       const res = await operation();
       if (!res.ok) {
         setRefreshError(null);
-        const next = applyCokeUserWechatChannelMutationFailure(
+        const next = applyCustomerWechatChannelMutationFailure(
           currentChannel,
           copy.errorCard.fallbackDescription,
         );
@@ -329,10 +393,10 @@ function CustomerWechatPersonalPageContent() {
       setRefreshError(null);
       channelRevisionRef.current += 1;
       setActionError(null);
-      setChannel(applyCokeUserWechatChannelMutationResult(res.data));
+      setChannel(applyCustomerWechatChannelMutationResult(res.data));
     } catch {
       setRefreshError(null);
-      const next = applyCokeUserWechatChannelMutationFailure(
+      const next = applyCustomerWechatChannelMutationFailure(
         currentChannel,
         copy.errorCard.fallbackDescription,
       );
@@ -346,27 +410,29 @@ function CustomerWechatPersonalPageContent() {
   }
 
   async function handleCreateChannel() {
-    await runAction('create', () => createCokeUserWechatChannel());
+    await runAction('create', () => createCustomerWechatChannel());
   }
 
   async function handleConnectChannel() {
-    await runAction('connect', () => connectCokeUserWechatChannel());
+    await runAction('connect', () => connectCustomerWechatChannel());
   }
 
   async function handleDisconnectChannel() {
-    await runAction('disconnect', () => disconnectCokeUserWechatChannel());
+    await runAction('disconnect', () => disconnectCustomerWechatChannel());
   }
 
   async function handleArchiveChannel() {
-    await runAction('archive', () => archiveCokeUserWechatChannel());
-  }
-
-  if (compatibilityRedirect) {
-    return null;
+    await runAction('archive', () => archiveCustomerWechatChannel());
   }
 
   if (!hasToken) {
     return null;
+  }
+
+  if (!profileReady && !channel) {
+    return (
+      <ChannelSetupCard title={copy.loading.title} description={copy.loading.description} />
+    );
   }
 
   if (blockedAccessState != null) {
@@ -609,13 +675,5 @@ function CustomerWechatPersonalPageContent() {
         </p>
       </div>
     </ChannelSetupCard>
-  );
-}
-
-export default function CustomerWechatPersonalPage() {
-  return (
-    <Suspense fallback={null}>
-      <CustomerWechatPersonalPageContent />
-    </Suspense>
   );
 }

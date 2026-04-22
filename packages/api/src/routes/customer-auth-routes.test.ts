@@ -27,11 +27,15 @@ const db = vi.hoisted(() => ({
 
 const sendCustomerVerificationEmail = vi.hoisted(() => vi.fn());
 const sendCustomerPasswordResetEmail = vi.hoisted(() => vi.fn());
+const resolveCokeAccountAccess = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/customer-email.js', () => ({
   sendCustomerVerificationEmail,
   sendCustomerPasswordResetEmail,
+}));
+vi.mock('../lib/coke-account-access.js', () => ({
+  resolveCokeAccountAccess,
 }));
 
 import {
@@ -46,6 +50,11 @@ describe('customer auth routes', () => {
     vi.clearAllMocks();
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
     db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      subscriptionActive: true,
+      subscriptionExpiresAt: null,
+    });
     tx.identity.create.mockResolvedValue({
       id: 'idt_123',
       email: 'alice@example.com',
@@ -66,7 +75,7 @@ describe('customer auth routes', () => {
     db.membership.findMany.mockResolvedValue([
       {
         role: 'owner',
-        customer: { id: 'ck_generated' },
+        customer: { id: 'ck_generated', displayName: 'Alice' },
         identity: {
           id: 'idt_123',
           email: 'alice@example.com',
@@ -604,6 +613,7 @@ describe('customer auth routes', () => {
       role: 'owner',
       customer: {
         id: 'ck_123',
+        displayName: 'Alice',
       },
       identity: {
         id: 'idt_123',
@@ -622,14 +632,28 @@ describe('customer auth routes', () => {
     });
 
     expect(res.status).toBe(200);
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_123',
+        status: 'normal',
+        emailVerified: false,
+        displayName: 'Alice',
+      },
+    });
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: {
+        id: 'ck_123',
         customerId: 'ck_123',
         identityId: 'idt_123',
         claimStatus: 'pending',
         email: 'alice@example.com',
         membershipRole: 'owner',
+        display_name: 'Alice',
+        email_verified: false,
+        status: 'normal',
+        subscription_active: true,
+        subscription_expires_at: null,
       },
     });
   });

@@ -4,11 +4,8 @@ import type { FormEvent } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { clearCokeUserAuth } from '../../../../lib/coke-user-auth';
-import { storeCustomerAuth, type CustomerAuthResult } from '../../../../lib/customer-auth';
+import { registerCustomer, storeCustomerAuth } from '../../../../lib/customer-auth';
 
 export default function CustomerRegisterPage() {
   const { messages } = useLocale();
@@ -26,7 +23,7 @@ export default function CustomerRegisterPage() {
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<CustomerAuthResult>>('/api/auth/register', {
+      const res = await registerCustomer({
         displayName,
         email,
         password,
@@ -37,7 +34,6 @@ export default function CustomerRegisterPage() {
         return;
       }
 
-      clearCokeUserAuth();
       storeCustomerAuth(res.data);
       router.push(`/auth/verify-email?email=${encodeURIComponent(res.data.email)}`);
     } catch {

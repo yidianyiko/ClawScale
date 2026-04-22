@@ -92,5 +92,5 @@ export function buildRenewalUrl(): string {
   }
 
   const domainClient = process.env['DOMAIN_CLIENT']?.trim().replace(/\/$/, '');
-  return domainClient ? `${domainClient}/coke/renew` : '/coke/renew';
+  return domainClient ? `${domainClient}/account/subscription` : '/account/subscription';
 }

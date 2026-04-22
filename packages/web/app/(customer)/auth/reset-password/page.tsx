@@ -3,10 +3,9 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useRouter } from 'next/navigation';
 import { useLocale } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { resetCustomerPassword } from '../../../../lib/customer-auth';
 
 export default function CustomerResetPasswordPage() {
   const { messages } = useLocale();
@@ -37,7 +36,7 @@ export default function CustomerResetPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/coke/reset-password', {
+      const res = await resetCustomerPassword({
         token: enteredToken,
         password,
       });

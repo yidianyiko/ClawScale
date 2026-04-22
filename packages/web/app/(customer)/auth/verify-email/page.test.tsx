@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { LocaleProvider } from '../../../../components/locale-provider';
-import { customerApi } from '../../../../lib/customer-api';
-
 const pushMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
-const postMock = vi.hoisted(() => vi.fn());
-const storeCokeUserAuthMock = vi.hoisted(() => vi.fn());
+const verifyCustomerEmailMock = vi.hoisted(() => vi.fn());
+const getCustomerProfileMock = vi.hoisted(() => vi.fn());
+const resendCustomerVerificationMock = vi.hoisted(() => vi.fn());
+const storeCustomerProfileMock = vi.hoisted(() => vi.fn());
 const storeCustomerAuthMock = vi.hoisted(() => vi.fn());
 const clearCustomerAuthMock = vi.hoisted(() => vi.fn());
-const getCokeUserMock = vi.hoisted(() => vi.fn());
+const getStoredCustomerProfileMock = vi.hoisted(() => vi.fn());
 const getStoredCustomerSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
@@ -20,27 +20,15 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    post: (...args: unknown[]) => postMock(...args),
-  },
-}));
-
-vi.mock('../../../../lib/coke-user-auth', () => ({
-  storeCokeUserAuth: (...args: unknown[]) => storeCokeUserAuthMock(...args),
-  getCokeUser: () => getCokeUserMock(),
-}));
-
 vi.mock('../../../../lib/customer-auth', () => ({
+  verifyCustomerEmail: (...args: unknown[]) => verifyCustomerEmailMock(...args),
+  getCustomerProfile: (...args: unknown[]) => getCustomerProfileMock(...args),
+  resendCustomerVerification: (...args: unknown[]) => resendCustomerVerificationMock(...args),
   storeCustomerAuth: (...args: unknown[]) => storeCustomerAuthMock(...args),
+  storeCustomerProfile: (...args: unknown[]) => storeCustomerProfileMock(...args),
   clearCustomerAuth: (...args: unknown[]) => clearCustomerAuthMock(...args),
+  getStoredCustomerProfile: () => getStoredCustomerProfileMock(),
   getStoredCustomerSession: () => getStoredCustomerSessionMock(),
-}));
-
-vi.mock('../../../../lib/customer-api', () => ({
-  customerApi: {
-    get: vi.fn(),
-  },
 }));
 
 import CustomerVerifyEmailPage from './page';
@@ -58,14 +46,15 @@ describe('CustomerVerifyEmailPage', () => {
   beforeEach(() => {
     pushMock.mockReset();
     replaceMock.mockReset();
-    postMock.mockReset();
-    storeCokeUserAuthMock.mockReset();
+    verifyCustomerEmailMock.mockReset();
+    getCustomerProfileMock.mockReset();
+    resendCustomerVerificationMock.mockReset();
     storeCustomerAuthMock.mockReset();
+    storeCustomerProfileMock.mockReset();
     clearCustomerAuthMock.mockReset();
-    getCokeUserMock.mockReset();
+    getStoredCustomerProfileMock.mockReset();
     getStoredCustomerSessionMock.mockReset();
-    vi.mocked(customerApi.get).mockReset();
-    postMock.mockResolvedValue({
+    verifyCustomerEmailMock.mockResolvedValue({
       ok: true,
       data: {
         token: 'customer-token',
@@ -76,11 +65,19 @@ describe('CustomerVerifyEmailPage', () => {
         membershipRole: 'owner',
       },
     });
-    vi.mocked(customerApi.get).mockResolvedValue({
+    resendCustomerVerificationMock.mockResolvedValue({
+      ok: true,
+      data: {},
+    });
+    getCustomerProfileMock.mockResolvedValue({
       ok: true,
       data: {
         id: 'ck_1',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        claimStatus: 'active',
         email: 'alice@example.com',
+        membershipRole: 'owner',
         display_name: 'Alice',
         email_verified: true,
         status: 'normal',
@@ -88,9 +85,13 @@ describe('CustomerVerifyEmailPage', () => {
         subscription_expires_at: null,
       },
     });
-    getCokeUserMock.mockReturnValue({
+    getStoredCustomerProfileMock.mockReturnValue({
       id: 'acct_1',
+      customerId: 'ck_1',
+      identityId: 'idt_1',
       email: 'alice@example.com',
+      claimStatus: 'pending',
+      membershipRole: 'owner',
       display_name: 'Alice',
       email_verified: false,
       status: 'normal',
@@ -112,7 +113,6 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
     root?.unmount();
     container?.remove();
   });
@@ -128,30 +128,23 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/auth/verify-email', {
+    expect(verifyCustomerEmailMock).toHaveBeenCalledWith({
       token: 'verify-token',
       email: 'alice@example.com',
     });
-    expect(vi.mocked(customerApi.get)).toHaveBeenCalledWith('/api/coke/me');
-    expect(storeCokeUserAuthMock).toHaveBeenCalledWith({
-      token: 'customer-token',
-      user: {
-        id: 'ck_1',
-        email: 'alice@example.com',
-        display_name: 'Alice',
-        email_verified: true,
-        status: 'normal',
-        subscription_active: true,
-        subscription_expires_at: null,
-      },
-    });
-    expect(storeCustomerAuthMock).toHaveBeenCalledWith({
-      token: 'customer-token',
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).toHaveBeenCalledWith({
+      id: 'ck_1',
       customerId: 'ck_1',
       identityId: 'idt_1',
-      email: 'alice@example.com',
       claimStatus: 'active',
+      email: 'alice@example.com',
       membershipRole: 'owner',
+      display_name: 'Alice',
+      email_verified: true,
+      status: 'normal',
+      subscription_active: true,
+      subscription_expires_at: null,
     });
     expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('input#token')).toBeNull();
@@ -163,12 +156,16 @@ describe('CustomerVerifyEmailPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('routes renewal-required verification success through the neutral channel path', async () => {
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+  it('routes renewal-required verification success through the account subscription path', async () => {
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
       data: {
         id: 'ck_1',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        claimStatus: 'active',
         email: 'alice@example.com',
+        membershipRole: 'owner',
         display_name: 'Alice',
         email_verified: true,
         status: 'normal',
@@ -187,28 +184,22 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(storeCokeUserAuthMock).toHaveBeenCalledWith(
+    expect(verifyCustomerEmailMock).toHaveBeenCalledWith({
+      token: 'verify-token',
+      email: 'alice@example.com',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        token: 'customer-token',
-        user: expect.objectContaining({
-          subscription_active: false,
-        }),
+        subscription_active: false,
       }),
     );
-    expect(storeCustomerAuthMock).toHaveBeenCalledWith({
-      token: 'customer-token',
-      customerId: 'ck_1',
-      identityId: 'idt_1',
-      email: 'alice@example.com',
-      claimStatus: 'active',
-      membershipRole: 'owner',
-    });
-    expect(replaceMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
+    expect(replaceMock).toHaveBeenCalledWith('/account/subscription');
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('redirects to retry recovery when the compatibility Coke profile cannot be loaded', async () => {
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: false,
       error: 'profile_unavailable',
     });
@@ -223,6 +214,12 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
+    expect(verifyCustomerEmailMock).toHaveBeenCalledWith({
+      token: 'verify-token',
+      email: 'alice@example.com',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(clearCustomerAuthMock).toHaveBeenCalledTimes(1);
     expect(replaceMock).toHaveBeenCalledWith('/auth/login?email=alice%40example.com&verification=retry');
   });
 
@@ -239,7 +236,7 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(postMock).not.toHaveBeenCalled();
+    expect(verifyCustomerEmailMock).not.toHaveBeenCalled();
     expect(container.querySelector('.auth-card')).toBeTruthy();
     expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.querySelector('.auth-alert--warning .auth-alert__body')).toBeTruthy();
@@ -261,17 +258,17 @@ describe('CustomerVerifyEmailPage', () => {
     resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
+    expect(resendCustomerVerificationMock).toHaveBeenCalledWith({
       email: 'alice@example.com',
     });
-    expect(container.querySelector('.auth-alert--success')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('supports manual resend recovery when opened without query params and no stored auth email', async () => {
-    getCokeUserMock.mockReturnValue(null);
+    getStoredCustomerProfileMock.mockReturnValue(null);
     getStoredCustomerSessionMock.mockReturnValue(null);
     window.history.pushState({}, '', '/auth/verify-email');
 
@@ -285,7 +282,7 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(postMock).not.toHaveBeenCalled();
+    expect(verifyCustomerEmailMock).not.toHaveBeenCalled();
 
     const emailInput = container.querySelector('input#email') as HTMLInputElement | null;
     expect(emailInput?.value).toBe('');
@@ -302,10 +299,10 @@ describe('CustomerVerifyEmailPage', () => {
     resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
+    expect(resendCustomerVerificationMock).toHaveBeenCalledWith({
       email: 'manual@example.com',
     });
-    expect(container.querySelector('.auth-alert--success')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
@@ -324,7 +321,7 @@ describe('CustomerVerifyEmailPage', () => {
 
     await flushTicks(2);
 
-    expect(postMock).not.toHaveBeenCalled();
+    expect(verifyCustomerEmailMock).not.toHaveBeenCalled();
     expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.querySelector('.auth-alert--warning .auth-submit--compact')).toBeTruthy();
     expect((container.querySelector('#email') as HTMLInputElement | null)?.value).toBe('alice@example.com');
@@ -333,7 +330,7 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   it('shows resend failures with the shared error alert styling and keeps recovery controls available', async () => {
-    postMock.mockResolvedValueOnce({
+    resendCustomerVerificationMock.mockResolvedValueOnce({
       ok: false,
       error: 'resend_failed',
     });
@@ -355,7 +352,7 @@ describe('CustomerVerifyEmailPage', () => {
     resendButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flushTicks(2);
 
-    expect(postMock).toHaveBeenCalledWith('/api/auth/resend-verification', {
+    expect(resendCustomerVerificationMock).toHaveBeenCalledWith({
       email: 'alice@example.com',
     });
     expect(container.querySelectorAll('.auth-alert--warning')).toHaveLength(1);
@@ -366,7 +363,7 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   it('redirects to login recovery when the verification API returns not ok', async () => {
-    postMock.mockResolvedValue({
+    verifyCustomerEmailMock.mockResolvedValue({
       ok: false,
       error: 'invalid_or_expired_token',
     });
@@ -388,7 +385,7 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   it('redirects to retry recovery when the verification request throws', async () => {
-    postMock.mockRejectedValue(new Error('gateway unavailable'));
+    verifyCustomerEmailMock.mockRejectedValue(new Error('gateway unavailable'));
 
     flushSync(() => {
       root.render(
@@ -405,7 +402,7 @@ describe('CustomerVerifyEmailPage', () => {
   });
 
   it('renders the loading-focused verification copy without a manual form', async () => {
-    postMock.mockImplementationOnce(
+    verifyCustomerEmailMock.mockImplementationOnce(
       () =>
         new Promise(() => {
           // Keep the request pending so the loading copy remains visible.

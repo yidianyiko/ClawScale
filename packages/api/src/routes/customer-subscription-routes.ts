@@ -1,15 +1,24 @@
 import Stripe from 'stripe';
+import type { Context, Next } from 'hono';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { requireCokeUserAuth } from '../middleware/coke-user-auth.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
 import { verifyPublicCheckoutToken } from '../lib/coke-public-checkout.js';
 import {
   calculateStackedAccessWindow,
   calculateTrialExpiresAt,
 } from '../lib/coke-subscription.js';
+import { getCustomerSession, verifyCustomerToken, type CustomerSession } from '../lib/customer-auth.js';
 
 const stripe = new Stripe(process.env['STRIPE_SECRET_KEY'] ?? '');
+
+type CustomerSubscriptionAuth = CustomerSession;
+
+declare module 'hono' {
+  interface ContextVariableMap {
+    customerSubscriptionAuth: CustomerSubscriptionAuth;
+  }
+}
 
 function isPrismaUniqueConstraintError(error: unknown): error is { code: string } {
   if (typeof error !== 'object' || error === null || !('code' in error)) {
@@ -17,6 +26,48 @@ function isPrismaUniqueConstraintError(error: unknown): error is { code: string 
   }
 
   return (error as { code?: unknown }).code === 'P2002';
+}
+
+function readBearerToken(c: Context): string | null {
+  const header = c.req.header('Authorization');
+  if (!header?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = header.slice('Bearer '.length).trim();
+  return token || null;
+}
+
+async function requireCustomerSubscriptionAuth(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const token = readBearerToken(c);
+  if (!token) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  try {
+    const payload = verifyCustomerToken(token);
+    const session = await getCustomerSession(db as never, {
+      customerId: payload.sub,
+      identityId: payload.identityId,
+    });
+
+    if (!session) {
+      return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
+    if (session.claimStatus !== 'active') {
+      return c.json({ ok: false, error: 'claim_inactive' }, 403);
+    }
+
+    c.set('customerSubscriptionAuth', session);
+    await next();
+    return;
+  } catch {
+    return c.json({ ok: false, error: 'invalid_or_expired_token' }, 401);
+  }
 }
 
 function readDomainClient(): string {
@@ -32,14 +83,14 @@ function readWebhookSecret(): string {
 }
 
 function buildSuccessUrl(): string {
-  return `${readDomainClient()}/coke/payment-success`;
+  return `${readDomainClient()}/account/subscription?status=success`;
 }
 
 function buildCancelUrl(): string {
-  return `${readDomainClient()}/coke/payment-cancel`;
+  return `${readDomainClient()}/account/subscription?status=cancel`;
 }
 
-function buildCokeCheckoutSessionCreateParams(
+function buildCustomerCheckoutSessionCreateParams(
   customerId: string,
 ): Stripe.Checkout.SessionCreateParams {
   return {
@@ -132,13 +183,18 @@ function unavailablePublicCheckoutResponse(): Response {
   );
 }
 
-function logPublicCheckoutError(message: string, details: Record<string, unknown>): void {
-  console.error(`[coke-payment] ${message}`, details);
+function unavailableAuthenticatedCheckoutResponse(c: Context): Response {
+  return c.json({ ok: false, error: 'checkout_unavailable' }, 503);
+}
+
+function logCustomerSubscriptionError(message: string, details: Record<string, unknown>): void {
+  console.error(`[customer-subscription] ${message}`, details);
 }
 
 async function loadCompatibilityCustomerAccount(
-  customerId: string,
-  options?: {
+  input: {
+    customerId: string;
+    identityId?: string;
     requireEmailBearingIdentity?: boolean;
   },
 ): Promise<{
@@ -150,7 +206,8 @@ async function loadCompatibilityCustomerAccount(
 } | null> {
   const membership = await db.membership.findFirst({
     where: {
-      customerId,
+      customerId: input.customerId,
+      ...(input.identityId ? { identityId: input.identityId } : {}),
       role: 'owner',
     },
     include: {
@@ -172,7 +229,7 @@ async function loadCompatibilityCustomerAccount(
   const email = membership?.identity.email?.trim();
   if (
     !membership ||
-    (!email && options?.requireEmailBearingIdentity !== false) ||
+    (!email && input.requireEmailBearingIdentity !== false) ||
     !membership.customer.id.startsWith('ck_')
   ) {
     return null;
@@ -187,8 +244,8 @@ async function loadCompatibilityCustomerAccount(
   };
 }
 
-export const cokePaymentRouter = new Hono()
-  .get('/public-checkout', async (c) => {
+export const customerSubscriptionRouter = new Hono()
+  .get('/public/subscription-checkout', async (c) => {
     const token = c.req.query('token')?.trim();
     if (!token) {
       return invalidPublicCheckoutLinkResponse();
@@ -201,7 +258,8 @@ export const cokePaymentRouter = new Hono()
       return invalidPublicCheckoutLinkResponse();
     }
 
-    const account = await loadCompatibilityCustomerAccount(payload.customerId, {
+    const account = await loadCompatibilityCustomerAccount({
+      customerId: payload.customerId,
       requireEmailBearingIdentity: false,
     });
 
@@ -224,7 +282,7 @@ export const cokePaymentRouter = new Hono()
         return unavailablePublicCheckoutResponse();
       }
     } catch (error) {
-      logPublicCheckoutError('public checkout access resolution failed', {
+      logCustomerSubscriptionError('public checkout access resolution failed', {
         customerId: account.id,
         error,
       });
@@ -233,11 +291,11 @@ export const cokePaymentRouter = new Hono()
 
     try {
       const session = await stripe.checkout.sessions.create(
-        buildCokeCheckoutSessionCreateParams(account.id),
+        buildCustomerCheckoutSessionCreateParams(account.id),
       );
 
       if (!session.url) {
-        logPublicCheckoutError('public checkout session missing url', {
+        logCustomerSubscriptionError('public checkout session missing url', {
           customerId: account.id,
           sessionId: session.id ?? null,
         });
@@ -246,39 +304,74 @@ export const cokePaymentRouter = new Hono()
 
       return c.redirect(session.url, 302);
     } catch (error) {
-      logPublicCheckoutError('public checkout session creation failed', {
+      logCustomerSubscriptionError('public checkout session creation failed', {
         customerId: account.id,
         error,
       });
       return unavailablePublicCheckoutResponse();
     }
   })
-  .post('/checkout', requireCokeUserAuth, async (c) => {
-    const auth = c.get('cokeAuth');
-    const account = await loadCompatibilityCustomerAccount(auth.accountId);
+  .post('/customer/subscription/checkout', requireCustomerSubscriptionAuth, async (c) => {
+    const auth = c.get('customerSubscriptionAuth');
+    const account = await loadCompatibilityCustomerAccount({
+      customerId: auth.customerId,
+      identityId: auth.identityId,
+    });
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
+    const access = await resolveCokeAccountAccess({
+      account: {
+        id: account.id,
+        status: account.status,
+        emailVerified: account.emailVerified,
+        displayName: account.displayName,
+      },
+    });
+
+    if (access.accountAccessDeniedReason === 'account_suspended') {
+      return c.json({ ok: false, error: 'account_suspended' }, 403);
     }
 
     if (!account.emailVerified) {
       return c.json({ ok: false, error: 'email_not_verified' }, 403);
     }
 
-    const session = await stripe.checkout.sessions.create(
-      buildCokeCheckoutSessionCreateParams(account.id),
-    );
+    try {
+      const session = await stripe.checkout.sessions.create(
+        buildCustomerCheckoutSessionCreateParams(account.id),
+      );
 
-    return c.json({
-      ok: true,
-      data: {
-        url: session.url,
-      },
-    });
+      if (!session.url) {
+        logCustomerSubscriptionError('checkout session missing url', {
+          customerId: account.id,
+          sessionId: session.id ?? null,
+        });
+        return unavailableAuthenticatedCheckoutResponse(c);
+      }
+
+      return c.json({
+        ok: true,
+        data: {
+          url: session.url,
+        },
+      });
+    } catch (error) {
+      logCustomerSubscriptionError('checkout session creation failed', {
+        customerId: account.id,
+        error,
+      });
+      return unavailableAuthenticatedCheckoutResponse(c);
+    }
   })
-  .get('/subscription', requireCokeUserAuth, async (c) => {
-    const auth = c.get('cokeAuth');
-    const account = await loadCompatibilityCustomerAccount(auth.accountId);
+  .get('/customer/subscription', requireCustomerSubscriptionAuth, async (c) => {
+    const auth = c.get('customerSubscriptionAuth');
+    const account = await loadCompatibilityCustomerAccount({
+      customerId: auth.customerId,
+      identityId: auth.identityId,
+    });
 
     if (!account) {
       return c.json({ ok: false, error: 'account_not_found' }, 404);
@@ -298,15 +391,21 @@ export const cokePaymentRouter = new Hono()
       data: access,
     });
   })
-  .post('/stripe-webhook', async (c) => {
+  .post('/webhooks/stripe', async (c) => {
     const rawBody = await c.req.text();
     const signature = c.req.header('stripe-signature') ?? '';
 
-    const event = stripe.webhooks.constructEvent(
-      rawBody,
-      signature,
-      readWebhookSecret(),
-    );
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        rawBody,
+        signature,
+        readWebhookSecret(),
+      );
+    } catch (error) {
+      logCustomerSubscriptionError('stripe webhook rejected', { error });
+      return c.json({ ok: false, error: 'invalid_stripe_webhook' }, 400);
+    }
 
     if (event.type !== 'checkout.session.completed') {
       return c.json({ ok: true });

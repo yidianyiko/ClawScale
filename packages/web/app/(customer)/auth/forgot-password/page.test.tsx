@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
+const requestCustomerPasswordResetMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -13,10 +13,8 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    post: vi.fn(),
-  },
+vi.mock('../../../../lib/customer-auth', () => ({
+  requestCustomerPasswordReset: (...args: unknown[]) => requestCustomerPasswordResetMock(...args),
 }));
 
 import CustomerForgotPasswordPage from './page';
@@ -35,7 +33,7 @@ describe('CustomerForgotPasswordPage', () => {
   }
 
   beforeEach(() => {
-    vi.mocked(cokeUserApi.post).mockReset();
+    requestCustomerPasswordResetMock.mockReset();
     window.history.replaceState({}, '', '/auth/forgot-password');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -68,8 +66,8 @@ describe('CustomerForgotPasswordPage', () => {
     expect(container.textContent).not.toContain('忘记密码');
   });
 
-  it('submits through the legacy Coke forgot-password API and shows success copy', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({ ok: true, data: {} });
+  it('submits through the neutral forgot-password API and shows success copy', async () => {
+    requestCustomerPasswordResetMock.mockResolvedValueOnce({ ok: true, data: {} });
 
     flushSync(() => {
       root.render(
@@ -84,7 +82,7 @@ describe('CustomerForgotPasswordPage', () => {
 
     await waitForEffects();
 
-    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/coke/forgot-password', {
+    expect(requestCustomerPasswordResetMock).toHaveBeenCalledWith({
       email: 'alice@example.com',
     });
     expect(container.textContent).toContain('Password reset instructions were sent if the account exists.');

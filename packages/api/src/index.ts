@@ -13,15 +13,13 @@ import { aiBackendsRouter } from './routes/ai-backends.js';
 import { endUsersRouter } from './routes/end-users.js';
 import { onboardRouter } from './routes/onboard.js';
 import { outboundRouter } from './routes/outbound.js';
-import { cokeAuthRouter } from './routes/coke-auth-routes.js';
-import { cokePaymentRouter } from './routes/coke-payment-routes.js';
-import { cokeWechatRouter } from './routes/coke-wechat-routes.js';
 import { cokeBindingsRouter } from './routes/coke-bindings.js';
 import { cokeDeliveryRoutesRouter } from './routes/coke-delivery-routes.js';
 import { cokeUserProvisionRouter } from './routes/coke-user-provision.js';
 import { customerAuthRouter } from './routes/customer-auth-routes.js';
 import { customerClaimRouter } from './routes/customer-claim-routes.js';
 import { customerChannelRouter } from './routes/customer-channel-routes.js';
+import { customerSubscriptionRouter } from './routes/customer-subscription-routes.js';
 import { adminAuthRouter } from './routes/admin-auth-routes.js';
 import { adminCustomersRouter } from './routes/admin-customers.js';
 import { adminChannelsRouter } from './routes/admin-channels.js';
@@ -91,10 +89,8 @@ app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
 app.route('/api/admin/deliveries', adminDeliveriesRouter);
 app.route('/api/admin/agents', adminAgentsRouter);
 app.route('/api/admin/admins', adminAdminsRouter);
+app.route('/api', customerSubscriptionRouter);
 app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
-app.route('/api/coke', cokeAuthRouter);
-app.route('/api/coke', cokePaymentRouter);
-app.route('/api/coke/wechat-channel', cokeWechatRouter);
 
 // ─── Gateway (inbound messages from social channels) ─────────────────────────
 

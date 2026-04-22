@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { customerApi } from '../../../../lib/customer-api';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { getCokeUser, storeCokeUserAuth, type CokeUser } from '../../../../lib/coke-user-auth';
 import {
+  clearCustomerAuth,
+  getCustomerProfile,
+  getStoredCustomerProfile,
   getStoredCustomerSession,
+  resendCustomerVerification,
+  verifyCustomerEmail,
   storeCustomerAuth,
-  type CustomerAuthResult,
+  storeCustomerProfile,
 } from '../../../../lib/customer-auth';
 
 type RecoveryReason = 'manual' | 'expired' | 'retry';
@@ -32,7 +33,7 @@ export default function CustomerVerifyEmailPage() {
     const token = params.get('token')?.trim() ?? '';
     const queryEmail = params.get('email')?.trim() ?? '';
     const storedEmail =
-      getStoredCustomerSession()?.email?.trim() ?? getCokeUser()?.email?.trim() ?? '';
+      getStoredCustomerSession()?.email?.trim() ?? getStoredCustomerProfile()?.email?.trim() ?? '';
     const recoveryEmail = queryEmail || storedEmail;
 
     if (!token) {
@@ -52,11 +53,9 @@ export default function CustomerVerifyEmailPage() {
     let cancelled = false;
 
     async function verifyEmailLink() {
+      let storedAuth = false;
       try {
-        const res = await cokeUserApi.post<ApiResponse<CustomerAuthResult>>('/api/auth/verify-email', {
-          token,
-          email: queryEmail,
-        });
+        const res = await verifyCustomerEmail({ token, email: queryEmail });
 
         if (cancelled) return;
 
@@ -66,24 +65,23 @@ export default function CustomerVerifyEmailPage() {
         }
 
         storeCustomerAuth(res.data);
+        storedAuth = true;
 
-        const profile = await customerApi.get<ApiResponse<CokeUser>>('/api/coke/me');
+        const profile = await getCustomerProfile();
         if (!profile.ok) {
-          throw new Error('coke_profile_unavailable');
+          throw new Error('customer_profile_unavailable');
         }
 
-        storeCokeUserAuth({
-          token: res.data.token,
-          user: profile.data,
-        });
+        storeCustomerProfile(profile.data);
 
         router.replace(
-          profile.data.subscription_active === false
-            ? '/channels/wechat-personal?next=renew'
-            : '/channels/wechat-personal',
+          profile.data.subscription_active === false ? '/account/subscription' : '/channels/wechat-personal',
         );
       } catch {
         if (!cancelled) {
+          if (storedAuth) {
+            clearCustomerAuth();
+          }
           router.replace(`/auth/login?email=${encodeURIComponent(queryEmail)}&verification=retry`);
         }
       } finally {
@@ -111,9 +109,7 @@ export default function CustomerVerifyEmailPage() {
     setResending(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/auth/resend-verification', {
-        email: nextEmail,
-      });
+      const res = await resendCustomerVerification({ email: nextEmail });
 
       if (!res.ok) {
         setResendStatus('error');

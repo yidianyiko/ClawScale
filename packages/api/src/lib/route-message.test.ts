@@ -151,10 +151,12 @@ describe('routeInboundMessage', () => {
       subscriptionExpiresAt: null,
       accountAccessAllowed: true,
       accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
+      renewalUrl: 'https://coke.example/account/subscription',
     });
     issuePublicCheckoutToken.mockReturnValue('signed-public-token');
-    buildPublicCheckoutUrl.mockReturnValue('https://coke.example/api/coke/public-checkout?token=signed-public-token');
+    buildPublicCheckoutUrl.mockReturnValue(
+      'https://coke.example/api/public/subscription-checkout?token=signed-public-token',
+    );
     getUnifiedConversationIds.mockResolvedValue(['conv_1', 'conv_2']);
     provisionSharedChannelCustomer.mockResolvedValue({
       customerId: 'ck_shared_1',
@@ -364,7 +366,7 @@ describe('routeInboundMessage', () => {
         subscriptionExpiresAt: null,
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.example/coke/renew',
+        renewalUrl: 'https://coke.example/account/subscription',
       }),
     );
     expect(issuePublicCheckoutToken).not.toHaveBeenCalled();
@@ -379,11 +381,11 @@ describe('routeInboundMessage', () => {
       subscriptionExpiresAt: '2026-04-01T00:00:00.000Z',
       accountAccessAllowed: false,
       accountAccessDeniedReason: 'subscription_required',
-      renewalUrl: 'https://coke.example/coke/renew',
+      renewalUrl: 'https://coke.example/account/subscription',
     });
     issuePublicCheckoutToken.mockReturnValueOnce('signed-public-token');
     buildPublicCheckoutUrl.mockReturnValueOnce(
-      'https://coke.example/api/coke/public-checkout?token=signed-public-token',
+      'https://coke.example/api/public/subscription-checkout?token=signed-public-token',
     );
 
     await routeInboundMessage({
@@ -404,7 +406,7 @@ describe('routeInboundMessage', () => {
     expect(firstGenerateCall?.metadata).toEqual(
       expect.objectContaining({
         accountAccessDeniedReason: 'subscription_required',
-        renewalUrl: 'https://coke.example/api/coke/public-checkout?token=signed-public-token',
+        renewalUrl: 'https://coke.example/api/public/subscription-checkout?token=signed-public-token',
       }),
     );
   });
@@ -980,7 +982,7 @@ describe('routeInboundMessage', () => {
         subscriptionExpiresAt: null,
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.example/coke/renew',
+        renewalUrl: 'https://coke.example/account/subscription',
       }),
     );
     expect(firstGenerateCall?.metadata).toEqual(

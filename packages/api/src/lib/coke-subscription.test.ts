@@ -20,6 +20,7 @@ const db = vi.hoisted(() => ({
 vi.mock('../db/index.js', () => ({ db }));
 
 import {
+  buildRenewalUrl,
   calculateStackedAccessWindow,
   getSubscriptionSnapshot,
 } from './coke-subscription.js';
@@ -90,6 +91,20 @@ describe('coke-subscription helpers', () => {
       startsAt: '2026-04-20T00:00:00.000Z',
       expiresAt: '2026-05-20T00:00:00.000Z',
     });
+  });
+
+  it('builds the consolidated payment route from DOMAIN_CLIENT by default', () => {
+    process.env.COKE_RENEWAL_URL = '';
+    process.env.DOMAIN_CLIENT = 'https://coke.example/';
+
+    expect(buildRenewalUrl()).toBe('https://coke.example/account/subscription');
+  });
+
+  it('falls back to a relative consolidated payment route when DOMAIN_CLIENT is unset', () => {
+    delete process.env.COKE_RENEWAL_URL;
+    delete process.env.DOMAIN_CLIENT;
+
+    expect(buildRenewalUrl()).toBe('/account/subscription');
   });
 });
 

@@ -83,7 +83,7 @@ const CHAT_PEEK_META = {
 
 const FOOTER_LINKS = {
   product: ['/#platforms', '/#features', '/#architecture'],
-  account: ['/auth/login', '/auth/register', '/coke/renew'],
+  account: ['/auth/login', '/auth/register', '/account/subscription'],
   company: ['/', '/#contact', '#'],
 } as const;
 

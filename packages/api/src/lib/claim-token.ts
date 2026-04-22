@@ -112,11 +112,10 @@ export interface CompleteCustomerClaimInput {
 }
 
 function readCustomerJwtSecret(): string {
-  const secret =
-    process.env['CUSTOMER_JWT_SECRET']?.trim() ?? process.env['COKE_JWT_SECRET']?.trim();
+  const secret = process.env['CUSTOMER_JWT_SECRET']?.trim();
 
   if (!secret) {
-    throw new Error('CUSTOMER_JWT_SECRET or COKE_JWT_SECRET is required');
+    throw new Error('CUSTOMER_JWT_SECRET is required');
   }
 
   return secret;

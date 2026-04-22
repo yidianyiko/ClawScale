@@ -12,9 +12,9 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-import CokeUserLayout from './layout';
+import CustomerAccountLayout from './layout';
 
-describe('CokeUserLayout', () => {
+describe('CustomerAccountLayout', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -29,22 +29,20 @@ describe('CokeUserLayout', () => {
     container.remove();
   });
 
-  it('renders Chinese shell copy with the locale switcher', () => {
+  it('renders the neutral customer shell copy around account routes', () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="zh">
-          <CokeUserLayout>
+          <CustomerAccountLayout>
             <div>body</div>
-          </CokeUserLayout>
+          </CustomerAccountLayout>
         </LocaleProvider>,
       );
     });
 
-    expect(container.textContent).toContain('管理订阅与 Coke 业务状态');
-    expect(container.textContent).toContain('管理 Coke 账单与交付状态');
-    expect(container.textContent).toContain('保持你的 Coke 服务处于启用状态');
-    expect(container.textContent).toContain('EN');
-    expect(container.textContent).toContain('中文');
-    expect(container.textContent).not.toContain('统一管理客户登录与通道接入');
+    expect(container.textContent).toContain('统一管理客户登录与通道接入');
+    expect(container.textContent).toContain('进入你的客户工作区');
+    expect(container.textContent).toContain('body');
+    expect(container.textContent).not.toContain('管理订阅与 Coke 业务状态');
   });
 });

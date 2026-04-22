@@ -4,12 +4,15 @@ import { useEffect, type FormEvent } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { customerApi } from '../../../../lib/customer-api';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCokeUserAuth, type CokeUser } from '../../../../lib/coke-user-auth';
-import { storeCustomerAuth, type CustomerAuthResult } from '../../../../lib/customer-auth';
+import {
+  clearCustomerAuth,
+  getCustomerProfile,
+  loginCustomer,
+  resendCustomerVerification,
+  storeCustomerAuth,
+  storeCustomerProfile,
+} from '../../../../lib/customer-auth';
 
 type VerificationRecoveryReason = 'expired' | 'retry' | null;
 
@@ -65,12 +68,10 @@ export default function CustomerLoginPage() {
     setError('');
     setStatusMessage('');
     setLoading(true);
+    let storedAuth = false;
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<CustomerAuthResult>>('/api/auth/login', {
-        email,
-        password,
-      });
+      const res = await loginCustomer({ email, password });
 
       if (!res.ok) {
         setError(copy.genericError);
@@ -78,17 +79,16 @@ export default function CustomerLoginPage() {
       }
 
       storeCustomerAuth(res.data);
+      storedAuth = true;
 
-      const profile = await customerApi.get<ApiResponse<CokeUser>>('/api/coke/me');
+      const profile = await getCustomerProfile();
       if (!profile.ok) {
+        clearCustomerAuth();
         setError(copy.genericError);
         return;
       }
 
-      storeCokeUserAuth({
-        token: res.data.token,
-        user: profile.data,
-      });
+      storeCustomerProfile(profile.data);
 
       if (profile.data.status === 'suspended') {
         setError(copy.suspendedError);
@@ -103,7 +103,7 @@ export default function CustomerLoginPage() {
 
       if (profile.data.subscription_active !== true) {
         setStatusMessage(copy.subscriptionRenewalRequired);
-        router.push('/channels/wechat-personal?next=renew');
+        router.push('/account/subscription');
         return;
       }
 
@@ -112,6 +112,9 @@ export default function CustomerLoginPage() {
         typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
       router.push(isSafeInternalNext(next) ? next : '/channels/wechat-personal');
     } catch {
+      if (storedAuth) {
+        clearCustomerAuth();
+      }
       setError(copy.genericError);
     } finally {
       setLoading(false);
@@ -128,9 +131,7 @@ export default function CustomerLoginPage() {
     setResending(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/auth/resend-verification', {
-        email,
-      });
+      const res = await resendCustomerVerification({ email });
 
       if (!res.ok) {
         setResendStatus('error');

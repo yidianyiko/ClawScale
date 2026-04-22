@@ -1,16 +1,16 @@
-import type { CokeUserWechatChannelState } from './coke-user-wechat-channel';
+import type { CustomerWechatChannelState } from './customer-wechat-channel';
 
-export function applyCokeUserWechatChannelMutationResult(
-  result: CokeUserWechatChannelState,
-): CokeUserWechatChannelState {
+export function applyCustomerWechatChannelMutationResult(
+  result: CustomerWechatChannelState,
+): CustomerWechatChannelState {
   return result;
 }
 
-export function applyCokeUserWechatChannelMutationFailure(
-  current: CokeUserWechatChannelState | null,
+export function applyCustomerWechatChannelMutationFailure(
+  current: CustomerWechatChannelState | null,
   error: string,
 ): {
-  channel: CokeUserWechatChannelState;
+  channel: CustomerWechatChannelState;
   actionError: string | null;
 } {
   if (current == null) {
@@ -29,11 +29,11 @@ export function applyCokeUserWechatChannelMutationFailure(
   };
 }
 
-export function applyCokeUserWechatChannelRefreshFailure(
-  current: CokeUserWechatChannelState | null,
+export function applyCustomerWechatChannelRefreshFailure(
+  current: CustomerWechatChannelState | null,
   error: string,
 ): {
-  channel: CokeUserWechatChannelState | null;
+  channel: CustomerWechatChannelState | null;
   transientError: string | null;
 } {
   if (current?.status === 'pending') {
