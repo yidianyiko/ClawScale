@@ -9,7 +9,7 @@ import { requestCustomerClaimEmail } from '../../../../lib/customer-google-calen
 export default function ClaimEntryPage() {
   const { messages } = useLocale();
   const copy = messages.customerPages.claimEntry;
-  const [entryToken, setEntryToken] = useState('');
+  const [entryToken, setEntryToken] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -27,7 +27,7 @@ export default function ClaimEntryPage() {
 
     try {
       const res = await requestCustomerClaimEmail({
-        entryToken,
+        entryToken: entryToken ?? '',
         email,
         next: '/account/calendar-import',
       });
@@ -53,6 +53,9 @@ export default function ClaimEntryPage() {
     }
   }
 
+  const hasResolvedEntryToken = entryToken !== null;
+  const isMissingEntryToken = hasResolvedEntryToken && entryToken === '';
+
   return (
     <section className="auth-card">
       <p className="auth-card__eyebrow">{copy.eyebrow}</p>
@@ -62,11 +65,11 @@ export default function ClaimEntryPage() {
       {submitted ? <div className="auth-alert auth-alert--info">{copy.success}</div> : null}
       {error ? <div className="auth-alert auth-alert--error">{error}</div> : null}
 
-      {entryToken === '' ? (
+      {isMissingEntryToken ? (
         <div className="auth-alert auth-alert--error">{copy.invalidOrExpiredError}</div>
       ) : null}
 
-      {entryToken === '' ? null : (
+      {hasResolvedEntryToken && !isMissingEntryToken ? (
         <form onSubmit={handleSubmit} className="auth-form">
         <div className="auth-field">
           <label htmlFor="email" className="auth-label">
@@ -87,7 +90,7 @@ export default function ClaimEntryPage() {
           {loading ? copy.submitting : copy.submit}
         </button>
         </form>
-      )}
+      ) : null}
 
       <div className="auth-linkrow">
         <span className="auth-linkrow__text">{copy.signInPrompt}</span>

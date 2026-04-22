@@ -69,6 +69,13 @@ describe('ClaimEntryPage', () => {
     expect(requestCustomerClaimEmail).not.toHaveBeenCalled();
   });
 
+  it('does not flash the recovery state before the entry token is resolved from the URL', () => {
+    renderPage();
+
+    expect(container.textContent).not.toContain('This WhatsApp claim link is invalid or has expired.');
+    expect(container.querySelector('form')).toBeNull();
+  });
+
   it('renders the email-first claim entry page and requests a claim email for calendar import continuation', async () => {
     vi.mocked(requestCustomerClaimEmail).mockResolvedValueOnce({
       ok: true,

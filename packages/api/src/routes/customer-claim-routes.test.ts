@@ -147,6 +147,48 @@ describe('customer claim routes', () => {
     });
   });
 
+  it('checks claim eligibility before reporting duplicate-email conflicts', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const entryToken = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/account/calendar-import',
+    });
+
+    db.identity.findUnique.mockResolvedValueOnce({ id: 'idt_other' });
+    db.membership.findFirst.mockResolvedValueOnce({
+      role: 'owner',
+      customer: { id: 'ck_123' },
+      identity: {
+        id: 'idt_123',
+        email: null,
+        claimStatus: 'active',
+        updatedAt: new Date('2026-04-18T00:05:00.000Z'),
+      },
+    });
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken,
+        email: 'alice@example.com',
+        next: '/account/calendar-import',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'claim_not_allowed',
+    });
+    expect(sendCustomerClaimEmail).not.toHaveBeenCalled();
+  });
+
   it('completes a claim and returns the active customer auth payload', async () => {
     const issueTx = {
       identity: {

@@ -62,14 +62,14 @@ export const customerClaimRouter = new Hono()
       const verified = verifyClaimEntryToken(body.entryToken);
       const continueTo = sanitizeContinueTo(body.next) ?? verified.continueTo;
 
-      await ensureClaimEmailAvailable(body.email, verified.identityId);
-
       const issued = await issueClaimToken(db as never, {
         customerId: verified.customerId,
         identityId: verified.identityId,
         email: body.email,
         continueTo,
       });
+
+      await ensureClaimEmailAvailable(body.email, verified.identityId);
 
       await sendCustomerClaimEmail({
         to: issued.email,
