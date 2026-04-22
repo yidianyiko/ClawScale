@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   getCustomerGoogleCalendarImportPreflight,
-  getCustomerGoogleCalendarImportStatus,
+  getCustomerGoogleCalendarImportStatusForRun,
   startCustomerGoogleCalendarImport,
   type CustomerGoogleCalendarImportPreflightResult,
   type CustomerGoogleCalendarImportRunSummary,
@@ -127,7 +127,16 @@ function CustomerCalendarImportPageContent() {
         }
 
         if (!preflightRes.ok) {
-          router.replace('/auth/login?next=/account/calendar-import');
+          if (
+            preflightRes.error === 'invalid_or_expired_token' ||
+            preflightRes.error === 'unauthorized' ||
+            preflightRes.error === 'account_not_found'
+          ) {
+            router.replace('/auth/login?next=/account/calendar-import');
+            return;
+          }
+
+          setError('Unable to load your Google Calendar import status right now.');
           return;
         }
 
@@ -135,19 +144,13 @@ function CustomerCalendarImportPageContent() {
         setLatestRun(preflightRes.data.latestRun);
 
         if (callbackState) {
-          const statusRes = await getCustomerGoogleCalendarImportStatus();
+          const statusRes = await getCustomerGoogleCalendarImportStatusForRun(callbackRunId ?? undefined);
           if (!cancelled && statusRes.ok) {
-            const matchingRun =
-              !callbackRunId || statusRes.data.latestRun?.id === callbackRunId
-                ? statusRes.data.latestRun
-                : preflightRes.data.latestRun?.id === callbackRunId
-                  ? preflightRes.data.latestRun
-                  : null;
-
-            setLatestRun(matchingRun);
+            const callbackRun = callbackRunId ? statusRes.data.run ?? null : statusRes.data.latestRun;
+            setLatestRun(callbackRunId ? callbackRun : callbackRun ?? preflightRes.data.latestRun);
             setSummaryNotice(
-              callbackRunId && !matchingRun
-                ? 'Waiting for the matching import summary for this authorization result.'
+              callbackRunId && !callbackRun
+                ? 'Unable to load the matching import summary for this callback right now.'
                 : '',
             );
           }
@@ -173,7 +176,7 @@ function CustomerCalendarImportPageContent() {
   const readyToStart = preflight?.ready === true;
   const blockedState = preflight?.ready === false ? getBlockedState(preflight.blockedReason) : null;
   const importing = latestRun?.status === 'authorizing' || latestRun?.status === 'importing';
-  const showStartButton = readyToStart && !loading && !importing && !summaryNotice;
+  const showStartButton = readyToStart && !loading && !importing;
   const run = latestRun;
 
   async function handleStartImport() {

@@ -25,6 +25,7 @@ const oauth = vi.hoisted(() => ({
 const importRuns = vi.hoisted(() => ({
   createCalendarImportRun: vi.fn(),
   getLatestCalendarImportRun: vi.fn(),
+  getCalendarImportRunById: vi.fn(),
   beginCalendarImportRun: vi.fn(),
   markCalendarImportRunFinished: vi.fn(),
 }));
@@ -65,6 +66,7 @@ describe('customer google calendar import routes', () => {
       renewalUrl: 'https://app.example/account/subscription',
     });
     importRuns.getLatestCalendarImportRun.mockResolvedValue(null);
+    importRuns.getCalendarImportRunById.mockResolvedValue(null);
     importRuns.beginCalendarImportRun.mockResolvedValue({
       won: true,
       run: {
@@ -323,6 +325,66 @@ describe('customer google calendar import routes', () => {
           skippedCount: 1,
           failedCount: 1,
           errorSummary: 'one event could not be imported',
+        },
+      },
+    });
+  });
+
+  it('returns the requested import run when runId belongs to the active customer session', async () => {
+    importRuns.getLatestCalendarImportRun.mockResolvedValueOnce({
+      id: 'cir_latest',
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      status: 'succeeded',
+      providerAccountEmail: 'alice@example.com',
+      importedCount: 2,
+      skippedCount: 0,
+      failedCount: 0,
+      errorSummary: null,
+    });
+    importRuns.getCalendarImportRunById.mockResolvedValueOnce({
+      id: 'cir_requested',
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      status: 'failed',
+      providerAccountEmail: 'alice@example.com',
+      importedCount: 0,
+      skippedCount: 0,
+      failedCount: 1,
+      errorSummary: 'callback_failed',
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportRouter);
+
+    const res = await app.request('/api/customer/google-calendar-import/status?runId=cir_requested', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        latestRun: {
+          id: 'cir_latest',
+          status: 'succeeded',
+          providerAccountEmail: 'alice@example.com',
+          importedCount: 2,
+          skippedCount: 0,
+          failedCount: 0,
+          errorSummary: null,
+        },
+        run: {
+          id: 'cir_requested',
+          status: 'failed',
+          providerAccountEmail: 'alice@example.com',
+          importedCount: 0,
+          skippedCount: 0,
+          failedCount: 1,
+          errorSummary: 'callback_failed',
         },
       },
     });

@@ -33,6 +33,7 @@ export interface CustomerGoogleCalendarImportStartResult {
 }
 
 export interface CustomerGoogleCalendarImportStatusResult {
+  run?: CustomerGoogleCalendarImportRunSummary | null;
   latestRun: CustomerGoogleCalendarImportRunSummary | null;
 }
 
@@ -61,7 +62,15 @@ export function startCustomerGoogleCalendarImport(): Promise<
 export function getCustomerGoogleCalendarImportStatus(): Promise<
   ApiResponse<CustomerGoogleCalendarImportStatusResult>
 > {
+  return getCustomerGoogleCalendarImportStatusForRun();
+}
+
+export function getCustomerGoogleCalendarImportStatusForRun(
+  runId?: string,
+): Promise<ApiResponse<CustomerGoogleCalendarImportStatusResult>> {
   return customerApi.get<ApiResponse<CustomerGoogleCalendarImportStatusResult>>(
-    '/api/customer/google-calendar-import/status',
+    runId
+      ? `/api/customer/google-calendar-import/status?runId=${encodeURIComponent(runId)}`
+      : '/api/customer/google-calendar-import/status',
   );
 }

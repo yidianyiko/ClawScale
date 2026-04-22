@@ -7,6 +7,7 @@ import {
 } from '../lib/google-calendar-oauth.js';
 import {
   createCalendarImportRun,
+  getCalendarImportRunById,
   getLatestCalendarImportRun,
 } from '../lib/google-calendar-import-runs.js';
 import {
@@ -104,7 +105,7 @@ function mapAccessDeniedReason(reason: string | null): Response | null {
   );
 }
 
-function serializeLatestRun(run: Awaited<ReturnType<typeof getLatestCalendarImportRun>>) {
+function serializeRun(run: Awaited<ReturnType<typeof getLatestCalendarImportRun>>) {
   if (!run) {
     return null;
   }
@@ -140,7 +141,7 @@ export const customerGoogleCalendarImportRouter = new Hono()
         data: {
           ready: false,
           blockedReason: access.accountAccessDeniedReason,
-          latestRun: serializeLatestRun(latestRun),
+          latestRun: serializeRun(latestRun),
         },
       });
     }
@@ -160,7 +161,7 @@ export const customerGoogleCalendarImportRouter = new Hono()
         data: {
           ready: false,
           blockedReason: preflight.data.blockedReason,
-          latestRun: serializeLatestRun(latestRun),
+          latestRun: serializeRun(latestRun),
         },
       });
     }
@@ -169,7 +170,7 @@ export const customerGoogleCalendarImportRouter = new Hono()
       ok: true,
       data: {
         ready: true,
-        latestRun: serializeLatestRun(latestRun),
+        latestRun: serializeRun(latestRun),
       },
     });
   })
@@ -225,15 +226,26 @@ export const customerGoogleCalendarImportRouter = new Hono()
   })
   .get('/status', async (c) => {
     const auth = c.get('customerImportAuth');
-    const latestRun = await getLatestCalendarImportRun(db as never, {
-      customerId: auth.customerId,
-      identityId: auth.identityId,
-    });
+    const requestedRunId = c.req.query('runId')?.trim();
+    const [latestRun, requestedRun] = await Promise.all([
+      getLatestCalendarImportRun(db as never, {
+        customerId: auth.customerId,
+        identityId: auth.identityId,
+      }),
+      requestedRunId ? getCalendarImportRunById(db as never, requestedRunId) : Promise.resolve(null),
+    ]);
+    const ownedRequestedRun =
+      requestedRun &&
+      requestedRun.customerId === auth.customerId &&
+      requestedRun.identityId === auth.identityId
+        ? requestedRun
+        : null;
 
     return c.json({
       ok: true,
       data: {
-        latestRun: serializeLatestRun(latestRun),
+        latestRun: serializeRun(latestRun),
+        ...(requestedRunId ? { run: serializeRun(ownedRequestedRun) } : {}),
       },
     });
   });

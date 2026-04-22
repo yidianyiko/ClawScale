@@ -30,7 +30,7 @@ vi.mock('next/link', () => ({
 vi.mock('../../../../lib/customer-google-calendar-import', () => ({
   getCustomerGoogleCalendarImportPreflight: (...args: unknown[]) => getPreflightMock(...args),
   startCustomerGoogleCalendarImport: (...args: unknown[]) => startMock(...args),
-  getCustomerGoogleCalendarImportStatus: (...args: unknown[]) => getStatusMock(...args),
+  getCustomerGoogleCalendarImportStatusForRun: (...args: unknown[]) => getStatusMock(...args),
 }));
 
 import CalendarImportPage from './page';
@@ -86,6 +86,7 @@ describe('CustomerCalendarImportPage', () => {
     getStatusMock.mockResolvedValue({
       ok: true,
       data: {
+        run: null,
         latestRun: null,
       },
     });
@@ -148,6 +149,19 @@ describe('CustomerCalendarImportPage', () => {
     await flushTicks(3);
 
     expect(replaceMock).toHaveBeenCalledWith('/auth/login?next=/account/calendar-import');
+  });
+
+  it('keeps runtime failures on-page instead of redirecting to login', async () => {
+    getPreflightMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'bridge_unavailable',
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Unable to load your Google Calendar import status right now.');
   });
 
   it('starts the import flow from the ready state and opens the returned Google auth URL', async () => {
@@ -266,7 +280,7 @@ describe('CustomerCalendarImportPage', () => {
     getStatusMock.mockResolvedValueOnce({
       ok: true,
       data: {
-        latestRun: makeRunSummary({
+        run: makeRunSummary({
           id: 'cir_3',
           status: 'succeeded',
           importedCount: 4,
@@ -274,18 +288,26 @@ describe('CustomerCalendarImportPage', () => {
           failedCount: 0,
           errorSummary: null,
         }),
+        latestRun: makeRunSummary({
+          id: 'cir_other',
+          status: 'succeeded_with_errors',
+          importedCount: 2,
+          skippedCount: 1,
+          failedCount: 1,
+          errorSummary: 'unsupported_recurring_exceptions',
+        }),
       },
     });
 
     renderPage();
     await flushTicks(3);
 
-    expect(getStatusMock).toHaveBeenCalledWith();
+    expect(getStatusMock).toHaveBeenCalledWith('cir_3');
     expect(container.textContent).toContain('Import complete');
     expect(container.textContent).toContain('Imported 4, skipped 0, failed 0');
   });
 
-  it('does not replace the current summary with a different callback run result', async () => {
+  it('shows a callback notice when the requested run summary is unavailable', async () => {
     searchParamsMock.mockReturnValue(new URLSearchParams('googleCalendarImport=complete&runId=cir_3'));
     getPreflightMock.mockResolvedValueOnce({
       ok: true,
@@ -297,6 +319,7 @@ describe('CustomerCalendarImportPage', () => {
     getStatusMock.mockResolvedValueOnce({
       ok: true,
       data: {
+        run: null,
         latestRun: makeRunSummary({
           id: 'cir_other',
           status: 'succeeded',
@@ -311,8 +334,8 @@ describe('CustomerCalendarImportPage', () => {
     renderPage();
     await flushTicks(3);
 
-    expect(getStatusMock).toHaveBeenCalledWith();
-    expect(container.textContent).toContain('Waiting for the matching import summary');
+    expect(getStatusMock).toHaveBeenCalledWith('cir_3');
+    expect(container.textContent).toContain('Unable to load the matching import summary for this callback');
     expect(container.textContent).not.toContain('Imported 9, skipped 0, failed 0');
   });
 });
