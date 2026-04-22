@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createCalendarImportRun,
+  getLatestCalendarImportRun,
   markCalendarImportRunFinished,
   markCalendarImportRunImporting,
 } from './google-calendar-import-runs.js';
@@ -43,7 +44,10 @@ describe('google calendar import runs', () => {
   it('marks an import run as importing with the provider account email', async () => {
     const db = {
       calendarImportRun: {
-        update: vi.fn().mockResolvedValue({
+        updateMany: vi.fn().mockResolvedValue({
+          count: 1,
+        }),
+        findUnique: vi.fn().mockResolvedValue({
           id: 'cir_1',
           status: 'importing',
           providerAccountEmail: 'user@example.com',
@@ -57,9 +61,9 @@ describe('google calendar import runs', () => {
     });
 
     expect(result.status).toBe('importing');
-    expect(db.calendarImportRun.update).toHaveBeenCalledWith(
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'cir_1' },
+        where: { id: 'cir_1', status: 'authorizing' },
         data: expect.objectContaining({
           status: 'importing',
           providerAccountEmail: 'user@example.com',
@@ -71,7 +75,10 @@ describe('google calendar import runs', () => {
   it('marks a finished import run with summary counts and error details', async () => {
     const db = {
       calendarImportRun: {
-        update: vi.fn().mockResolvedValue({
+        updateMany: vi.fn().mockResolvedValue({
+          count: 1,
+        }),
+        findUnique: vi.fn().mockResolvedValue({
           id: 'cir_1',
           status: 'succeeded_with_errors',
           importedCount: 10,
@@ -92,9 +99,9 @@ describe('google calendar import runs', () => {
     });
 
     expect(result.status).toBe('succeeded_with_errors');
-    expect(db.calendarImportRun.update).toHaveBeenCalledWith(
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'cir_1' },
+        where: { id: 'cir_1', status: 'importing' },
         data: expect.objectContaining({
           status: 'succeeded_with_errors',
           importedCount: 10,
@@ -105,5 +112,110 @@ describe('google calendar import runs', () => {
         }),
       }),
     );
+  });
+
+  it('omits optional fields when marking an import run importing or finished', async () => {
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'cir_1',
+          status: 'failed',
+          importedCount: 0,
+          skippedCount: 0,
+          failedCount: 1,
+          providerAccountEmail: null,
+          errorSummary: null,
+        }),
+      },
+    };
+
+    await markCalendarImportRunFinished(db as never, {
+      id: 'cir_1',
+      status: 'failed',
+      importedCount: 0,
+      skippedCount: 0,
+      failedCount: 1,
+    });
+
+    const data = db.calendarImportRun.updateMany.mock.calls[0]?.[0]?.data;
+    expect(data).not.toHaveProperty('providerAccountEmail');
+    expect(data).not.toHaveProperty('errorSummary');
+  });
+
+  it('rejects transition attempts from a terminal run back to importing', async () => {
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn(),
+      },
+    };
+
+    await expect(
+      markCalendarImportRunImporting(db as never, {
+        id: 'cir_terminal',
+        providerAccountEmail: 'user@example.com',
+      }),
+    ).rejects.toThrow('calendar_import_run_invalid_transition:cir_terminal');
+
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cir_terminal', status: 'authorizing' },
+      }),
+    );
+    expect(db.calendarImportRun.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects finishing a run that is no longer importing', async () => {
+    const db = {
+      calendarImportRun: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn(),
+      },
+    };
+
+    await expect(
+      markCalendarImportRunFinished(db as never, {
+        id: 'cir_terminal',
+        status: 'failed',
+        importedCount: 10,
+        skippedCount: 0,
+        failedCount: 1,
+      }),
+    ).rejects.toThrow('calendar_import_run_invalid_transition:cir_terminal');
+
+    expect(db.calendarImportRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cir_terminal', status: 'importing' },
+      }),
+    );
+    expect(db.calendarImportRun.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('loads the latest run with deterministic ordering', async () => {
+    const db = {
+      calendarImportRun: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'cir_2',
+          status: 'authorizing',
+        }),
+      },
+    };
+
+    await getLatestCalendarImportRun(db as never, {
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+    });
+
+    expect(db.calendarImportRun.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+      },
+      orderBy: [
+        { startedAt: 'desc' },
+        { id: 'desc' },
+      ],
+    });
   });
 });

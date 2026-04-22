@@ -1,11 +1,12 @@
-export type CalendarImportRunStatus =
-  | 'authorizing'
-  | 'importing'
-  | 'succeeded'
-  | 'succeeded_with_errors'
-  | 'failed';
+import type {
+  CalendarImportRunProvider as PrismaCalendarImportRunProvider,
+  CalendarImportRunStatus as PrismaCalendarImportRunStatus,
+  CalendarImportRunTriggerSource as PrismaCalendarImportRunTriggerSource,
+} from '@prisma/client';
 
-export type CalendarImportRunTriggerSource = 'manual_web' | 'whatsapp_claim_redirect';
+export type CalendarImportRunProvider = PrismaCalendarImportRunProvider;
+export type CalendarImportRunStatus = PrismaCalendarImportRunStatus;
+export type CalendarImportRunTriggerSource = PrismaCalendarImportRunTriggerSource;
 
 export interface CalendarImportRunRecord {
   id: string;
@@ -13,7 +14,7 @@ export interface CalendarImportRunRecord {
   identityId: string;
   targetConversationId: string;
   targetCharacterId: string;
-  provider: string;
+  provider: CalendarImportRunProvider;
   triggerSource: CalendarImportRunTriggerSource;
   status: CalendarImportRunStatus;
   providerAccountEmail: string | null;
@@ -30,10 +31,13 @@ export interface CalendarImportRunRecord {
 export interface CalendarImportRunClient {
   calendarImportRun: {
     create(args: { data: CalendarImportRunCreateData }): Promise<CalendarImportRunRecord>;
-    update(args: {
-      where: { id: string };
+    updateMany(args: {
+      where: { id: string; status: CalendarImportRunStatus };
       data: CalendarImportRunUpdateData;
-    }): Promise<CalendarImportRunRecord>;
+    }): Promise<{ count: number }>;
+    findUnique(args: {
+      where: { id: string };
+    }): Promise<CalendarImportRunRecord | null>;
     findFirst(args: {
       where: {
         customerId?: string;
@@ -77,9 +81,9 @@ export interface CalendarImportRunCreateData {
   identityId: string;
   targetConversationId: string;
   targetCharacterId: string;
-  provider: 'google_calendar';
+  provider: CalendarImportRunProvider;
   triggerSource: CalendarImportRunTriggerSource;
-  status: 'authorizing';
+  status: CalendarImportRunStatus;
 }
 
 export interface CalendarImportRunUpdateData {
@@ -94,6 +98,29 @@ export interface CalendarImportRunUpdateData {
 
 function buildOptionalAssignment<T>(key: string, value: T | undefined): Record<string, T> {
   return value === undefined ? {} : { [key]: value } as Record<string, T>;
+}
+
+async function updateCalendarImportRunTransition(
+  client: CalendarImportRunClient,
+  id: string,
+  fromStatus: CalendarImportRunStatus,
+  data: CalendarImportRunUpdateData,
+): Promise<CalendarImportRunRecord> {
+  const updated = await client.calendarImportRun.updateMany({
+    where: { id, status: fromStatus },
+    data,
+  });
+
+  if (updated.count !== 1) {
+    throw new Error(`calendar_import_run_invalid_transition:${id}`);
+  }
+
+  const run = await client.calendarImportRun.findUnique({ where: { id } });
+  if (!run) {
+    throw new Error(`calendar_import_run_missing:${id}`);
+  }
+
+  return run;
 }
 
 export async function createCalendarImportRun(
@@ -117,12 +144,9 @@ export async function markCalendarImportRunImporting(
   client: CalendarImportRunClient,
   input: CalendarImportRunImportingInput,
 ) {
-  return client.calendarImportRun.update({
-    where: { id: input.id },
-    data: {
-      status: 'importing',
-      ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
-    },
+  return updateCalendarImportRunTransition(client, input.id, 'authorizing', {
+    status: 'importing',
+    ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
   });
 }
 
@@ -130,17 +154,14 @@ export async function markCalendarImportRunFinished(
   client: CalendarImportRunClient,
   input: CalendarImportRunFinishedInput,
 ) {
-  return client.calendarImportRun.update({
-    where: { id: input.id },
-    data: {
-      status: input.status,
-      finishedAt: new Date(),
-      importedCount: input.importedCount,
-      skippedCount: input.skippedCount,
-      failedCount: input.failedCount,
-      ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
-      ...buildOptionalAssignment('errorSummary', input.errorSummary),
-    },
+  return updateCalendarImportRunTransition(client, input.id, 'importing', {
+    status: input.status,
+    finishedAt: new Date(),
+    importedCount: input.importedCount,
+    skippedCount: input.skippedCount,
+    failedCount: input.failedCount,
+    ...buildOptionalAssignment('providerAccountEmail', input.providerAccountEmail),
+    ...buildOptionalAssignment('errorSummary', input.errorSummary),
   });
 }
 
@@ -153,6 +174,6 @@ export async function getLatestCalendarImportRun(
       customerId: input.customerId,
       identityId: input.identityId,
     },
-    orderBy: [{ startedAt: 'desc' }],
+    orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
   });
 }
