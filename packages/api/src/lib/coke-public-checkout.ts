@@ -21,11 +21,10 @@ export class PublicCheckoutTokenError extends Error {
 }
 
 function readCustomerJwtSecret(): string {
-  const secret =
-    process.env['CUSTOMER_JWT_SECRET']?.trim() ?? process.env['COKE_JWT_SECRET']?.trim();
+  const secret = process.env['CUSTOMER_JWT_SECRET']?.trim();
 
   if (!secret) {
-    throw new Error('CUSTOMER_JWT_SECRET or COKE_JWT_SECRET is required');
+    throw new Error('CUSTOMER_JWT_SECRET is required');
   }
 
   return secret;
@@ -84,7 +83,7 @@ export function verifyPublicCheckoutToken(token: string): PublicCheckoutTokenPay
 
 export function buildPublicCheckoutUrl(token: string): string {
   const domainClient = process.env['DOMAIN_CLIENT']?.trim().replace(/\/$/, '');
-  const path = `/api/coke/public-checkout?token=${encodeURIComponent(token)}`;
+  const path = `/api/public/subscription-checkout?token=${encodeURIComponent(token)}`;
 
   return domainClient ? `${domainClient}${path}` : path;
 }

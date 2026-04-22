@@ -68,10 +68,11 @@ describe('LocaleProvider', () => {
       );
     });
 
-    await flushEffects();
-
     expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('zh');
     expect(document.documentElement.lang).toBe('zh');
+
+    await flushEffects();
+
     expect(document.getElementById('locale-splash')).toBeNull();
   });
 

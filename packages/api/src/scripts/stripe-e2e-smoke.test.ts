@@ -27,7 +27,9 @@ describe('stripe e2e smoke helpers', () => {
 
   it('rejects non-checkout urls', () => {
     expect(() =>
-      extractCheckoutSessionId('https://coke.keep4oforever.com/coke/payment-success'),
+      extractCheckoutSessionId(
+        'https://coke.keep4oforever.com/account/subscription?status=success',
+      ),
     ).toThrow('checkout session');
   });
 
@@ -40,7 +42,7 @@ describe('stripe e2e smoke helpers', () => {
         subscriptionExpiresAt: '2026-04-11T00:00:00.000Z',
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
+        renewalUrl: 'https://coke.keep4oforever.com/account/subscription',
       }),
     ).not.toThrow();
   });
@@ -54,7 +56,7 @@ describe('stripe e2e smoke helpers', () => {
         subscriptionExpiresAt: null,
         accountAccessAllowed: false,
         accountAccessDeniedReason: 'subscription_required',
-        renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
+        renewalUrl: 'https://coke.keep4oforever.com/account/subscription',
       }),
     ).toThrow('before payment');
   });
@@ -68,7 +70,7 @@ describe('stripe e2e smoke helpers', () => {
         subscriptionExpiresAt: '2026-05-19T15:43:15.000Z',
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
+        renewalUrl: 'https://coke.keep4oforever.com/account/subscription',
       }),
     ).not.toThrow();
   });
@@ -82,7 +84,7 @@ describe('stripe e2e smoke helpers', () => {
         subscriptionExpiresAt: null,
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.keep4oforever.com/coke/renew',
+        renewalUrl: 'https://coke.keep4oforever.com/account/subscription',
       }),
     ).toThrow('after payment');
   });

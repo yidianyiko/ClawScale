@@ -17,7 +17,6 @@ import {
 describe('customer-auth helpers', () => {
   afterEach(() => {
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
   });
 
   it('normalizes email deterministically', () => {
@@ -26,7 +25,6 @@ describe('customer-auth helpers', () => {
 
   it('fails fast when no customer JWT secret is configured', () => {
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
 
     expect(() =>
       signCustomerToken({
@@ -34,7 +32,7 @@ describe('customer-auth helpers', () => {
         identityId: 'idt_123',
         email: 'alice@example.com',
       }),
-    ).toThrow('CUSTOMER_JWT_SECRET or COKE_JWT_SECRET is required');
+    ).toThrow('CUSTOMER_JWT_SECRET is required');
   });
 
   it('rejects action tokens when verifying customer access tokens', () => {

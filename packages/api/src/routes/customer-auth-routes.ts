@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
+import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
 import {
   CustomerAuthError,
   authenticateCustomer,
@@ -49,6 +50,7 @@ const resetPasswordSchema = z.object({
 type CustomerOwnershipRecord = {
   customer: {
     id: string;
+    displayName?: string;
   };
   identity: {
     id: string;
@@ -57,6 +59,19 @@ type CustomerOwnershipRecord = {
     passwordHash?: string | null;
     updatedAt?: Date;
   };
+};
+
+type CustomerProfileRecord = {
+  customer: {
+    id: string;
+    displayName: string;
+  };
+  identity: {
+    id: string;
+    email: string | null;
+    claimStatus: 'active' | 'unclaimed' | 'pending';
+  };
+  role: 'owner' | 'member' | 'viewer';
 };
 
 function readBearerToken(header: string | undefined): string | null {
@@ -102,6 +117,7 @@ async function findSingleOwnerByEmail(email: string): Promise<CustomerOwnershipR
       customer: {
         select: {
           id: true,
+          displayName: true,
         },
       },
       identity: {
@@ -125,6 +141,39 @@ async function findSingleOwnerByEmail(email: string): Promise<CustomerOwnershipR
   }
 
   return records[0];
+}
+
+async function findCustomerProfileByIds(input: {
+  customerId: string;
+  identityId: string;
+}): Promise<CustomerProfileRecord | null> {
+  const record = await db.membership.findFirst({
+    where: {
+      customerId: input.customerId,
+      identityId: input.identityId,
+    },
+    include: {
+      customer: {
+        select: {
+          id: true,
+          displayName: true,
+        },
+      },
+      identity: {
+        select: {
+          id: true,
+          email: true,
+          claimStatus: true,
+        },
+      },
+    },
+  });
+
+  if (!record?.identity.email?.trim() || !record.customer.displayName?.trim()) {
+    return null;
+  }
+
+  return record as CustomerProfileRecord;
 }
 
 async function sendVerificationEmailForIdentity(record: CustomerOwnershipRecord): Promise<void> {
@@ -289,5 +338,34 @@ export const customerAuthRouter = new Hono()
       return c.json({ ok: false, error: 'account_not_found' }, 404);
     }
 
-    return c.json({ ok: true, data: session });
+    const profile = await findCustomerProfileByIds({
+      customerId: session.customerId,
+      identityId: session.identityId,
+    });
+
+    if (!profile) {
+      return c.json({ ok: false, error: 'account_not_found' }, 404);
+    }
+
+    const access = await resolveCokeAccountAccess({
+      account: {
+        id: profile.customer.id,
+        status: 'normal',
+        emailVerified: profile.identity.claimStatus === 'active',
+        displayName: profile.customer.displayName,
+      },
+    });
+
+    return c.json({
+      ok: true,
+      data: {
+        ...session,
+        id: profile.customer.id,
+        display_name: profile.customer.displayName,
+        email_verified: profile.identity.claimStatus === 'active',
+        status: access.accountStatus,
+        subscription_active: access.subscriptionActive,
+        subscription_expires_at: access.subscriptionExpiresAt,
+      },
+    });
   });

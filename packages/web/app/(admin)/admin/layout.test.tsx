@@ -28,7 +28,9 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('next/image', () => ({
-  default: (props: ComponentProps<'img'>) => <img {...props} />,
+  default: ({ src, className }: ComponentProps<'img'>) => (
+    <span data-next-image={typeof src === 'string' ? src : ''} className={className} />
+  ),
 }));
 
 vi.mock('../../../lib/admin-auth', () => ({
@@ -85,10 +87,8 @@ describe('AdminLayout', () => {
     });
 
     expect(replaceMock).not.toHaveBeenCalled();
-    await vi.waitFor(() => {
-      expect(container.querySelector('form')).toBeTruthy();
-      expect(container.textContent).toContain('Admin sign in');
-    });
+    expect(container.querySelector('form')).toBeTruthy();
+    expect(container.textContent).toContain('Admin sign in');
   });
 
   it('redirects unauthenticated admins to /admin/login', async () => {
@@ -125,10 +125,8 @@ describe('AdminLayout', () => {
       );
     });
 
-    await vi.waitFor(() => {
-      expect(container.textContent).toContain('Customers');
-      expect(replaceMock).not.toHaveBeenCalled();
-    });
+    expect(container.textContent).toContain('Customers');
+    expect(replaceMock).not.toHaveBeenCalled();
 
     window.dispatchEvent(new Event('clawscale:admin-session-cleared'));
 

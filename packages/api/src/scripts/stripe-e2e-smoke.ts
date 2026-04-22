@@ -288,8 +288,8 @@ export function assertPostPaymentSubscription(data: SubscriptionSnapshot): void 
   }
 }
 
-function paymentResultUrl(baseUrl: string, path: 'payment-success' | 'payment-cancel'): string {
-  return `${baseUrl}/coke/${path}`;
+function paymentResultUrl(baseUrl: string, status: 'success' | 'cancel'): string {
+  return `${baseUrl}/account/subscription?status=${status}`;
 }
 
 async function register(config: StripeSmokeConfig): Promise<RegisterResponse['data']> {
@@ -345,7 +345,7 @@ async function fetchSubscription(
 ): Promise<SubscriptionSnapshot> {
   const result = await requestJson<SubscriptionResponse>(
     config,
-    `${config.baseUrl}/api/coke/subscription`,
+    `${config.baseUrl}/api/customer/subscription`,
     {
       headers: authHeaders(token),
     },
@@ -361,7 +361,7 @@ async function fetchSubscription(
 async function createCheckout(config: StripeSmokeConfig, token: string): Promise<string> {
   const result = await requestJson<CheckoutResponse>(
     config,
-    `${config.baseUrl}/api/coke/checkout`,
+    `${config.baseUrl}/api/customer/subscription/checkout`,
     {
       method: 'POST',
       headers: {
@@ -432,7 +432,9 @@ async function completeHostedCheckout(
     });
 
     await page.waitForURL(
-      new RegExp(`^${escapeRegex(config.baseUrl)}/coke/payment-(success|cancel)`),
+      new RegExp(
+        `^${escapeRegex(config.baseUrl)}/account/subscription\\?status=(success|cancel)(?:&.*)?$`,
+      ),
       {
         timeout: config.timeoutMs,
       },
@@ -444,7 +446,7 @@ async function completeHostedCheckout(
     });
 
     const finalUrl = page.url();
-    if (finalUrl !== paymentResultUrl(config.baseUrl, 'payment-success')) {
+    if (finalUrl !== paymentResultUrl(config.baseUrl, 'success')) {
       throw new Error(`Checkout did not land on the success page: ${finalUrl}`);
     }
 

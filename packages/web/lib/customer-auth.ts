@@ -3,6 +3,9 @@ import { customerApi } from './customer-api';
 
 const TOKEN_KEY = 'customer_token';
 const SESSION_KEY = 'customer_session';
+const PROFILE_KEY = 'customer_profile';
+const LEGACY_COKE_TOKEN_KEY = 'coke_user_token';
+const LEGACY_COKE_PROFILE_KEY = 'coke_user_profile';
 
 export type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
 export type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
@@ -17,6 +20,15 @@ export interface CustomerSession {
 
 export interface CustomerAuthResult extends CustomerSession {
   token: string;
+}
+
+export interface CustomerProfile extends CustomerSession {
+  id: string;
+  display_name: string;
+  email_verified: boolean;
+  status: 'normal' | 'suspended';
+  subscription_active: boolean;
+  subscription_expires_at: string | null;
 }
 
 export interface CustomerAuthMessageResult {
@@ -67,6 +79,9 @@ export function storeCustomerAuth(result: CustomerAuthResult): void {
   }
 
   const { token, ...session } = result;
+  storage.removeItem(PROFILE_KEY);
+  storage.removeItem(LEGACY_COKE_TOKEN_KEY);
+  storage.removeItem(LEGACY_COKE_PROFILE_KEY);
   storage.setItem(TOKEN_KEY, token);
   storage.setItem(SESSION_KEY, JSON.stringify(session));
 }
@@ -79,6 +94,9 @@ export function clearCustomerAuth(): void {
 
   storage.removeItem(TOKEN_KEY);
   storage.removeItem(SESSION_KEY);
+  storage.removeItem(PROFILE_KEY);
+  storage.removeItem(LEGACY_COKE_TOKEN_KEY);
+  storage.removeItem(LEGACY_COKE_PROFILE_KEY);
 }
 
 export function getCustomerToken(): string | null {
@@ -93,6 +111,28 @@ export function getStoredCustomerSession(): CustomerSession | null {
 
   try {
     return JSON.parse(raw) as CustomerSession;
+  } catch {
+    return null;
+  }
+}
+
+export function storeCustomerProfile(profile: CustomerProfile): void {
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+export function getStoredCustomerProfile(): CustomerProfile | null {
+  const raw = getStorage()?.getItem(PROFILE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as CustomerProfile;
   } catch {
     return null;
   }
@@ -136,4 +176,8 @@ export function resetCustomerPassword(
 
 export function getCustomerSession(): Promise<ApiResponse<CustomerSession>> {
   return customerApi.get<ApiResponse<CustomerSession>>('/api/auth/me');
+}
+
+export function getCustomerProfile(): Promise<ApiResponse<CustomerProfile>> {
+  return customerApi.get<ApiResponse<CustomerProfile>>('/api/auth/me');
 }

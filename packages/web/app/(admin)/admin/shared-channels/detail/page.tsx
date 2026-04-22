@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale } from '../../../../../components/locale-provider';
@@ -38,7 +38,7 @@ function getEvolutionInstanceName(config: Record<string, unknown>): string {
   return typeof config.instanceName === 'string' ? config.instanceName : '';
 }
 
-export default function AdminSharedChannelDetailPage() {
+function AdminSharedChannelDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale } = useLocale();
@@ -361,5 +361,13 @@ export default function AdminSharedChannelDetailPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+export default function AdminSharedChannelDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminSharedChannelDetailPageContent />
+    </Suspense>
   );
 }

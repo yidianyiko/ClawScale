@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react';
 
-import { CustomerShell } from '../../../components/customer-shell';
+import { CustomerAuthShell } from '../../../components/customer-auth-shell';
 
 export default function CustomerAuthLayout({ children }: { children: ReactNode }) {
-  return <CustomerShell>{children}</CustomerShell>;
+  return <CustomerAuthShell>{children}</CustomerAuthShell>;
 }

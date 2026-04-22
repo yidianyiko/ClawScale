@@ -111,9 +111,6 @@ describe('customerChannelRouter', () => {
       email: 'alice@example.com',
       tokenType: 'access',
     });
-    mocks.verifyCokeToken.mockImplementation(() => {
-      throw new Error('invalid_or_expired_token');
-    });
     mocks.getCustomerSession.mockResolvedValue({
       customerId: 'ck_customer_1',
       identityId: 'idt_1',
@@ -129,7 +126,7 @@ describe('customerChannelRouter', () => {
       subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
       accountAccessAllowed: true,
       accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
+      renewalUrl: 'https://coke.example/account/subscription',
     });
     mocks.ensureClawscaleUserForCustomer.mockResolvedValue({
       tenantId: 'ten_1',
@@ -161,6 +158,27 @@ describe('customerChannelRouter', () => {
     });
 
     expect(res.status).toBe(200);
+    expect(mocks.membershipFindFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_customer_1',
+        identityId: 'idt_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
+        },
+      },
+    });
     expect(mocks.ensureClawscaleUserForCustomer).toHaveBeenCalledWith({
       customerId: 'ck_customer_1',
     });
@@ -298,7 +316,7 @@ describe('customerChannelRouter', () => {
       subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
       accountAccessAllowed: false,
       accountAccessDeniedReason: 'account_suspended',
-      renewalUrl: 'https://coke.example/coke/renew',
+      renewalUrl: 'https://coke.example/account/subscription',
     });
 
     const app = new Hono();
@@ -320,7 +338,7 @@ describe('customerChannelRouter', () => {
     });
   });
 
-  it('returns account_not_found for a legacy-only coke token', async () => {
+  it('rejects a legacy-only coke token without falling back to Coke JWTs', async () => {
     mocks.verifyCustomerToken.mockImplementationOnce(() => {
       throw new Error('invalid_or_expired_token');
     });
@@ -340,13 +358,13 @@ describe('customerChannelRouter', () => {
       },
     });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     expect(mocks.resolveCokeAccountAccess).not.toHaveBeenCalled();
     expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
     expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,
-      error: 'account_not_found',
+      error: 'invalid_or_expired_token',
     });
   });
 

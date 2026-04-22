@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   membership: {
@@ -22,7 +22,8 @@ const calculateTrialExpiresAt = vi.hoisted(() =>
   vi.fn((createdAt: Date) => new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000)),
 );
 const verifyPublicCheckoutToken = vi.hoisted(() => vi.fn());
-const verifyCokeToken = vi.hoisted(() => vi.fn());
+const verifyCustomerToken = vi.hoisted(() => vi.fn());
+const getCustomerSession = vi.hoisted(() => vi.fn());
 const stripeCheckoutSessionsCreate = vi.hoisted(() => vi.fn());
 const stripeConstructEvent = vi.hoisted(() => vi.fn());
 const stripeCtor = vi.hoisted(() =>
@@ -40,7 +41,10 @@ const stripeCtor = vi.hoisted(() =>
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/coke-public-checkout.js', () => ({ verifyPublicCheckoutToken }));
-vi.mock('../lib/coke-auth.js', () => ({ verifyCokeToken }));
+vi.mock('../lib/customer-auth.js', () => ({
+  verifyCustomerToken,
+  getCustomerSession,
+}));
 vi.mock('../lib/coke-account-access.js', () => ({ resolveCokeAccountAccess }));
 vi.mock('../lib/coke-subscription.js', () => ({
   calculateStackedAccessWindow,
@@ -48,7 +52,7 @@ vi.mock('../lib/coke-subscription.js', () => ({
 }));
 vi.mock('stripe', () => ({ default: stripeCtor }));
 
-import { cokePaymentRouter } from './coke-payment-routes.js';
+import { customerSubscriptionRouter } from './customer-subscription-routes.js';
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -72,11 +76,11 @@ function makeOwnerMembership(
 
 function createApp(): Hono {
   const app = new Hono();
-  app.route('/api/coke', cokePaymentRouter);
+  app.route('/api', customerSubscriptionRouter);
   return app;
 }
 
-describe('coke payment routes', () => {
+describe('customer subscription routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -84,387 +88,52 @@ describe('coke payment routes', () => {
     process.env.STRIPE_PRICE_ID = 'price_coke_monthly';
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_123';
+    verifyCustomerToken.mockReturnValue({
+      sub: 'ck_1',
+      identityId: 'idt_1',
+      email: 'alice@example.com',
+      tokenType: 'access',
+    });
+    getCustomerSession.mockResolvedValue({
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+      claimStatus: 'active',
+      email: 'alice@example.com',
+      membershipRole: 'owner',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('redirects a valid public token to Stripe with the customer metadata', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_1',
-      customerId: 'ck_1',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
-    resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-    stripeCheckoutSessionsCreate.mockResolvedValue({
-      url: 'https://stripe.example/checkout/session_123',
-    });
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('https://stripe.example/checkout/session_123');
-    expect(verifyPublicCheckoutToken).toHaveBeenCalledWith('signed-token');
-    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
-      account: {
-        id: 'ck_1',
-        displayName: 'Alice',
-        emailVerified: true,
-        status: 'normal',
-      },
-      requireEmailVerified: false,
-    });
-    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: 'price_coke_monthly',
-          quantity: 1,
-        },
-      ],
-      success_url: 'https://coke.example/coke/payment-success',
-      cancel_url: 'https://coke.example/coke/payment-cancel',
-      metadata: {
-        customerId: 'ck_1',
-      },
-    });
-  });
-
-  it('returns an HTML invalid-link page for an invalid public token', async () => {
-    verifyPublicCheckoutToken.mockImplementation(() => {
-      throw new Error('invalid_or_expired_token');
-    });
-
-    const res = await createApp().request('/api/coke/public-checkout?token=bad-token');
-
-    expect(res.status).toBe(400);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
-    expect(db.membership.findFirst).not.toHaveBeenCalled();
-    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it('returns an HTML invalid-link page when the customer owner is missing', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_missing',
-      customerId: 'ck_missing',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(null);
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(404);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
-    expect(resolveCokeAccountAccess).not.toHaveBeenCalled();
-    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it('logs and returns unavailable when public account access resolution throws', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_1',
-      customerId: 'ck_1',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
-    resolveCokeAccountAccess.mockRejectedValue(new Error('access failed'));
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(503);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('temporarily unavailable');
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
-  });
-
-  it('logs and returns unavailable when Stripe checkout creation succeeds without a URL', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_1',
-      customerId: 'ck_1',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
-    resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-    stripeCheckoutSessionsCreate.mockResolvedValue({
-      id: 'cs_test_123',
-      url: undefined,
-    });
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(503);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('temporarily unavailable');
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
-  });
-
-  it('returns an HTML unavailable page when the public account is suspended', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_1',
-      customerId: 'ck_1',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
-    resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'suspended',
-      emailVerified: true,
-      subscriptionActive: false,
-      subscriptionExpiresAt: null,
-      accountAccessAllowed: false,
-      accountAccessDeniedReason: 'account_suspended',
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(503);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('temporarily unavailable');
-    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
-      account: {
-        id: 'ck_1',
-        displayName: 'Alice',
-        emailVerified: true,
-        status: 'normal',
-      },
-      requireEmailVerified: false,
-    });
-    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it('returns an HTML temporary-unavailable page when Stripe checkout creation fails', async () => {
-    verifyPublicCheckoutToken.mockReturnValue({
-      sub: 'ck_1',
-      customerId: 'ck_1',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
-    resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-    stripeCheckoutSessionsCreate.mockRejectedValue(new Error('stripe unavailable'));
-
-    const res = await createApp().request('/api/coke/public-checkout?token=signed-token');
-
-    expect(res.status).toBe(503);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    await expect(res.text()).resolves.toContain('temporarily unavailable');
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
-  });
-
-  it('rejects checkout requests without Coke auth', async () => {
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/checkout', {
-      method: 'POST',
-    });
-
-    expect(res.status).toBe(401);
-    await expect(res.json()).resolves.toEqual({
-      ok: false,
-      error: 'unauthorized',
-    });
-  });
-
-  it('rejects checkout when the owner identity is unverified', async () => {
-    verifyCokeToken.mockReturnValue({
-      sub: 'ck_1',
-      email: 'alice@example.com',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('pending'));
-
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/checkout', {
-      method: 'POST',
+  it('returns the subscription snapshot for the authenticated customer', async () => {
+    const res = await createApp().request('/api/customer/subscription', {
       headers: {
-        authorization: 'Bearer coke-token',
-      },
-    });
-
-    expect(res.status).toBe(403);
-    expect(db.membership.findFirst).toHaveBeenCalledWith({
-      where: {
-        customerId: 'ck_1',
-        role: 'owner',
-      },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            displayName: true,
-          },
-        },
-        identity: {
-          select: {
-            email: true,
-            claimStatus: true,
-          },
-        },
-      },
-    });
-    await expect(res.json()).resolves.toEqual({
-      ok: false,
-      error: 'email_not_verified',
-    });
-    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
-  });
-
-  it('returns account_not_found when the neutral owner membership is missing', async () => {
-    verifyCokeToken.mockReturnValue({
-      sub: 'acct_missing',
-      email: 'missing@example.com',
-    });
-    db.membership.findFirst.mockResolvedValue(null);
-
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/checkout', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer coke-token',
-      },
-    });
-
-    expect(res.status).toBe(404);
-    await expect(res.json()).resolves.toEqual({
-      ok: false,
-      error: 'account_not_found',
-    });
-    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
-  });
-
-  it('creates a Stripe Checkout session for a verified customer owner', async () => {
-    verifyCokeToken.mockReturnValue({
-      sub: 'ck_1',
-      email: 'alice@example.com',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
-    stripeCheckoutSessionsCreate.mockResolvedValue({
-      url: 'https://stripe.example/checkout/session_123',
-    });
-
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/checkout', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer coke-token',
+        authorization: 'Bearer customer-token',
       },
     });
 
     expect(res.status).toBe(200);
+    expect(verifyCustomerToken).toHaveBeenCalledWith('customer-token');
+    expect(getCustomerSession).toHaveBeenCalledWith(db as never, {
+      customerId: 'ck_1',
+      identityId: 'idt_1',
+    });
     expect(db.membership.findFirst).toHaveBeenCalledWith({
       where: {
         customerId: 'ck_1',
-        role: 'owner',
-      },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            displayName: true,
-          },
-        },
-        identity: {
-          select: {
-            email: true,
-            claimStatus: true,
-          },
-        },
-      },
-    });
-    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: 'price_coke_monthly',
-          quantity: 1,
-        },
-      ],
-      success_url: 'https://coke.example/coke/payment-success',
-      cancel_url: 'https://coke.example/coke/payment-cancel',
-      metadata: {
-        customerId: 'ck_1',
-      },
-    });
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      data: {
-        url: 'https://stripe.example/checkout/session_123',
-      },
-    });
-  });
-
-  it('returns the subscription snapshot from the customer owner graph', async () => {
-    verifyCokeToken.mockReturnValue({
-      sub: 'ck_1',
-      email: 'alice@example.com',
-    });
-    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active'));
-    resolveCokeAccountAccess.mockResolvedValue({
-      accountStatus: 'normal',
-      emailVerified: true,
-      subscriptionActive: true,
-      subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
-      accountAccessAllowed: true,
-      accountAccessDeniedReason: null,
-      renewalUrl: 'https://coke.example/coke/renew',
-    });
-
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/subscription', {
-      headers: {
-        authorization: 'Bearer coke-token',
-      },
-    });
-
-    expect(res.status).toBe(200);
-    expect(db.membership.findFirst).toHaveBeenCalledWith({
-      where: {
-        customerId: 'ck_1',
+        identityId: 'idt_1',
         role: 'owner',
       },
       include: {
@@ -499,9 +168,327 @@ describe('coke payment routes', () => {
         subscriptionExpiresAt: '2026-05-10T00:00:00.000Z',
         accountAccessAllowed: true,
         accountAccessDeniedReason: null,
-        renewalUrl: 'https://coke.example/coke/renew',
+        renewalUrl: 'https://coke.example/account/subscription',
       },
     });
+  });
+
+  it('creates a Stripe Checkout session for a verified customer owner', async () => {
+    stripeCheckoutSessionsCreate.mockResolvedValue({
+      url: 'https://stripe.example/checkout/session_123',
+    });
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        role: 'owner',
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        identity: {
+          select: {
+            email: true,
+            claimStatus: true,
+          },
+        },
+      },
+    });
+    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: 'price_coke_monthly',
+          quantity: 1,
+        },
+      ],
+      success_url: 'https://coke.example/account/subscription?status=success',
+      cancel_url: 'https://coke.example/account/subscription?status=cancel',
+      metadata: {
+        customerId: 'ck_1',
+      },
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        url: 'https://stripe.example/checkout/session_123',
+      },
+    });
+  });
+
+  it('returns a JSON service-unavailable error when authenticated checkout creation yields no URL', async () => {
+    stripeCheckoutSessionsCreate.mockResolvedValue({
+      id: 'cs_test_123',
+      url: null,
+    });
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'checkout_unavailable',
+    });
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('returns a JSON service-unavailable error when authenticated checkout creation throws', async () => {
+    stripeCheckoutSessionsCreate.mockRejectedValue(new Error('stripe_unavailable'));
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'checkout_unavailable',
+    });
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('returns an HTML invalid-link page for an invalid public token', async () => {
+    verifyPublicCheckoutToken.mockImplementation(() => {
+      throw new Error('invalid_or_expired_token');
+    });
+
+    const res = await createApp().request('/api/public/subscription-checkout?token=bad-token');
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
+    expect(db.membership.findFirst).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('redirects a valid public token to Stripe with the customer metadata', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    stripeCheckoutSessionsCreate.mockResolvedValue({
+      url: 'https://stripe.example/checkout/session_123',
+    });
+
+    const res = await createApp().request('/api/public/subscription-checkout?token=signed-token');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('https://stripe.example/checkout/session_123');
+    expect(verifyPublicCheckoutToken).toHaveBeenCalledWith('signed-token');
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledWith({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: 'price_coke_monthly',
+          quantity: 1,
+        },
+      ],
+      success_url: 'https://coke.example/account/subscription?status=success',
+      cancel_url: 'https://coke.example/account/subscription?status=cancel',
+      metadata: {
+        customerId: 'ck_1',
+      },
+    });
+  });
+
+  it('returns account_not_found when the customer owner is missing', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_missing',
+      customerId: 'ck_missing',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(null);
+
+    const res = await createApp().request('/api/public/subscription-checkout?token=signed-token');
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('Go back to WhatsApp and request a new link.');
+    expect(resolveCokeAccountAccess).not.toHaveBeenCalled();
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns unavailable when the public account is suspended', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'suspended',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'account_suspended',
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
+
+    const res = await createApp().request('/api/public/subscription-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid Stripe webhooks with a webhook-specific error', async () => {
+    stripeConstructEvent.mockImplementation(() => {
+      throw new Error('bad signature');
+    });
+
+    const res = await createApp().request('/api/webhooks/stripe', {
+      method: 'POST',
+      headers: {
+        'stripe-signature': 'sig_test_invalid',
+      },
+      body: JSON.stringify({
+        id: 'evt_invalid',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_stripe_webhook',
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('returns unavailable when Stripe checkout creation fails', async () => {
+    verifyPublicCheckoutToken.mockReturnValue({
+      sub: 'ck_1',
+      customerId: 'ck_1',
+      tokenType: 'action',
+      purpose: 'public_checkout',
+    });
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('active', null));
+    stripeCheckoutSessionsCreate.mockRejectedValue(new Error('stripe unavailable'));
+
+    const res = await createApp().request('/api/public/subscription-checkout?token=signed-token');
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    await expect(res.text()).resolves.toContain('temporarily unavailable');
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it('rejects checkout requests without customer auth', async () => {
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'unauthorized',
+    });
+  });
+
+  it('rejects checkout when the owner identity is unverified', async () => {
+    db.membership.findFirst.mockResolvedValue(makeOwnerMembership('pending'));
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'email_not_verified',
+    });
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects checkout when the customer account is suspended', async () => {
+    resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'suspended',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'account_suspended',
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_suspended',
+    });
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns account_not_found when the customer owner membership is missing', async () => {
+    db.membership.findFirst.mockResolvedValue(null);
+
+    const res = await createApp().request('/api/customer/subscription/checkout', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'account_not_found',
+    });
+    expect(stripeCheckoutSessionsCreate).not.toHaveBeenCalled();
   });
 
   it('accepts legacy Stripe metadata.cokeAccountId during the transition window', async () => {
@@ -539,10 +526,7 @@ describe('coke payment routes', () => {
       fn(tx),
     );
 
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/stripe-webhook', {
+    const res = await createApp().request('/api/webhooks/stripe', {
       method: 'POST',
       headers: {
         'stripe-signature': 'sig_test_123',
@@ -608,10 +592,7 @@ describe('coke payment routes', () => {
       fn(tx),
     );
 
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/stripe-webhook', {
+    const res = await createApp().request('/api/webhooks/stripe', {
       method: 'POST',
       headers: {
         'stripe-signature': 'sig_test_123',
@@ -689,10 +670,7 @@ describe('coke payment routes', () => {
       fn(tx),
     );
 
-    const app = new Hono();
-    app.route('/api/coke', cokePaymentRouter);
-
-    const res = await app.request('/api/coke/stripe-webhook', {
+    const res = await createApp().request('/api/webhooks/stripe', {
       method: 'POST',
       headers: {
         'stripe-signature': 'sig_test_trial',

@@ -3,10 +3,12 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '../../../../components/locale-provider';
-import { customerApi } from '../../../../lib/customer-api';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { storeCokeUserAuth } from '../../../../lib/coke-user-auth';
-import { clearCustomerAuth, storeCustomerAuth } from '../../../../lib/customer-auth';
+const loginCustomerMock = vi.hoisted(() => vi.fn());
+const getCustomerProfileMock = vi.hoisted(() => vi.fn());
+const resendCustomerVerificationMock = vi.hoisted(() => vi.fn());
+const storeCustomerAuthMock = vi.hoisted(() => vi.fn());
+const storeCustomerProfileMock = vi.hoisted(() => vi.fn());
+const clearCustomerAuthMock = vi.hoisted(() => vi.fn());
 
 const pushMock = vi.hoisted(() => vi.fn());
 
@@ -24,25 +26,13 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-vi.mock('../../../../lib/coke-user-api', () => ({
-  cokeUserApi: {
-    post: vi.fn(),
-  },
-}));
-
-vi.mock('../../../../lib/customer-api', () => ({
-  customerApi: {
-    get: vi.fn(),
-  },
-}));
-
-vi.mock('../../../../lib/coke-user-auth', () => ({
-  storeCokeUserAuth: vi.fn(),
-}));
-
 vi.mock('../../../../lib/customer-auth', () => ({
-  storeCustomerAuth: vi.fn(),
-  clearCustomerAuth: vi.fn(),
+  loginCustomer: (...args: unknown[]) => loginCustomerMock(...args),
+  getCustomerProfile: (...args: unknown[]) => getCustomerProfileMock(...args),
+  resendCustomerVerification: (...args: unknown[]) => resendCustomerVerificationMock(...args),
+  storeCustomerAuth: (...args: unknown[]) => storeCustomerAuthMock(...args),
+  storeCustomerProfile: (...args: unknown[]) => storeCustomerProfileMock(...args),
+  clearCustomerAuth: (...args: unknown[]) => clearCustomerAuthMock(...args),
 }));
 
 import CustomerLoginPage from './page';
@@ -58,9 +48,13 @@ function makeCustomerAuthResult() {
   };
 }
 
-function makeCokeProfile(overrides: Partial<{
+function makeCustomerProfile(overrides: Partial<{
   id: string;
+  customerId: string;
+  identityId: string;
+  claimStatus: 'active' | 'unclaimed' | 'pending';
   email: string;
+  membershipRole: 'owner' | 'member' | 'viewer';
   display_name: string;
   email_verified: boolean;
   status: 'normal' | 'suspended';
@@ -69,7 +63,11 @@ function makeCokeProfile(overrides: Partial<{
 }> = {}) {
   return {
     id: 'ck_1',
+    customerId: 'ck_1',
+    identityId: 'idt_1',
+    claimStatus: 'active' as const,
     email: 'alice@example.com',
+    membershipRole: 'owner' as const,
     display_name: 'Alice',
     email_verified: true,
     status: 'normal' as const,
@@ -105,11 +103,12 @@ describe('CustomerLoginPage', () => {
 
   beforeEach(() => {
     pushMock.mockReset();
-    vi.mocked(cokeUserApi.post).mockReset();
-    vi.mocked(customerApi.get).mockReset();
-    vi.mocked(storeCokeUserAuth).mockReset();
-    vi.mocked(storeCustomerAuth).mockReset();
-    vi.mocked(clearCustomerAuth).mockReset();
+    loginCustomerMock.mockReset();
+    getCustomerProfileMock.mockReset();
+    resendCustomerVerificationMock.mockReset();
+    storeCustomerAuthMock.mockReset();
+    storeCustomerProfileMock.mockReset();
+    clearCustomerAuthMock.mockReset();
     window.history.replaceState({}, '', '/auth/login');
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -131,9 +130,19 @@ describe('CustomerLoginPage', () => {
     });
     await flushTicks(1);
 
+    expect(container.querySelector('.auth-card')).toBeTruthy();
+    expect(container.querySelector('.auth-form')).toBeTruthy();
+    expect(container.querySelector('.auth-input#email')).toBeTruthy();
+    expect(container.querySelector('.auth-submit')).toBeTruthy();
+    expect(container.querySelectorAll('.auth-linkrow')).toHaveLength(2);
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/"]')).toBeFalsy();
+
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.getAttribute('href'));
 
-    expect(container.textContent).toContain('Return to your Coke account');
+    expect(container.textContent).toContain('Sign in to Coke');
+    expect(container.textContent).not.toContain('Return to your Coke account');
+    expect(container.textContent).not.toContain('Back to homepage');
     expect(links).toContain('/auth/forgot-password');
     expect(links).toContain('/auth/register');
   });
@@ -150,6 +159,10 @@ describe('CustomerLoginPage', () => {
     });
     await flushTicks(1);
 
+    expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__body')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-alert__actions')).toBeTruthy();
+    expect(container.querySelector('.auth-alert--warning .auth-submit--compact')).toBeTruthy();
     expect((container.querySelector('#email') as HTMLInputElement).value).toBe('alice@example.com');
     expect(container.textContent).toContain('This link is invalid or expired.');
     expect(container.textContent).toContain('Resend verification email');
@@ -179,7 +192,7 @@ describe('CustomerLoginPage', () => {
     const resendPromise = new Promise<{ ok: boolean; data: Record<string, never> }>((resolve) => {
       resolveResend = resolve;
     });
-    vi.mocked(cokeUserApi.post).mockReturnValueOnce(resendPromise);
+    resendCustomerVerificationMock.mockReturnValueOnce(resendPromise);
 
     window.history.replaceState({}, '', '/auth/login?email=alice%40example.com&verification=expired');
 
@@ -203,20 +216,20 @@ describe('CustomerLoginPage', () => {
     resolveResend({ ok: true, data: {} });
     await flushTicks(1);
 
-    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/auth/resend-verification', {
+    expect(resendCustomerVerificationMock).toHaveBeenCalledWith({
       email: 'alice@example.com',
     });
     expect(container.textContent).toContain('Verification email sent.');
   });
 
   it('keeps unverified login attempts on the recovery flow after neutral login and profile hydration', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
-      data: makeCokeProfile({
+      data: makeCustomerProfile({
         email_verified: false,
       }),
     });
@@ -231,31 +244,29 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
-    expect(vi.mocked(cokeUserApi.post)).toHaveBeenCalledWith('/api/auth/login', {
+    expect(loginCustomerMock).toHaveBeenCalledWith({
       email: 'alice@example.com',
       password: 'password-123',
     });
-    expect(vi.mocked(customerApi.get)).toHaveBeenCalledWith('/api/coke/me');
-    expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith(makeCustomerAuthResult());
-    expect(vi.mocked(storeCokeUserAuth)).toHaveBeenCalledWith({
-      token: 'customer-token',
-      user: expect.objectContaining({
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         email_verified: false,
       }),
-    });
+    );
     expect(pushMock).not.toHaveBeenCalledWith('/auth/verify-email');
     expect(container.textContent).toContain('This link is invalid or expired.');
     expect(container.querySelector('button[type="button"]')).toBeTruthy();
   });
 
-  it('routes renewal-required login success through the neutral channel path', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+  it('routes renewal-required login success through the account subscription path', async () => {
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
-      data: makeCokeProfile({
+      data: makeCustomerProfile({
         subscription_active: false,
       }),
     });
@@ -270,25 +281,27 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
-    expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith(makeCustomerAuthResult());
-    expect(vi.mocked(storeCokeUserAuth)).toHaveBeenCalledWith({
-      token: 'customer-token',
-      user: expect.objectContaining({
+    expect(loginCustomerMock).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password-123',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         subscription_active: false,
       }),
-    });
-    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal?next=renew');
-    expect(pushMock).not.toHaveBeenCalledWith('/coke/renew');
+    );
+    expect(pushMock).toHaveBeenCalledWith('/account/subscription');
   });
 
-  it('stores the neutral customer session and hydrated Coke profile before routing to the channel surface', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+  it('stores the neutral customer session and hydrated customer profile before routing to the channel surface', async () => {
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
-      data: makeCokeProfile(),
+      data: makeCustomerProfile(),
     });
 
     flushSync(() => {
@@ -301,20 +314,21 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
-    expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith(makeCustomerAuthResult());
-    expect(vi.mocked(storeCokeUserAuth)).toHaveBeenCalledWith({
-      token: 'customer-token',
-      user: makeCokeProfile(),
+    expect(loginCustomerMock).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password-123',
     });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).toHaveBeenCalledWith(makeCustomerProfile());
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 
   it('shows a generic error and does not route when the compatibility profile cannot be loaded', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: false,
       error: 'account_not_found',
     });
@@ -329,20 +343,25 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
-    expect(vi.mocked(storeCustomerAuth)).toHaveBeenCalledWith(makeCustomerAuthResult());
-    expect(vi.mocked(storeCokeUserAuth)).not.toHaveBeenCalled();
+    expect(loginCustomerMock).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password-123',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
+    expect(storeCustomerProfileMock).not.toHaveBeenCalled();
+    expect(clearCustomerAuthMock).toHaveBeenCalledTimes(1);
     expect(pushMock).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Unable to sign in right now.');
   });
 
   it('preserves a safe neutral internal next destination after login', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
-      data: makeCokeProfile(),
+      data: makeCustomerProfile(),
     });
     window.history.replaceState({}, '', '/auth/login?next=%2Fchannels%2Fwechat-personal%3Fsource%3Dauth');
 
@@ -356,17 +375,22 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
+    expect(loginCustomerMock).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password-123',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal?source=auth');
   });
 
   it('falls back to the neutral default when next is an unsafe external target', async () => {
-    vi.mocked(cokeUserApi.post).mockResolvedValueOnce({
+    loginCustomerMock.mockResolvedValueOnce({
       ok: true,
       data: makeCustomerAuthResult(),
     });
-    vi.mocked(customerApi.get).mockResolvedValueOnce({
+    getCustomerProfileMock.mockResolvedValueOnce({
       ok: true,
-      data: makeCokeProfile(),
+      data: makeCustomerProfile(),
     });
     window.history.replaceState({}, '', '/auth/login?next=https%3A%2F%2Fevil.example%2Fphish');
 
@@ -380,6 +404,11 @@ describe('CustomerLoginPage', () => {
 
     await submitLoginForm();
 
+    expect(loginCustomerMock).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      password: 'password-123',
+    });
+    expect(getCustomerProfileMock).toHaveBeenCalledWith();
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
     expect(pushMock).not.toHaveBeenCalledWith('https://evil.example/phish');
   });

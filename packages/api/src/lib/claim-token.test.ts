@@ -6,8 +6,41 @@ import { completeCustomerClaim, issueClaimToken } from './claim-token.js';
 describe('claim-token helpers', () => {
   afterEach(() => {
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
     vi.useRealTimers();
+  });
+
+  it('requires CUSTOMER_JWT_SECRET when issuing claim tokens', async () => {
+    delete process.env.CUSTOMER_JWT_SECRET;
+
+    const tx = {
+      identity: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ updatedAt: new Date('2026-04-18T00:05:00.000Z') }),
+      },
+    };
+    const client = {
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({
+          role: 'owner',
+          customer: { id: 'ck_123' },
+          identity: {
+            id: 'idt_123',
+            email: null,
+            claimStatus: 'unclaimed',
+            updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+          },
+        }),
+      },
+      $transaction: vi.fn(async (fn: (db: typeof tx) => Promise<unknown>) => fn(tx)),
+    };
+
+    await expect(
+      issueClaimToken(client as never, {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        email: 'alice@example.com',
+      }),
+    ).rejects.toThrow('CUSTOMER_JWT_SECRET is required');
   });
 
   it('issuing a claim token marks the identity pending and returns the emailed token', async () => {

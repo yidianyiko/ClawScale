@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { customerApi } from '../../../../lib/customer-api';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
-import { getCokeUser, storeCokeUserAuth, type CokeUser } from '../../../../lib/coke-user-auth';
 import {
+  clearCustomerAuth,
+  getCustomerProfile,
+  getStoredCustomerProfile,
   getStoredCustomerSession,
+  resendCustomerVerification,
+  verifyCustomerEmail,
   storeCustomerAuth,
-  type CustomerAuthResult,
+  storeCustomerProfile,
 } from '../../../../lib/customer-auth';
 
 type RecoveryReason = 'manual' | 'expired' | 'retry';
@@ -32,7 +33,7 @@ export default function CustomerVerifyEmailPage() {
     const token = params.get('token')?.trim() ?? '';
     const queryEmail = params.get('email')?.trim() ?? '';
     const storedEmail =
-      getStoredCustomerSession()?.email?.trim() ?? getCokeUser()?.email?.trim() ?? '';
+      getStoredCustomerSession()?.email?.trim() ?? getStoredCustomerProfile()?.email?.trim() ?? '';
     const recoveryEmail = queryEmail || storedEmail;
 
     if (!token) {
@@ -52,11 +53,9 @@ export default function CustomerVerifyEmailPage() {
     let cancelled = false;
 
     async function verifyEmailLink() {
+      let storedAuth = false;
       try {
-        const res = await cokeUserApi.post<ApiResponse<CustomerAuthResult>>('/api/auth/verify-email', {
-          token,
-          email: queryEmail,
-        });
+        const res = await verifyCustomerEmail({ token, email: queryEmail });
 
         if (cancelled) return;
 
@@ -66,24 +65,23 @@ export default function CustomerVerifyEmailPage() {
         }
 
         storeCustomerAuth(res.data);
+        storedAuth = true;
 
-        const profile = await customerApi.get<ApiResponse<CokeUser>>('/api/coke/me');
+        const profile = await getCustomerProfile();
         if (!profile.ok) {
-          throw new Error('coke_profile_unavailable');
+          throw new Error('customer_profile_unavailable');
         }
 
-        storeCokeUserAuth({
-          token: res.data.token,
-          user: profile.data,
-        });
+        storeCustomerProfile(profile.data);
 
         router.replace(
-          profile.data.subscription_active === false
-            ? '/channels/wechat-personal?next=renew'
-            : '/channels/wechat-personal',
+          profile.data.subscription_active === false ? '/account/subscription' : '/channels/wechat-personal',
         );
       } catch {
         if (!cancelled) {
+          if (storedAuth) {
+            clearCustomerAuth();
+          }
           router.replace(`/auth/login?email=${encodeURIComponent(queryEmail)}&verification=retry`);
         }
       } finally {
@@ -111,9 +109,7 @@ export default function CustomerVerifyEmailPage() {
     setResending(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/auth/resend-verification', {
-        email: nextEmail,
-      });
+      const res = await resendCustomerVerification({ email: nextEmail });
 
       if (!res.ok) {
         setResendStatus('error');
@@ -141,27 +137,25 @@ export default function CustomerVerifyEmailPage() {
         : copy.description;
 
   return (
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">
-        {loading && !isRecoveryMode ? copy.verifyingDescription : copy.description}
-      </p>
+    <section className="auth-card">
+      <h1 className="auth-card__title">{copy.title}</h1>
+      <p className="auth-card__desc">{loading && !isRecoveryMode ? copy.verifyingDescription : copy.description}</p>
 
       {isRecoveryMode ? (
-        <div className="mt-6">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-medium">{loginCopy.verificationRecoveryTitle}</p>
-            <p className="mt-2 leading-6">{recoveryDescription}</p>
+        <div className="auth-alert auth-alert--warning">
+          <div className="auth-alert__body">
+            <p className="auth-alert__title">{loginCopy.verificationRecoveryTitle}</p>
+            <p className="auth-alert__copy">{recoveryDescription}</p>
           </div>
 
-          <div className="mt-6">
-            <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">
+          <div className="auth-field auth-alert__field">
+            <label htmlFor="email" className="auth-label">
               {loginCopy.emailLabel}
             </label>
             <input
               id="email"
               type="email"
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
+              className="auth-input"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder={loginCopy.emailPlaceholder}
@@ -169,20 +163,22 @@ export default function CustomerVerifyEmailPage() {
             />
           </div>
 
-          <button
-            type="button"
-            className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-            disabled={resending || email.trim() === ''}
-            onClick={handleResendVerification}
-          >
-            {resending ? loginCopy.resendingVerificationEmail : loginCopy.resendVerificationEmail}
-          </button>
+          <div className="auth-alert__actions">
+            <button
+              type="button"
+              className="auth-submit auth-submit--compact"
+              disabled={resending || email.trim() === ''}
+              onClick={handleResendVerification}
+            >
+              {resending ? loginCopy.resendingVerificationEmail : loginCopy.resendVerificationEmail}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
-          {resendMessage ? (
-            <p className={`mt-3 text-sm ${resendStatus === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>
-              {resendMessage}
-            </p>
-          ) : null}
+      {resendMessage ? (
+        <div className={`auth-alert ${resendStatus === 'success' ? 'auth-alert--success' : 'auth-alert--error'}`}>
+          {resendMessage}
         </div>
       ) : null}
     </section>

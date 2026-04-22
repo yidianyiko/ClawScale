@@ -3,9 +3,8 @@
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 import Link from 'next/link';
-import type { ApiResponse } from '../../../../../shared/src/types/api';
 import { useLocale } from '../../../../components/locale-provider';
-import { cokeUserApi } from '../../../../lib/coke-user-api';
+import { requestCustomerPasswordReset } from '../../../../lib/customer-auth';
 
 export default function CustomerForgotPasswordPage() {
   const { messages } = useLocale();
@@ -22,7 +21,7 @@ export default function CustomerForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await cokeUserApi.post<ApiResponse<unknown>>('/api/coke/forgot-password', { email });
+      const res = await requestCustomerPasswordReset({ email });
       if (!res.ok) {
         setError(copy.genericError);
         return;
@@ -37,27 +36,23 @@ export default function CustomerForgotPasswordPage() {
   }
 
   return (
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{copy.title}</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{copy.description}</p>
+    <section className="auth-card">
+      <h1 className="auth-card__title">{copy.title}</h1>
+      <p className="auth-card__desc">{copy.description}</p>
 
-      {error ? (
-        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className="auth-alert auth-alert--error">{error}</div> : null}
 
-      {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
+      {message ? <div className="auth-alert auth-alert--info">{message}</div> : null}
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        <div>
-          <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">
+      <form onSubmit={handleSubmit} className="auth-form">
+        <div className="auth-field">
+          <label htmlFor="email" className="auth-label">
             {copy.emailLabel}
           </label>
           <input
             id="email"
             type="email"
-            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
+            className="auth-input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={copy.emailPlaceholder}
@@ -67,19 +62,19 @@ export default function CustomerForgotPasswordPage() {
 
         <button
           type="submit"
-          className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          className="auth-submit"
           disabled={loading}
         >
           {loading ? copy.submitting : copy.submit}
         </button>
       </form>
 
-      <p className="mt-6 text-sm text-slate-600">
-        {copy.backToSignInPrompt}{' '}
-        <Link href="/auth/login" className="font-medium text-slate-950 underline underline-offset-4">
+      <div className="auth-linkrow">
+        <span className="auth-linkrow__text">{copy.backToSignInPrompt}</span>
+        <Link href="/auth/login" className="auth-linkrow__link">
           {copy.backToSignInLink}
         </Link>
-      </p>
+      </div>
     </section>
   );
 }

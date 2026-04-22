@@ -7,20 +7,15 @@ import {
   verifyCustomerToken,
   type CustomerSession,
 } from '../lib/customer-auth.js';
-import { verifyCokeToken } from '../lib/coke-auth.js';
 import {
   createPersonalWechatChannelRouter,
   type PersonalWechatLifecycleAction,
   type PersonalWechatLifecycleAuth,
 } from './user-wechat-channel.js';
 
-type ChannelCompatibilityAuth =
-  | { kind: 'customer'; session: CustomerSession }
-  | { kind: 'coke'; accountId: string; email: string };
-
 declare module 'hono' {
   interface ContextVariableMap {
-    customerChannelAuth: ChannelCompatibilityAuth;
+    customerChannelAuth: CustomerSession;
   }
 }
 
@@ -55,22 +50,11 @@ async function requireCustomerChannelAuth(c: Context, next: Next): Promise<Respo
       return c.json({ ok: false, error: 'claim_inactive' }, 403);
     }
 
-    c.set('customerChannelAuth', { kind: 'customer', session });
+    c.set('customerChannelAuth', session);
     await next();
     return;
   } catch {
-    try {
-      const payload = verifyCokeToken(token);
-      c.set('customerChannelAuth', {
-        kind: 'coke',
-        accountId: payload.sub,
-        email: payload.email,
-      });
-      await next();
-      return;
-    } catch {
-      return c.json({ ok: false, error: 'invalid_or_expired_token' }, 401);
-    }
+    return c.json({ ok: false, error: 'invalid_or_expired_token' }, 401);
   }
 }
 
@@ -99,7 +83,10 @@ function enforceAccessForAction(
   }
 }
 
-async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
+async function loadCompatibilityCustomerAccount(input: {
+  customerId: string;
+  identityId: string;
+}): Promise<{
   id: string;
   displayName: string;
   email: string;
@@ -108,7 +95,8 @@ async function loadCompatibilityCustomerAccount(customerId: string): Promise<{
 } | null> {
   const membership = await db.membership.findFirst({
     where: {
-      customerId,
+      customerId: input.customerId,
+      identityId: input.identityId,
       role: 'owner',
     },
     include: {
@@ -146,8 +134,10 @@ async function resolveCustomerWechatAuth(
   action: PersonalWechatLifecycleAction,
 ): Promise<PersonalWechatLifecycleAuth> {
   const auth = c.get('customerChannelAuth');
-  const customerId = auth.kind === 'customer' ? auth.session.customerId : auth.accountId;
-  const account = await loadCompatibilityCustomerAccount(customerId);
+  const account = await loadCompatibilityCustomerAccount({
+    customerId: auth.customerId,
+    identityId: auth.identityId,
+  });
 
   if (!account) {
     throw new Error('account_not_found');

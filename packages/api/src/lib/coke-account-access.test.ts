@@ -35,7 +35,7 @@ describe('resolveCokeAccountAccess', () => {
           displayName: 'Alice',
         },
         now: new Date('2026-04-10T00:00:00.000Z'),
-        renewalUrl: 'https://coke.app/coke/renew',
+        renewalUrl: 'https://coke.app/account/subscription',
       }),
     ).resolves.toMatchObject({
       accountAccessAllowed: false,
@@ -58,12 +58,12 @@ describe('resolveCokeAccountAccess', () => {
         },
         now: new Date('2026-04-10T00:00:00.000Z'),
         requireEmailVerified: false,
-        renewalUrl: 'https://coke.app/api/coke/public-checkout?token=signed',
+        renewalUrl: 'https://coke.app/api/public/subscription-checkout?token=signed',
       }),
     ).resolves.toMatchObject({
       accountAccessAllowed: false,
       accountAccessDeniedReason: 'subscription_required',
-      renewalUrl: 'https://coke.app/api/coke/public-checkout?token=signed',
+      renewalUrl: 'https://coke.app/api/public/subscription-checkout?token=signed',
     });
   });
 });

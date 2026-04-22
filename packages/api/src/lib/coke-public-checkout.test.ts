@@ -25,7 +25,6 @@ function signJwtLikeToken(
 describe('coke-public-checkout helpers', () => {
   afterEach(() => {
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
     delete process.env.DOMAIN_CLIENT;
     vi.useRealTimers();
   });
@@ -43,17 +42,12 @@ describe('coke-public-checkout helpers', () => {
     });
   });
 
-  it('falls back to COKE_JWT_SECRET when CUSTOMER_JWT_SECRET is missing', () => {
-    process.env.COKE_JWT_SECRET = 'coke-secret';
+  it('rejects issuance when CUSTOMER_JWT_SECRET is missing', () => {
+    delete process.env.CUSTOMER_JWT_SECRET;
 
-    const token = issuePublicCheckoutToken({ customerId: 'ck_shared_2' });
-
-    expect(verifyPublicCheckoutToken(token)).toMatchObject({
-      sub: 'ck_shared_2',
-      customerId: 'ck_shared_2',
-      tokenType: 'action',
-      purpose: 'public_checkout',
-    });
+    expect(() => issuePublicCheckoutToken({ customerId: 'ck_shared_2' })).toThrow(
+      'CUSTOMER_JWT_SECRET is required',
+    );
   });
 
   it('rejects an expired public checkout token', () => {
@@ -137,13 +131,13 @@ describe('coke-public-checkout helpers', () => {
     process.env.DOMAIN_CLIENT = 'https://coke.example/';
 
     expect(buildPublicCheckoutUrl('signed-token')).toBe(
-      'https://coke.example/api/coke/public-checkout?token=signed-token',
+      'https://coke.example/api/public/subscription-checkout?token=signed-token',
     );
   });
 
   it('falls back to a relative renewal URL when DOMAIN_CLIENT is unset', () => {
     expect(buildPublicCheckoutUrl('signed-token')).toBe(
-      '/api/coke/public-checkout?token=signed-token',
+      '/api/public/subscription-checkout?token=signed-token',
     );
   });
 });

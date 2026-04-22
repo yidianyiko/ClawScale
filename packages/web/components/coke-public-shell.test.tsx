@@ -30,33 +30,35 @@ describe('CokePublicShell', () => {
     container.remove();
   });
 
-  it('renders English shell navigation and CTA text without mixed labels', () => {
+  it('renders the English shell contract without mixed locale labels', () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="en">
-          <CokePublicShell>
+          <CokePublicShell activeAuthCta="signIn">
             <div>shell body</div>
           </CokePublicShell>
         </LocaleProvider>,
       );
     });
 
+    expect(container.querySelector('.coke-site')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.textContent).toContain('Platforms');
     expect(container.textContent).toContain('Features');
     expect(container.textContent).toContain('Architecture');
     expect(container.textContent).toContain('Contact');
     expect(container.textContent).toContain('Sign in');
     expect(container.textContent).toContain('Register');
-    expect(container.textContent).toContain('An AI Partner That Grows With You');
+    expect(container.textContent?.toLowerCase()).toContain('coke');
+    expect(container.textContent).toContain('EN');
+    expect(container.textContent).toContain('中');
     expect(container.textContent).not.toContain('Register / 注册');
     expect(container.textContent).not.toContain('Platforms / 平台');
-    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
-    expect(container.textContent).toContain('EN');
-    expect(container.textContent).toContain('中文');
   });
 
-  it('renders Chinese shell navigation and CTA text without mixed labels', () => {
+  it('renders the Chinese shell contract without mixed locale labels', () => {
     flushSync(() => {
       root.render(
         <LocaleProvider initialLocale="zh">
@@ -67,16 +69,19 @@ describe('CokePublicShell', () => {
       );
     });
 
+    expect(container.querySelector('.coke-site')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.textContent).toContain('平台');
     expect(container.textContent).toContain('功能');
     expect(container.textContent).toContain('架构');
     expect(container.textContent).toContain('联系');
     expect(container.textContent).toContain('登录');
     expect(container.textContent).toContain('注册');
-    expect(container.textContent).toContain('与您共同成长的 AI 助手');
+    expect(container.textContent?.toLowerCase()).toContain('coke');
+    expect(container.textContent).toContain('EN');
+    expect(container.textContent).toContain('中');
     expect(container.textContent).not.toContain('Register / 注册');
     expect(container.textContent).not.toContain('Platforms / 平台');
-    expect(container.textContent).toContain('EN');
-    expect(container.textContent).toContain('中文');
   });
 });

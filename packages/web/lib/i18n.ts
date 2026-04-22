@@ -60,6 +60,7 @@ type CustomerLayoutMessages = {
   title: string;
   body: string;
   secondaryBody: string;
+  trustLines: string[];
 };
 
 type CokeUserLayoutMessages = CustomerLayoutMessages;
@@ -274,9 +275,13 @@ export type LocaleMessages = {
       eyebrow: string;
       title: string;
       subtitle: string;
+      titleLine1: string;
+      titleItalicMiddle: string;
+      titleLine3: string;
       body: string;
       primaryCta: string;
       secondaryCta: string;
+      foot: string;
     };
     stats: Array<{ value: string; label: string }>;
     spotlight: {
@@ -311,6 +316,19 @@ export type LocaleMessages = {
       body: string;
       primaryCta: string;
       secondaryCta: string;
+      placeholder: string;
+      note: string;
+      thanks: string;
+    };
+    footer: {
+      productHeading: string;
+      accountHeading: string;
+      companyHeading: string;
+      copyright: string;
+      tagline: string;
+      productLinks: string[];
+      accountLinks: string[];
+      companyLinks: string[];
     };
   };
   customerLayout: CustomerLayoutMessages;
@@ -348,9 +366,13 @@ export const messages: MessagesCatalog = {
         eyebrow: 'Evolves With You',
         title: 'Your AI assistant that grows with you',
         subtitle: 'An AI Partner That Grows With You',
+        titleLine1: 'An AI partner',
+        titleItalicMiddle: 'that grows',
+        titleLine3: 'with you.',
         body: 'Coke AI is more than a tool. It becomes a sharper partner as it learns your rhythm, priorities, and context over time.',
         primaryCta: 'Register',
         secondaryCta: 'Sign in',
+        foot: 'Six platforms · 99.9% uptime · <100ms latency',
       },
       stats: [
         { value: '6+', label: 'Platforms' },
@@ -415,6 +437,19 @@ export const messages: MessagesCatalog = {
         body: 'Join our beta program, create an account, verify your email, and continue into your personal WeChat binding flow.',
         primaryCta: 'Join beta',
         secondaryCta: 'Existing account',
+        placeholder: 'your email',
+        note: "We won't share your email with anyone else.",
+        thanks: "Thanks. We'll be in touch within 24 hours.",
+      },
+      footer: {
+        productHeading: 'Product',
+        accountHeading: 'Account',
+        companyHeading: 'Company',
+        copyright: '© 2026 Coke AI',
+        tagline: 'Built to grow with you.',
+        productLinks: ['Platforms', 'Features', 'Architecture'],
+        accountLinks: ['Sign in', 'Register', 'Renew'],
+        companyLinks: ['About', 'Contact', 'Privacy'],
       },
     },
     customerLayout: {
@@ -424,7 +459,12 @@ export const messages: MessagesCatalog = {
       eyebrow: 'Customer Account',
       title: 'Enter your customer workspace',
       body: 'Use the neutral customer routes for sign-in, registration, password recovery, email verification, and personal WeChat setup.',
-      secondaryBody: 'Legacy /coke/* generic routes stay in place as compatibility redirects until every internal caller moves.',
+      secondaryBody: 'Customer access now lives on neutral auth, channel, and account routes with the legacy generic Coke entrypoints removed.',
+      trustLines: [
+        'End-to-end encrypted transport',
+        'Sign-in and channel access stay on one path',
+        'Designed for customer and personal setup',
+      ],
     },
     cokeUserLayout: {
       brandName: 'Coke AI',
@@ -434,6 +474,11 @@ export const messages: MessagesCatalog = {
       title: 'Keep your Coke service active',
       body: 'Handle renewal, payment follow-up, and the business-side steps that still stay under Coke-specific routes.',
       secondaryBody: 'Generic sign-in, recovery, and customer channel setup now live under the neutral customer routes.',
+      trustLines: [
+        'Billing and delivery state stay visible in one place',
+        'Renewal and payment follow-up remain on Coke routes',
+        'Account access and channel setup stay separated by design',
+      ],
     },
     customerPages: {
       login: {
@@ -707,9 +752,13 @@ export const messages: MessagesCatalog = {
         eyebrow: '与您共同成长',
         title: '会随着使用不断进化的 AI 助手',
         subtitle: '与您共同成长的 AI 助手',
+        titleLine1: '会随着使用',
+        titleItalicMiddle: '不断进化的',
+        titleLine3: 'AI 助手。',
         body: 'Coke AI 不只是工具，更会在长期使用中逐渐理解你的节奏、优先级和上下文，成为更懂你的智能伙伴。',
         primaryCta: '注册',
         secondaryCta: '登录',
+        foot: '六个平台 · 99.9% 可用性 · <100ms 响应',
       },
       stats: [
         { value: '6+', label: '平台' },
@@ -766,6 +815,19 @@ export const messages: MessagesCatalog = {
         body: '加入我们的内测计划，注册账号、验证邮箱，然后继续进入你的个人微信绑定流程。',
         primaryCta: '加入内测',
         secondaryCta: '已有账号',
+        placeholder: '你的邮箱',
+        note: '我们不会把你的邮箱分享给第三方。',
+        thanks: '谢谢。我们会在 24 小时内联系你。',
+      },
+      footer: {
+        productHeading: '产品',
+        accountHeading: '账号',
+        companyHeading: '公司',
+        copyright: '© 2026 Coke AI',
+        tagline: '与你一起慢慢变好。',
+        productLinks: ['平台', '功能', '架构'],
+        accountLinks: ['登录', '注册', '续费'],
+        companyLinks: ['关于', '联系', '隐私'],
       },
     },
     customerLayout: {
@@ -775,7 +837,12 @@ export const messages: MessagesCatalog = {
       eyebrow: '客户账号',
       title: '进入你的客户工作区',
       body: '在中立的 customer 路由下完成登录、注册、密码找回、邮箱验证和个人微信接入。',
-      secondaryBody: '旧的 /coke/* 通用入口会暂时保留为兼容跳转，直到所有内部调用都迁移完成。',
+      secondaryBody: '客户访问现在统一使用中立的 auth、channels 与 account 路由，旧的通用 Coke 入口已经删除。',
+      trustLines: [
+        '全程加密传输',
+        '登录、验证与接入保持同一路径',
+        '为客户与个人通道统一设计',
+      ],
     },
     cokeUserLayout: {
       brandName: 'Coke AI',
@@ -785,6 +852,11 @@ export const messages: MessagesCatalog = {
       title: '保持你的 Coke 服务处于启用状态',
       body: '在这里处理续费、支付后续动作，以及仍然保留在 Coke 专属路由下的业务步骤。',
       secondaryBody: '通用登录、找回访问和客户通道设置现在都放在中立的 customer 路由下。',
+      trustLines: [
+        '账单与交付状态集中展示',
+        '续费与支付后续动作仍保留在 Coke 路由下',
+        '账号访问与通道设置按职责分离',
+      ],
     },
     customerPages: {
       login: {

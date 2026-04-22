@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('next/font/google', () => {
+  const stub = () => ({ variable: '' });
+  return { Fraunces: stub, Inter: stub, JetBrains_Mono: stub };
+});
 
 import { metadata } from './layout';
 
