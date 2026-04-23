@@ -140,8 +140,8 @@ describe('CustomerLoginPage', () => {
 
     const links = Array.from(container.querySelectorAll('a')).map((link) => link.getAttribute('href'));
 
-    expect(container.textContent).toContain('Sign in to Coke');
-    expect(container.textContent).not.toContain('Return to your Coke account');
+    expect(container.textContent).toContain('Sign in to Kap');
+    expect(container.textContent).not.toContain('Return to your Kap account');
     expect(container.textContent).not.toContain('Back to homepage');
     expect(links).toContain('/auth/forgot-password');
     expect(links).toContain('/auth/register');

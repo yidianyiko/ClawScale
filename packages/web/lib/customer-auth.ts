@@ -20,6 +20,7 @@ export interface CustomerSession {
 
 export interface CustomerAuthResult extends CustomerSession {
   token: string;
+  continueTo?: string;
 }
 
 export interface CustomerProfile extends CustomerSession {
@@ -78,7 +79,7 @@ export function storeCustomerAuth(result: CustomerAuthResult): void {
     return;
   }
 
-  const { token, ...session } = result;
+  const { token, continueTo: _continueTo, ...session } = result;
   storage.removeItem(PROFILE_KEY);
   storage.removeItem(LEGACY_COKE_TOKEN_KEY);
   storage.removeItem(LEGACY_COKE_PROFILE_KEY);

@@ -27,8 +27,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'coke | An AI Partner That Grows With You',
-  description: 'Coke AI public homepage, user sign-in, registration, and personal channel setup.',
+  title: 'kap | An AI Partner That Grows With You',
+  description: 'Kap AI public homepage, user sign-in, registration, and personal channel setup.',
   icons: { icon: '/logo.png' },
 };
 
@@ -45,7 +45,7 @@ export default function RootLayout({
         />
         <div id="locale-splash" className="coke-site-splash">
           <div className="coke-site-splash__card">
-            <span className="coke-site-splash__mark">coke</span>
+            <span className="coke-site-splash__mark">kap</span>
             <span className="coke-site-splash__dot" aria-hidden="true" />
             <p className="coke-site-splash__body">Preparing your workspace...</p>
           </div>

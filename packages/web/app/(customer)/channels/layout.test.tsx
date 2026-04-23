@@ -40,6 +40,10 @@ describe('CustomerChannelsLayout', () => {
       );
     });
 
+    expect(container.querySelector('.coke-site.customer-shell-page')).toBeTruthy();
+    expect(container.querySelector('.customer-shell__nav')).toBeTruthy();
+    expect(container.querySelector('a[href="/channels"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
     expect(container.textContent).toContain('统一管理客户登录与通道接入');
     expect(container.textContent).toContain('处理登录、验证与个人微信接入');
     expect(container.textContent).toContain('进入你的客户工作区');

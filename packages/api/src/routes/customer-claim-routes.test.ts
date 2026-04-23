@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 const tx = vi.hoisted(() => ({
   identity: {
     updateMany: vi.fn(),
+    findUnique: vi.fn(),
   },
   customer: {
     create: vi.fn(),
@@ -11,6 +12,9 @@ const tx = vi.hoisted(() => ({
 }));
 
 const db = vi.hoisted(() => ({
+  identity: {
+    findUnique: vi.fn(),
+  },
   membership: {
     findFirst: vi.fn(),
   },
@@ -18,8 +22,12 @@ const db = vi.hoisted(() => ({
 }));
 
 vi.mock('../db/index.js', () => ({ db }));
+const sendCustomerClaimEmail = vi.hoisted(() => vi.fn());
+vi.mock('../lib/customer-email.js', () => ({
+  sendCustomerClaimEmail,
+}));
 
-import { issueClaimToken } from '../lib/claim-token.js';
+import { issueClaimEntryToken, issueClaimToken } from '../lib/claim-token.js';
 import { customerClaimRouter } from './customer-claim-routes.js';
 
 describe('customer claim routes', () => {
@@ -28,7 +36,11 @@ describe('customer claim routes', () => {
     vi.useRealTimers();
     process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
     db.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx));
+    db.identity.findUnique.mockResolvedValue(null);
     tx.identity.updateMany.mockResolvedValue({ count: 1 });
+    tx.identity.findUnique.mockResolvedValue({
+      updatedAt: new Date('2026-04-18T00:05:00.000Z'),
+    });
     db.membership.findFirst.mockResolvedValue({
       role: 'owner',
       customer: { id: 'ck_123' },
@@ -45,6 +57,136 @@ describe('customer claim routes', () => {
     delete process.env.CUSTOMER_JWT_SECRET;
     delete process.env.COKE_JWT_SECRET;
     vi.useRealTimers();
+  });
+
+  it('issues a claim email that preserves a safe continuation target', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const entryToken = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/account/calendar-import',
+    });
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken,
+        email: 'alice@example.com',
+        next: '/account/calendar-import',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        message: 'claim_email_sent',
+      },
+    });
+    expect(sendCustomerClaimEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      token: expect.any(String),
+    });
+  });
+
+  it('rejects external continuation targets and invalid entry tokens', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken: 'bad-entry-token',
+        email: 'alice@example.com',
+        next: 'https://evil.example/phish',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_or_expired_token',
+    });
+    expect(sendCustomerClaimEmail).not.toHaveBeenCalled();
+  });
+
+  it('drops malformed protocol-relative continuation targets from claim requests', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const entryToken = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/\\/evil.com',
+    });
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken,
+        email: 'alice@example.com',
+        next: '\\\\evil.com',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendCustomerClaimEmail).toHaveBeenCalledWith({
+      to: 'alice@example.com',
+      token: expect.any(String),
+    });
+  });
+
+  it('checks claim eligibility before reporting duplicate-email conflicts', async () => {
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const entryToken = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/account/calendar-import',
+    });
+
+    db.identity.findUnique.mockResolvedValueOnce({ id: 'idt_other' });
+    db.membership.findFirst.mockResolvedValueOnce({
+      role: 'owner',
+      customer: { id: 'ck_123' },
+      identity: {
+        id: 'idt_123',
+        email: null,
+        claimStatus: 'active',
+        updatedAt: new Date('2026-04-18T00:05:00.000Z'),
+      },
+    });
+
+    const res = await app.request('/api/auth/claim/request', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        entryToken,
+        email: 'alice@example.com',
+        next: '/account/calendar-import',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'claim_not_allowed',
+    });
+    expect(sendCustomerClaimEmail).not.toHaveBeenCalled();
   });
 
   it('completes a claim and returns the active customer auth payload', async () => {
@@ -101,6 +243,60 @@ describe('customer claim routes', () => {
         email: 'alice@example.com',
         membershipRole: 'owner',
         token: expect.any(String),
+      },
+    });
+  });
+
+  it('returns a validated continuation target after a successful claim', async () => {
+    const issued = await issueClaimToken(
+      {
+        membership: {
+          findFirst: vi.fn().mockResolvedValue({
+            role: 'owner',
+            customer: { id: 'ck_123' },
+            identity: {
+              id: 'idt_123',
+              email: null,
+              claimStatus: 'unclaimed',
+              updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+            },
+          }),
+        },
+        $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
+      } as never,
+      {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        email: 'alice@example.com',
+        continueTo: '/account/calendar-import',
+      },
+    );
+
+    const app = new Hono();
+    app.route('/api/auth/claim', customerClaimRouter);
+
+    const res = await app.request('/api/auth/claim', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: issued.token,
+        password: 'new-password123',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        customerId: 'ck_123',
+        identityId: 'idt_123',
+        claimStatus: 'active',
+        email: 'alice@example.com',
+        membershipRole: 'owner',
+        token: expect.any(String),
+        continueTo: '/account/calendar-import',
       },
     });
   });

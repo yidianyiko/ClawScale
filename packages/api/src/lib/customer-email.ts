@@ -11,6 +11,11 @@ export interface SendCustomerPasswordResetEmailInput {
   token: string;
 }
 
+export interface SendCustomerClaimEmailInput {
+  to: string;
+  token: string;
+}
+
 function getDomainClient(): string {
   return process.env['DOMAIN_CLIENT']?.replace(/\/$/, '') ?? '';
 }
@@ -21,6 +26,10 @@ function getVerifyEmailUrl(token: string, email: string): string {
 
 function getResetPasswordUrl(token: string): string {
   return `${getDomainClient()}/auth/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+function getClaimUrl(token: string): string {
+  return `${getDomainClient()}/auth/claim?token=${encodeURIComponent(token)}`;
 }
 
 export async function sendCustomerVerificationEmail(
@@ -40,5 +49,13 @@ export async function sendCustomerPasswordResetEmail(
     to: input.to,
     subject: 'Reset your password',
     html: `<a href="${getResetPasswordUrl(input.token)}">Reset your password</a>`,
+  });
+}
+
+export async function sendCustomerClaimEmail(input: SendCustomerClaimEmailInput): Promise<void> {
+  await sendEmail({
+    to: input.to,
+    subject: 'Claim your account',
+    html: `<a href="${getClaimUrl(input.token)}">Claim your account</a>`,
   });
 }

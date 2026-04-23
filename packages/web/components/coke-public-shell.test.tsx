@@ -42,16 +42,18 @@ describe('CokePublicShell', () => {
     });
 
     expect(container.querySelector('.coke-site')).toBeTruthy();
+    expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
-    expect(container.textContent).toContain('Platforms');
-    expect(container.textContent).toContain('Features');
-    expect(container.textContent).toContain('Architecture');
-    expect(container.textContent).toContain('Contact');
+    expect(container.textContent).toContain('Capabilities');
+    expect(container.textContent).toContain('Scenarios');
+    expect(container.textContent).toContain('Proof');
+    expect(container.textContent).toContain('Start');
     expect(container.textContent).toContain('Sign in');
     expect(container.textContent).toContain('Register');
-    expect(container.textContent?.toLowerCase()).toContain('coke');
+    expect(container.textContent?.toLowerCase()).toContain('kap');
+    expect(container.textContent?.toLowerCase()).not.toContain('coke');
     expect(container.textContent).toContain('EN');
     expect(container.textContent).toContain('中');
     expect(container.textContent).not.toContain('Register / 注册');
@@ -70,15 +72,17 @@ describe('CokePublicShell', () => {
     });
 
     expect(container.querySelector('.coke-site')).toBeTruthy();
+    expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
-    expect(container.textContent).toContain('平台');
-    expect(container.textContent).toContain('功能');
-    expect(container.textContent).toContain('架构');
-    expect(container.textContent).toContain('联系');
+    expect(container.textContent).toContain('能力');
+    expect(container.textContent).toContain('场景');
+    expect(container.textContent).toContain('口碑');
+    expect(container.textContent).toContain('开始');
     expect(container.textContent).toContain('登录');
     expect(container.textContent).toContain('注册');
-    expect(container.textContent?.toLowerCase()).toContain('coke');
+    expect(container.textContent?.toLowerCase()).toContain('kap');
+    expect(container.textContent?.toLowerCase()).not.toContain('coke');
     expect(container.textContent).toContain('EN');
     expect(container.textContent).toContain('中');
     expect(container.textContent).not.toContain('Register / 注册');

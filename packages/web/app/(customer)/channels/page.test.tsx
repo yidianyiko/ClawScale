@@ -39,10 +39,12 @@ describe('CustomerChannelsPage', () => {
       );
     });
 
+    expect(container.querySelector('.customer-view')).toBeTruthy();
+    expect(container.querySelector('.customer-panel')).toBeTruthy();
     expect(container.textContent).toContain('Phase 1 channels');
     expect(container.textContent).toContain('Customer channels');
     expect(container.textContent).toContain('Personal WeChat');
-    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/channels/wechat-personal"].customer-link-card')).toBeTruthy();
   });
 
   it('renders Chinese channel index copy from the locale catalog', () => {
@@ -54,6 +56,7 @@ describe('CustomerChannelsPage', () => {
       );
     });
 
+    expect(container.querySelector('.customer-view')).toBeTruthy();
     expect(container.textContent).toContain('第一阶段通道');
     expect(container.textContent).toContain('客户通道');
     expect(container.textContent).toContain('个人微信');

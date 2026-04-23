@@ -74,14 +74,14 @@ describe('CustomerRegisterPage', () => {
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/"]')).toBeFalsy();
 
-    expect(container.textContent).toContain('创建你的 Coke 账号');
+    expect(container.textContent).toContain('创建你的 Kap 账号');
     expect(container.textContent).toContain('已经注册？');
     expect((container.querySelector('input#password') as HTMLInputElement | null)?.placeholder).toBe(
       '创建一个密码',
     );
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.textContent).not.toContain('Register / 注册');
-    expect(container.textContent).not.toContain('Create your Coke account');
+    expect(container.textContent).not.toContain('Create your Kap account');
     expect(container.textContent).not.toContain('返回首页');
   });
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { verifyCustomerToken } from './customer-auth.js';
-import { completeCustomerClaim, issueClaimToken } from './claim-token.js';
+import { completeCustomerClaim, issueClaimEntryToken, issueClaimToken, sanitizeContinueTo, verifyClaimEntryToken } from './claim-token.js';
 
 describe('claim-token helpers', () => {
   afterEach(() => {
@@ -41,6 +41,30 @@ describe('claim-token helpers', () => {
         email: 'alice@example.com',
       }),
     ).rejects.toThrow('CUSTOMER_JWT_SECRET is required');
+  });
+
+  it('rejects malformed protocol-relative continuation targets during sanitization', () => {
+    expect(sanitizeContinueTo('/account/calendar-import')).toBe('/account/calendar-import');
+    expect(sanitizeContinueTo('/\\/evil.com')).toBeUndefined();
+    expect(sanitizeContinueTo('\\evil.com')).toBeUndefined();
+    expect(sanitizeContinueTo('//evil.com')).toBeUndefined();
+    expect(sanitizeContinueTo('/\\evil.com')).toBeUndefined();
+  });
+
+  it('drops unsafe continuation targets from claim-entry tokens', () => {
+    process.env.CUSTOMER_JWT_SECRET = 'customer-secret';
+
+    const token = issueClaimEntryToken({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: '/\\/evil.com',
+    });
+
+    expect(verifyClaimEntryToken(token)).toEqual({
+      customerId: 'ck_123',
+      identityId: 'idt_123',
+      continueTo: undefined,
+    });
   });
 
   it('issuing a claim token marks the identity pending and returns the emailed token', async () => {

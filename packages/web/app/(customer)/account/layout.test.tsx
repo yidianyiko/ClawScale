@@ -40,6 +40,10 @@ describe('CustomerAccountLayout', () => {
       );
     });
 
+    expect(container.querySelector('.coke-site.customer-shell-page')).toBeTruthy();
+    expect(container.querySelector('.customer-shell__hero')).toBeTruthy();
+    expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
     expect(container.textContent).toContain('统一管理客户登录与通道接入');
     expect(container.textContent).toContain('进入你的客户工作区');
     expect(container.textContent).toContain('body');

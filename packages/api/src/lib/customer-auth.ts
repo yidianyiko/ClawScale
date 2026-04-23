@@ -35,6 +35,7 @@ export interface CustomerAuthResult {
   email: string;
   membershipRole: CustomerMembershipRole;
   token: string;
+  continueTo?: string;
 }
 
 export interface CustomerSession {

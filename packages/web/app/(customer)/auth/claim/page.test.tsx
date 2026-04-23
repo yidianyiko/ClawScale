@@ -104,6 +104,7 @@ describe('ClaimPage', () => {
         email: 'alice@example.com',
         claimStatus: 'active',
         membershipRole: 'owner',
+        continueTo: '/account/calendar-import',
       },
     });
 
@@ -128,7 +129,61 @@ describe('ClaimPage', () => {
       email: 'alice@example.com',
       claimStatus: 'active',
       membershipRole: 'owner',
+      continueTo: '/account/calendar-import',
     });
+    expect(pushMock).toHaveBeenCalledWith('/account/calendar-import');
+  });
+
+  it('falls back to the customer channel when the claim response does not include a continuation target', async () => {
+    vi.mocked(customerApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'customer-token',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        email: 'alice@example.com',
+        claimStatus: 'active',
+        membershipRole: 'owner',
+      },
+    });
+
+    renderPage();
+
+    await waitForEffects();
+
+    setInputValue('#password', 'password-123');
+    setInputValue('#confirmPassword', 'password-123');
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
+    expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
+  });
+
+  it('falls back to the customer channel when the server returns a malformed protocol-relative continuation target', async () => {
+    vi.mocked(customerApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        token: 'customer-token',
+        customerId: 'ck_1',
+        identityId: 'idt_1',
+        email: 'alice@example.com',
+        claimStatus: 'active',
+        membershipRole: 'owner',
+        continueTo: '/\\/evil.com',
+      },
+    });
+
+    renderPage();
+
+    await waitForEffects();
+
+    setInputValue('#password', 'password-123');
+    setInputValue('#confirmPassword', 'password-123');
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await waitForEffects();
+
     expect(pushMock).toHaveBeenCalledWith('/channels/wechat-personal');
   });
 

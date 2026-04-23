@@ -1,0 +1,76 @@
+import type { ApiResponse } from '../../shared/src/types/api';
+import { customerApi } from './customer-api';
+
+export interface CustomerClaimRequestInput {
+  entryToken: string;
+  email: string;
+  next?: string;
+}
+
+export interface CustomerClaimRequestResult {
+  message: 'claim_email_sent';
+}
+
+export interface CustomerGoogleCalendarImportRunSummary {
+  id: string;
+  status: 'authorizing' | 'importing' | 'succeeded' | 'succeeded_with_errors' | 'failed';
+  providerAccountEmail: string | null;
+  importedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  errorSummary: string | null;
+}
+
+export interface CustomerGoogleCalendarImportPreflightResult {
+  ready: boolean;
+  blockedReason?: string | null;
+  latestRun: CustomerGoogleCalendarImportRunSummary | null;
+}
+
+export interface CustomerGoogleCalendarImportStartResult {
+  runId: string;
+  url: string;
+}
+
+export interface CustomerGoogleCalendarImportStatusResult {
+  run?: CustomerGoogleCalendarImportRunSummary | null;
+  latestRun: CustomerGoogleCalendarImportRunSummary | null;
+}
+
+export function requestCustomerClaimEmail(
+  input: CustomerClaimRequestInput,
+): Promise<ApiResponse<CustomerClaimRequestResult>> {
+  return customerApi.post<ApiResponse<CustomerClaimRequestResult>>('/api/auth/claim/request', input);
+}
+
+export function getCustomerGoogleCalendarImportPreflight(): Promise<
+  ApiResponse<CustomerGoogleCalendarImportPreflightResult>
+> {
+  return customerApi.get<ApiResponse<CustomerGoogleCalendarImportPreflightResult>>(
+    '/api/customer/google-calendar-import/preflight',
+  );
+}
+
+export function startCustomerGoogleCalendarImport(): Promise<
+  ApiResponse<CustomerGoogleCalendarImportStartResult>
+> {
+  return customerApi.post<ApiResponse<CustomerGoogleCalendarImportStartResult>>(
+    '/api/customer/google-calendar-import/start',
+  );
+}
+
+export function getCustomerGoogleCalendarImportStatus(): Promise<
+  ApiResponse<CustomerGoogleCalendarImportStatusResult>
+> {
+  return getCustomerGoogleCalendarImportStatusForRun();
+}
+
+export function getCustomerGoogleCalendarImportStatusForRun(
+  runId?: string,
+): Promise<ApiResponse<CustomerGoogleCalendarImportStatusResult>> {
+  return customerApi.get<ApiResponse<CustomerGoogleCalendarImportStatusResult>>(
+    runId
+      ? `/api/customer/google-calendar-import/status?runId=${encodeURIComponent(runId)}`
+      : '/api/customer/google-calendar-import/status',
+  );
+}

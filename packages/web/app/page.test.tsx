@@ -41,8 +41,13 @@ describe('HomePage', () => {
 
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('#capabilities')).toBeTruthy();
+    expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#download')).toBeTruthy();
     expect(container.textContent).toContain('An AI Partner That Grows With You');
-    expect(container.textContent).toContain('Platforms');
+    expect(container.textContent).toContain('Kap AI');
+    expect(container.textContent).toContain('Capabilities');
+    expect(container.textContent).not.toContain('Coke AI');
     expect(container.textContent).not.toContain('Register / 注册');
   });
 
@@ -57,8 +62,13 @@ describe('HomePage', () => {
 
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
+    expect(container.querySelector('#capabilities')).toBeTruthy();
+    expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#download')).toBeTruthy();
     expect(container.textContent).toContain('与您共同成长的 AI 助手');
-    expect(container.textContent).toContain('平台');
+    expect(container.textContent).toContain('Kap AI');
+    expect(container.textContent).toContain('能力');
+    expect(container.textContent).not.toContain('Coke AI');
     expect(container.textContent).not.toContain('Register / 注册');
   });
 });

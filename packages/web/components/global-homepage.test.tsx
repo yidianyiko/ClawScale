@@ -36,6 +36,8 @@ describe('GlobalHomepage', () => {
     expect(container.querySelector('.global-site')).toBeTruthy();
     expect(container.textContent).toContain('An AI partner that grows with you');
     expect(container.textContent).toContain('WhatsApp');
+    expect(container.textContent).toContain('Kap');
+    expect(container.textContent).not.toContain('Coke');
     expect(container.textContent).not.toContain('Sign in');
     expect(container.textContent).not.toContain('Register');
 
@@ -53,7 +55,7 @@ describe('GlobalHomepage', () => {
     });
 
     expect(container.textContent).toContain('One chat to plan, coordinate, and follow through.');
-    expect(container.textContent).toContain('Message Coke on WhatsApp');
+    expect(container.textContent).toContain('Message Kap on WhatsApp');
     expect(container.textContent).not.toContain('WeChat');
     expect(container.textContent).not.toContain('Telegram');
     expect(container.textContent).not.toContain('Slack');

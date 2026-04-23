@@ -1,12 +1,12 @@
 import { ArrowRight, CalendarCheck2, CheckCheck, MessageCircle, Sparkles, Waypoints } from 'lucide-react';
 
 export const GLOBAL_WHATSAPP_URL =
-  'https://api.whatsapp.com/send/?phone=8619917902815&text=Hi%20Coke%2C%20I%27d%20like%20to%20get%20started.';
+  'https://api.whatsapp.com/send/?phone=8619917902815&text=Hi%20Kap%2C%20I%27d%20like%20to%20get%20started.';
 
 const PROMISE_CARDS = [
   {
     title: 'Think with you, not just answer you',
-    body: 'Use Coke as one steady thread for planning, drafting, coordinating, and remembering what still matters next.',
+    body: 'Use Kap as one steady thread for planning, drafting, coordinating, and remembering what still matters next.',
   },
   {
     title: 'Move from idea to follow-through',
@@ -22,7 +22,7 @@ const WORKFLOW_STEPS = [
   {
     label: 'Start with a real task',
     title: 'Drop the thing that is on your mind',
-    body: 'A meeting to schedule. A trip to plan. A note to send. Coke is designed for live requests, not demo prompts.',
+    body: 'A meeting to schedule. A trip to plan. A note to send. Kap is designed for live requests, not demo prompts.',
   },
   {
     label: 'Keep the thread alive',
@@ -31,7 +31,7 @@ const WORKFLOW_STEPS = [
   },
   {
     label: 'Let it close the loop',
-    title: 'Use Coke when the next move matters',
+    title: 'Use Kap when the next move matters',
     body: 'Turn open loops into sent messages, coordinated plans, reminders, and concrete next steps you can act on.',
   },
 ] as const;
@@ -69,14 +69,14 @@ export function GlobalHomepage() {
     <div className="coke-site global-site">
       <header className="global-header">
         <div className="global-header__inner">
-          <a href="/global" className="global-brand" aria-label="Coke global">
-            <span className="global-brand__wordmark">coke</span>
+          <a href="/global" className="global-brand" aria-label="Kap global">
+            <span className="global-brand__wordmark">kap</span>
             <span className="global-brand__dot" aria-hidden="true" />
           </a>
 
           <nav className="global-nav" aria-label="Global page">
             <a href="#promise" className="global-nav__link">
-              Why Coke
+              Why Kap
             </a>
             <a href="#workflow" className="global-nav__link">
               How it works
@@ -104,12 +104,12 @@ export function GlobalHomepage() {
               <h1 className="global-hero__title">An AI partner that grows with you</h1>
               <p className="global-hero__lede">One chat to plan, coordinate, and follow through.</p>
               <p className="global-hero__body">
-                Coke is built for the moments when you need momentum, not another inbox. Message once, keep the thread
+                Kap is built for the moments when you need momentum, not another inbox. Message once, keep the thread
                 alive, and use the same conversation for planning, reminders, and next actions.
               </p>
 
               <div className="global-hero__actions">
-                <WhatsAppButton label="Message Coke on WhatsApp" className="global-hero__cta" />
+                <WhatsAppButton label="Message Kap on WhatsApp" className="global-hero__cta" />
               </div>
 
               <ul className="global-proof" aria-label="Product promise">
@@ -135,7 +135,7 @@ export function GlobalHomepage() {
                     <MessageCircle size={15} />
                   </div>
                   <div>
-                    <div className="global-stage-card__name">Coke on WhatsApp</div>
+                    <div className="global-stage-card__name">Kap on WhatsApp</div>
                     <div className="global-stage-card__meta">online and ready to help</div>
                   </div>
                 </div>
@@ -156,7 +156,7 @@ export function GlobalHomepage() {
 
                 <div className="global-stage-card__composer">
                   <Sparkles size={14} aria-hidden="true" />
-                  <span>Coke is keeping your next move in view.</span>
+                  <span>Kap is keeping your next move in view.</span>
                 </div>
               </div>
 
@@ -175,10 +175,10 @@ export function GlobalHomepage() {
 
         <section id="promise" className="global-section">
           <div className="global-section__head">
-            <span className="global-section__eyebrow">Why Coke</span>
+            <span className="global-section__eyebrow">Why Kap</span>
             <h2 className="global-section__title">A personal operating rhythm, not a pile of tools</h2>
             <p className="global-section__body">
-              The global page keeps the same Coke positioning as the main site, but everything points to one place:
+              The global page keeps the same Kap positioning as the main site, but everything points to one place:
               your WhatsApp conversation.
             </p>
           </div>
@@ -224,7 +224,7 @@ export function GlobalHomepage() {
               <span className="global-section__eyebrow global-section__eyebrow--light">Open the thread</span>
               <h2 className="global-close__title">Start on WhatsApp and let the conversation compound.</h2>
               <p className="global-close__body">
-                There is no extra setup on this path. Open the chat, send a message, and use Coke like a partner who
+                There is no extra setup on this path. Open the chat, send a message, and use Kap like a partner who
                 stays with the task.
               </p>
             </div>

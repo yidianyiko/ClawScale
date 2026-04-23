@@ -596,7 +596,7 @@ describe('CustomerWechatPersonalPage suspended account state', () => {
     await flushTicks(2);
 
     expect(getCustomerWechatChannelStatusMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Your Coke account is suspended');
+    expect(container.textContent).toContain('Your Kap account is suspended');
     expect(container.textContent).not.toContain('Create my WeChat channel');
   });
 });
