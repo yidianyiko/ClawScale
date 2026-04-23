@@ -99,9 +99,11 @@ describe('CustomerSubscriptionPage', () => {
 
     await flushTicks(5);
 
+    expect(container.querySelector('.customer-view.customer-view--narrow')).toBeTruthy();
+    expect(container.querySelector('.customer-panel.customer-panel--narrow')).toBeTruthy();
     expect(getMock).toHaveBeenCalledWith('/api/customer/subscription');
     expect(postMock).not.toHaveBeenCalled();
-    expect(container.querySelector('button[type="button"]')).toBeTruthy();
+    expect(container.querySelector('button[type="button"].customer-action.customer-action--primary')).toBeTruthy();
     expect(container.textContent).toContain('Renew your access');
 
     (container.querySelector('button[type="button"]') as HTMLButtonElement).click();
@@ -178,10 +180,11 @@ describe('CustomerSubscriptionPage', () => {
 
     await flushTicks(1);
 
+    expect(container.querySelector('.customer-panel.customer-panel--narrow')).toBeTruthy();
     expect(container.textContent).toContain('Payment complete');
     expect(getMock).toHaveBeenCalledWith('/api/customer/subscription');
-    expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/channels/wechat-personal"].customer-action')).toBeTruthy();
+    expect(container.querySelector('a[href="/account/subscription"].customer-action')).toBeTruthy();
     expect(postMock).not.toHaveBeenCalled();
   });
 

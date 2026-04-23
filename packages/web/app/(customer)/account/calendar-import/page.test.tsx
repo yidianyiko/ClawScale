@@ -103,7 +103,7 @@ describe('CustomerCalendarImportPage', () => {
     container.remove();
   });
 
-  it('shows the blocked conversation guidance when preflight requires an existing Coke conversation', async () => {
+  it('shows the blocked conversation guidance when preflight requires an existing Kap conversation', async () => {
     getPreflightMock.mockResolvedValueOnce({
       ok: true,
       data: {
@@ -116,7 +116,9 @@ describe('CustomerCalendarImportPage', () => {
     renderPage();
     await flushTicks(3);
 
-    expect(container.textContent).toContain('Start or resume a Coke conversation first');
+    expect(container.querySelector('.customer-view.customer-view--wide')).toBeTruthy();
+    expect(container.querySelector('.customer-panel.customer-panel--wide')).toBeTruthy();
+    expect(container.textContent).toContain('Start or resume a Kap conversation first');
     expect(container.textContent).toContain('Google Calendar import');
     expect(container.querySelector('button[type="button"]')).toBeNull();
   });
@@ -233,6 +235,7 @@ describe('CustomerCalendarImportPage', () => {
     renderPage();
     await flushTicks(3);
 
+    expect(container.querySelector('.customer-run-summary')).toBeTruthy();
     expect(container.textContent).toContain('Import complete');
     expect(container.textContent).toContain('Imported 5, skipped 2, failed 0');
     expect(container.textContent).toContain('alice@example.com');

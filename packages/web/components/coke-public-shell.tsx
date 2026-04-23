@@ -29,8 +29,8 @@ export function CokePublicShell({
     <div className={cn('coke-site', className)}>
       <header className="site-header">
         <div className="site-header__inner">
-          <Link href="/" className="brand" aria-label="Coke AI">
-            <span className="brand__mark">coke</span>
+          <Link href="/" className="brand" aria-label="Kap AI">
+            <span className="brand__mark">kap</span>
             <span className="brand__dot" aria-hidden="true" />
           </Link>
 

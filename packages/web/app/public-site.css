@@ -2095,3 +2095,1237 @@
     padding-bottom: 72px;
   }
 }
+
+/* ---------------- Kap homepage + customer workspace overrides ---------------- */
+
+.coke-site .wrap {
+  width: min(var(--max-content), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto;
+}
+
+.coke-site .hero {
+  padding: 42px 0 32px;
+}
+
+.coke-site .hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+  gap: 32px;
+  align-items: center;
+}
+
+.coke-site .hero-copy {
+  min-width: 0;
+}
+
+.coke-site .hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .hero-tag .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  box-shadow: 0 0 0 4px rgba(232, 105, 60, 0.14);
+}
+
+.coke-site .hero__title {
+  margin: 18px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(52px, 7.6vw, 88px);
+  line-height: 0.94;
+  letter-spacing: -0.055em;
+  font-weight: 600;
+  color: var(--ink-1000);
+}
+
+.coke-site .hero__title .line {
+  display: block;
+}
+
+.coke-site .hero__title em {
+  font-style: italic;
+  color: var(--claw-600);
+}
+
+.coke-site .hero-lead {
+  max-width: 34rem;
+  margin: 22px 0 0;
+  font-size: 18px;
+  line-height: 1.72;
+  color: var(--ink-700);
+}
+
+.coke-site .hero-cta-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.coke-site .btn-sticker,
+.coke-site .btn-ghost,
+.coke-site .customer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  transition:
+    transform 120ms ease,
+    box-shadow var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard),
+    border-color var(--dur-base) var(--ease-standard),
+    color var(--dur-base) var(--ease-standard);
+}
+
+.coke-site .btn-sticker,
+.coke-site .customer-action--primary {
+  border: 2px solid var(--ink-900);
+  background: var(--claw-500);
+  color: #fff;
+  box-shadow: 0 10px 0 rgba(27, 20, 16, 0.12);
+}
+
+.coke-site .btn-sticker:hover,
+.coke-site .customer-action--primary:hover {
+  transform: translateY(-1px);
+  background: var(--claw-600);
+}
+
+.coke-site .btn-sticker:active,
+.coke-site .customer-action--primary:active,
+.coke-site .customer-action:active {
+  transform: translateY(0);
+}
+
+.coke-site .btn-ghost,
+.coke-site .customer-action--secondary {
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-900);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .btn-ghost:hover,
+.coke-site .customer-action--secondary:hover {
+  border-color: rgba(27, 20, 16, 0.18);
+  background: #fff;
+}
+
+.coke-site .customer-action[disabled],
+.coke-site .customer-action:disabled,
+.coke-site .btn-sticker:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+  transform: none;
+}
+
+.coke-site .hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.coke-site .stat {
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .stat strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--ink-1000);
+}
+
+.coke-site .stat span {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.coke-site .hero-stage {
+  position: relative;
+  min-height: 620px;
+}
+
+.coke-site .chip {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  border: 2px solid rgba(27, 20, 16, 0.12);
+  background: #fff9f1;
+  box-shadow: 0 12px 30px rgba(27, 20, 16, 0.12);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.coke-site .chip .ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--claw-500);
+  color: #fff;
+  font-size: 12px;
+}
+
+.coke-site .chip .ic.alt {
+  background: var(--olive-500);
+}
+
+.coke-site .chip.a {
+  top: 38px;
+  left: 18px;
+  transform: rotate(-6deg);
+}
+
+.coke-site .chip.b {
+  top: 118px;
+  right: 4px;
+  transform: rotate(5deg);
+}
+
+.coke-site .hero-card {
+  position: relative;
+  height: 100%;
+  min-height: 620px;
+  overflow: hidden;
+  border: 2px solid rgba(27, 20, 16, 0.12);
+  border-radius: 34px;
+  background:
+    linear-gradient(180deg, #f9eed7 0%, #f6efe4 46%, #f1e2c0 100%);
+  box-shadow: 0 28px 60px rgba(27, 20, 16, 0.18);
+}
+
+.coke-site .hero-sky {
+  position: absolute;
+  inset: 0 0 34% 0;
+  background: linear-gradient(180deg, #f9e6c3 0%, #f4c9a0 100%);
+}
+
+.coke-site .hero-ground {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 34%;
+  background: linear-gradient(180deg, #dfcf97 0%, #d8c584 100%);
+}
+
+.coke-site .sun {
+  position: absolute;
+  top: 54px;
+  right: 88px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: #f7ac3e;
+  box-shadow: 0 0 0 14px rgba(247, 172, 62, 0.18);
+}
+
+.coke-site .cloud {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.coke-site .cloud::before,
+.coke-site .cloud::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.coke-site .cloud.c1 {
+  top: 82px;
+  left: 68px;
+  width: 110px;
+  height: 42px;
+}
+
+.coke-site .cloud.c2 {
+  top: 146px;
+  right: 176px;
+  width: 86px;
+  height: 34px;
+}
+
+.coke-site .cloud::before {
+  width: 44px;
+  height: 44px;
+  left: 14px;
+  top: -16px;
+}
+
+.coke-site .cloud::after {
+  width: 52px;
+  height: 52px;
+  right: 14px;
+  top: -18px;
+}
+
+.coke-site .tag-speech {
+  position: absolute;
+  top: 202px;
+  left: 52px;
+  z-index: 2;
+  max-width: 148px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 2px solid rgba(27, 20, 16, 0.12);
+  background: #fff6e9;
+  color: var(--ink-900);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  box-shadow: 0 12px 24px rgba(27, 20, 16, 0.1);
+}
+
+.coke-site .tag-speech.r {
+  top: 252px;
+  left: auto;
+  right: 40px;
+  transform: rotate(4deg);
+  background: #fff9f1;
+}
+
+.coke-site .hero-mascots {
+  position: absolute;
+  left: 54px;
+  right: 54px;
+  bottom: 188px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.coke-site .hero-mascot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid rgba(27, 20, 16, 0.16);
+  color: var(--ink-1000);
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-style: italic;
+  font-weight: 700;
+  box-shadow: 0 14px 28px rgba(27, 20, 16, 0.12);
+}
+
+.coke-site .hero-mascot--olive {
+  width: 152px;
+  height: 184px;
+  border-radius: 46% 46% 34% 34%;
+  background: #949057;
+}
+
+.coke-site .hero-mascot--orange {
+  width: 138px;
+  height: 170px;
+  border-radius: 46% 46% 34% 34%;
+  background: #ef8d53;
+}
+
+.coke-site .hero-stage-card {
+  position: absolute;
+  left: 50%;
+  right: 30px;
+  bottom: 28px;
+  z-index: 3;
+  padding: 18px;
+  border-radius: 28px;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: rgba(255, 251, 245, 0.94);
+  box-shadow: 0 18px 40px rgba(27, 20, 16, 0.16);
+}
+
+.coke-site .hero-stage-card__top {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.coke-site .hero-stage-card__top svg {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 50%;
+  background: rgba(232, 105, 60, 0.12);
+  color: var(--claw-600);
+}
+
+.coke-site .hero-stage-card__top strong {
+  display: block;
+  font-size: 14px;
+  color: var(--ink-1000);
+}
+
+.coke-site .hero-stage-card__top p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+.coke-site .hero-stage-card__thread {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.coke-site .hero-stage-card .bubble {
+  max-width: 88%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.coke-site .hero-stage-card .bubble--user {
+  justify-self: end;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: #fff;
+  color: var(--ink-900);
+}
+
+.coke-site .hero-stage-card .bubble--coke {
+  justify-self: start;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: #fff4ea;
+}
+
+.coke-site .bubble__text {
+  display: block;
+  margin-top: 10px;
+  color: var(--ink-900);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.coke-site .ticker {
+  overflow: hidden;
+  border-top: 1px solid rgba(27, 20, 16, 0.08);
+  border-bottom: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.coke-site .ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  white-space: nowrap;
+  padding: 14px 0;
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: kap-ticker 24s linear infinite;
+}
+
+.coke-site .sep {
+  margin-left: 18px;
+  color: var(--claw-500);
+}
+
+@keyframes kap-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.coke-site .block {
+  padding: 82px 0 0;
+}
+
+.coke-site .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.coke-site .block h2 {
+  margin: 0;
+  max-width: 18ch;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5vw, 62px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  color: var(--ink-1000);
+}
+
+.coke-site .block h2 em,
+.coke-site .block h2 .accent {
+  color: var(--claw-600);
+  font-style: italic;
+}
+
+.coke-site .lead {
+  max-width: 44rem;
+  margin: 18px 0 0;
+  color: var(--ink-700);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.coke-site .caps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.coke-site .cap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 310px;
+  padding: 22px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  border-radius: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .cap.c1 { background: #fff8ea; }
+.coke-site .cap.c2 { background: #f3f0df; }
+.coke-site .cap.c3 { background: #f6ede3; }
+.coke-site .cap.c4 { background: #efe8cf; }
+.coke-site .cap.c5 { background: #fff3e7; }
+
+.coke-site .cap .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--ink-900);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.coke-site .cap h3 {
+  margin: 18px 0 0;
+  font-size: 24px;
+  line-height: 1.14;
+  letter-spacing: -0.03em;
+  color: var(--ink-1000);
+}
+
+.coke-site .cap p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-700);
+}
+
+.coke-site .cap .illus {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--claw-600);
+}
+
+.coke-site .scenarios-block .lead {
+  max-width: 48rem;
+}
+
+.coke-site .scen-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 34px;
+}
+
+.coke-site .scen {
+  padding: 26px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .scn-tag {
+  display: inline-flex;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(122, 122, 61, 0.12);
+  color: var(--olive-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.coke-site .scen h3 {
+  margin: 18px 0 0;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  color: var(--ink-1000);
+}
+
+.coke-site .scen p {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-700);
+}
+
+.coke-site .preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px dashed rgba(27, 20, 16, 0.16);
+  background: rgba(255, 250, 244, 0.88);
+}
+
+.coke-site .preview.o { background: rgba(255, 244, 231, 0.92); }
+.coke-site .preview.g { background: rgba(243, 242, 223, 0.92); }
+.coke-site .preview.b { background: rgba(243, 236, 229, 0.92); }
+
+.coke-site .preview .bubble {
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--ink-900);
+  font-size: 14px;
+  line-height: 1.55;
+  box-shadow: none;
+}
+
+.coke-site .preview .bubble.me {
+  justify-self: end;
+}
+
+.coke-site .preview .bubble.ai {
+  background: #fff3e7;
+}
+
+.coke-site .preview .bubble.file {
+  max-width: none;
+  border: 1px dashed rgba(27, 20, 16, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.coke-site .preview .bubble small {
+  display: block;
+  margin-top: 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.coke-site .quoteband {
+  padding: 88px 0 0;
+}
+
+.coke-site .quoteband .inner {
+  width: min(var(--max-content), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto;
+  padding: 34px;
+  border-radius: 32px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  background: linear-gradient(135deg, rgba(232, 105, 60, 0.16), rgba(122, 122, 61, 0.14));
+}
+
+.coke-site .quoteband blockquote {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: var(--ink-1000);
+}
+
+.coke-site .quoteband blockquote span {
+  color: var(--claw-700);
+  font-style: italic;
+}
+
+.coke-site .quoteband .cite {
+  margin-top: 16px;
+  color: var(--ink-700);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.coke-site .voices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 30px;
+}
+
+.coke-site .voice {
+  padding: 24px;
+  border-radius: 28px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .voice .head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.coke-site .voice .avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f4d3b7 0%, #eadb9e 100%);
+  color: var(--ink-1000);
+  font-weight: 800;
+}
+
+.coke-site .voice .who {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink-1000);
+}
+
+.coke-site .voice .role {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.coke-site .voice .stars {
+  margin-top: 18px;
+  color: var(--claw-500);
+  letter-spacing: 0.18em;
+}
+
+.coke-site .voice blockquote {
+  margin: 14px 0 0;
+  color: var(--ink-700);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.coke-site .dl-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+  gap: 28px;
+  padding: 30px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  border-radius: 34px;
+  background: linear-gradient(180deg, rgba(255, 247, 234, 0.9), rgba(245, 239, 228, 0.92));
+  box-shadow: var(--shadow-md);
+}
+
+.coke-site .download-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.coke-site .download-input {
+  flex: 1 1 220px;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(27, 20, 16, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink-1000);
+  font-size: 14px;
+}
+
+.coke-site .download-input:focus {
+  outline: none;
+  border-color: rgba(232, 105, 60, 0.4);
+  box-shadow: 0 0 0 4px rgba(232, 105, 60, 0.12);
+}
+
+.coke-site .download-thanks {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: rgba(122, 122, 61, 0.12);
+  color: var(--ink-900);
+  font-weight: 700;
+}
+
+.coke-site .download-note {
+  margin: 14px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.coke-site .plats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.coke-site .plat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 112px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink-1000);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.coke-site .plat small {
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.coke-site.customer-shell-page {
+  min-height: 100vh;
+}
+
+.coke-site .customer-shell__header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(246, 241, 232, 0.88);
+  backdrop-filter: blur(16px);
+}
+
+.coke-site .customer-shell__header-inner,
+.coke-site .customer-shell__main {
+  width: min(var(--max-content), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto;
+}
+
+.coke-site .customer-shell__header-inner {
+  padding: 18px 0 16px;
+}
+
+.coke-site .customer-shell__header-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.coke-site .customer-shell__header-copy {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.coke-site .customer-shell__header-actions {
+  margin-left: auto;
+}
+
+.coke-site .customer-shell__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.coke-site .customer-shell__route-copy {
+  margin: 12px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.coke-site .customer-shell__nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.coke-site .customer-shell__nav-link[aria-current="page"] {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  color: var(--cream-100);
+}
+
+.coke-site .customer-shell__main {
+  padding: 38px 0 84px;
+}
+
+.coke-site .customer-shell__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.coke-site .customer-shell__hero {
+  padding: 28px;
+  border-radius: 30px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  background: linear-gradient(180deg, rgba(255, 247, 234, 0.92), rgba(241, 230, 204, 0.88));
+  box-shadow: var(--shadow-md);
+}
+
+.coke-site .customer-shell__eyebrow {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.coke-site .customer-shell__title {
+  margin: 18px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 4vw, 56px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  color: var(--ink-1000);
+}
+
+.coke-site .customer-shell__body,
+.coke-site .customer-shell__secondary {
+  margin: 16px 0 0;
+  color: var(--ink-700);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.coke-site .customer-shell__secondary {
+  color: var(--fg-muted);
+}
+
+.coke-site .customer-shell__trust {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.coke-site .customer-shell__trust-chip {
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  color: var(--ink-900);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.coke-site .customer-shell__content {
+  min-width: 0;
+}
+
+.coke-site .customer-view {
+  display: grid;
+  gap: 18px;
+}
+
+.coke-site .customer-view--narrow {
+  max-width: 680px;
+}
+
+.coke-site .customer-view--wide {
+  max-width: 860px;
+}
+
+.coke-site .customer-panel {
+  padding: 28px;
+  border-radius: 30px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .customer-panel--hero,
+.coke-site .customer-panel--wide {
+  background: linear-gradient(180deg, rgba(255, 250, 243, 0.92), rgba(246, 241, 232, 0.92));
+}
+
+.coke-site .customer-panel__head {
+  margin-bottom: 18px;
+}
+
+.coke-site .customer-panel__eyebrow {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.coke-site .customer-panel__title {
+  margin: 16px 0 0;
+  font-size: clamp(32px, 4vw, 46px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  color: var(--ink-1000);
+}
+
+.coke-site .customer-panel__body {
+  margin: 14px 0 0;
+  color: var(--ink-700);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.coke-site .customer-link-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.coke-site .customer-link-card {
+  display: block;
+  padding: 24px;
+  border-radius: 28px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-sm);
+  transition: transform 120ms ease, box-shadow var(--dur-base) var(--ease-standard);
+}
+
+.coke-site .customer-link-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.coke-site .customer-link-card__eyebrow {
+  display: inline-flex;
+  margin-bottom: 14px;
+  color: var(--olive-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.coke-site .customer-link-card h2 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.06;
+  color: var(--ink-1000);
+}
+
+.coke-site .customer-link-card p {
+  margin: 12px 0 0;
+  color: var(--ink-700);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.coke-site .customer-link-card__cta {
+  display: inline-flex;
+  margin-top: 18px;
+  color: var(--claw-600);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.coke-site .customer-status-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.coke-site .customer-status-list p,
+.coke-site .customer-run-summary p,
+.coke-site .customer-inline-note p {
+  margin: 0;
+  color: inherit;
+}
+
+.coke-site .customer-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.coke-site .customer-inline-note,
+.coke-site .customer-run-summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-700);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.coke-site .customer-inline-note--error,
+.coke-site .customer-run-summary--error {
+  background: #FCEEEB;
+  border-color: rgba(206, 80, 38, 0.2);
+  color: var(--claw-700);
+}
+
+.coke-site .customer-inline-note--warning,
+.coke-site .customer-run-summary--warning {
+  background: #FFF4DD;
+  border-color: rgba(214, 144, 38, 0.2);
+  color: #6e4a11;
+}
+
+.coke-site .customer-run-summary--success {
+  background: #EEF8F1;
+  border-color: rgba(36, 96, 59, 0.18);
+  color: #24603B;
+}
+
+.coke-site .customer-run-summary--info {
+  background: #EEF6FB;
+  border-color: rgba(48, 120, 167, 0.18);
+  color: #24547B;
+}
+
+.coke-site .customer-inline-note__title,
+.coke-site .customer-run-summary__eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1080px) {
+  .coke-site .hero-grid,
+  .coke-site .customer-shell__grid,
+  .coke-site .dl-card {
+    grid-template-columns: 1fr;
+  }
+
+  .coke-site .caps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coke-site .scen-grid,
+  .coke-site .voices {
+    grid-template-columns: 1fr;
+  }
+
+  .coke-site .hero-stage {
+    min-height: 560px;
+  }
+}
+
+@media (max-width: 720px) {
+  .coke-site .site-header__inner,
+  .coke-site .customer-shell__header-top {
+    flex-wrap: wrap;
+  }
+
+  .coke-site .site-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .coke-site .hero {
+    padding-top: 26px;
+  }
+
+  .coke-site .hero__title {
+    font-size: clamp(42px, 14vw, 62px);
+  }
+
+  .coke-site .hero-stage {
+    min-height: 500px;
+  }
+
+  .coke-site .hero-stage-card {
+    left: 18px;
+    right: 18px;
+  }
+
+  .coke-site .hero-mascots {
+    left: 26px;
+    right: 26px;
+  }
+
+  .coke-site .hero-stats,
+  .coke-site .plats,
+  .coke-site .caps {
+    grid-template-columns: 1fr;
+  }
+
+  .coke-site .customer-shell__nav {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .coke-site .customer-action-row {
+    flex-direction: column;
+  }
+
+  .coke-site .customer-action,
+  .coke-site .btn-sticker,
+  .coke-site .btn-ghost {
+    width: 100%;
+  }
+}

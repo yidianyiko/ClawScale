@@ -56,7 +56,7 @@ function getPreflightDescription(preflight: CustomerGoogleCalendarImportPrefligh
     return getBlockedState(preflight.blockedReason)?.description ?? 'Resolve account access before starting the import.';
   }
 
-  return 'Connect Google Calendar to the active Coke conversation for this customer account.';
+  return 'Connect Google Calendar to the active Kap conversation for this customer account.';
 }
 
 function getBlockedState(blockedReason: string | null | undefined): {
@@ -69,7 +69,7 @@ function getBlockedState(blockedReason: string | null | undefined): {
     case 'conversation_required':
       return {
         title: 'Conversation required',
-        description: 'Start or resume a Coke conversation first, then return here to launch the Google Calendar import.',
+        description: 'Start or resume a Kap conversation first, then return here to launch the Google Calendar import.',
         ctaHref: '/channels/wechat-personal',
         ctaLabel: 'Open customer channels',
       };
@@ -110,6 +110,9 @@ function CustomerCalendarImportPageContent() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState('');
+  const pageClassName = 'customer-view customer-view--wide';
+  const panelClassName = 'customer-panel customer-panel--wide';
+  const primaryActionClassName = 'customer-action customer-action--primary';
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +181,12 @@ function CustomerCalendarImportPageContent() {
   const importing = latestRun?.status === 'authorizing' || latestRun?.status === 'importing';
   const showStartButton = readyToStart && !loading && !importing;
   const run = latestRun;
+  const runTone =
+    importing ? 'customer-run-summary--info' : run?.status === 'succeeded_with_errors'
+      ? 'customer-run-summary--warning'
+      : run?.status === 'failed'
+        ? 'customer-run-summary--error'
+        : 'customer-run-summary--success';
 
   async function handleStartImport() {
     setStarting(true);
@@ -199,87 +208,61 @@ function CustomerCalendarImportPageContent() {
   }
 
   return (
-    <section className="mx-auto max-w-3xl space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-      <div>
-        <p className="text-sm font-medium uppercase tracking-[0.3em] text-slate-500">Google Calendar import</p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">Import your Google Calendar</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-          {preflight ? getPreflightDescription(preflight) : 'Checking import readiness for this customer account.'}
-        </p>
+    <section className={pageClassName}>
+      <div className={panelClassName}>
+        <div className="customer-panel__head">
+          <p className="customer-panel__eyebrow">Google Calendar import</p>
+          <h1 className="customer-panel__title">Import your Google Calendar</h1>
+          <p className="customer-panel__body">
+            {preflight ? getPreflightDescription(preflight) : 'Checking import readiness for this customer account.'}
+          </p>
+        </div>
+
+        {callbackState ? (
+          <div className="customer-inline-note">
+            {callbackState === 'error'
+              ? 'The Google authorization callback reported an error. The latest import summary is shown below.'
+              : 'Google authorization finished. Refreshing the latest import summary.'}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <p className="customer-inline-note">Loading your Google Calendar import status...</p>
+        ) : error ? (
+          <p className="customer-inline-note customer-inline-note--error">{error}</p>
+        ) : null}
+
+        {!loading && !error && blockedState ? (
+          <div className="customer-inline-note customer-inline-note--warning">
+            <h2 className="customer-inline-note__title">{blockedState.title}</h2>
+            <p>{blockedState.description}</p>
+            <Link href={blockedState.ctaHref} className="customer-action customer-action--secondary">
+              {blockedState.ctaLabel}
+            </Link>
+          </div>
+        ) : null}
+
+        {!loading && !error && summaryNotice ? <div className="customer-inline-note">{summaryNotice}</div> : null}
+
+        {!loading && !error && run ? (
+          <div className={`customer-run-summary ${runTone}`}>
+            <p className="customer-run-summary__eyebrow">{getRunTitle(run)}</p>
+            <p>{getRunDescription(run)}</p>
+            <p>{formatRunSummary(run)}</p>
+            {run.providerAccountEmail ? <p>Connected account: {run.providerAccountEmail}</p> : null}
+          </div>
+        ) : null}
+
+        {!loading && !error && !blockedState && !run ? (
+          <p className="customer-inline-note">No calendar import has run yet.</p>
+        ) : null}
+
+        {showStartButton ? (
+          <button type="button" onClick={handleStartImport} disabled={starting} className={primaryActionClassName}>
+            {starting ? 'Starting Google Calendar import...' : 'Start Google Calendar import'}
+          </button>
+        ) : null}
       </div>
-
-      {callbackState ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-          {callbackState === 'error'
-            ? 'The Google authorization callback reported an error. The latest import summary is shown below.'
-            : 'Google authorization finished. Refreshing the latest import summary.'}
-        </div>
-      ) : null}
-
-      {loading ? (
-        <p className="text-sm leading-6 text-slate-600">Loading your Google Calendar import status...</p>
-      ) : error ? (
-        <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">
-          {error}
-        </p>
-      ) : null}
-
-      {!loading && !error && blockedState ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-          <h2 className="text-lg font-semibold tracking-tight text-amber-950">{blockedState.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-amber-900">{blockedState.description}</p>
-          <Link
-            href={blockedState.ctaHref}
-            className="mt-4 inline-flex rounded-full border border-amber-300 px-4 py-2 text-sm font-medium text-amber-950 transition hover:border-amber-500"
-          >
-            {blockedState.ctaLabel}
-          </Link>
-        </div>
-      ) : null}
-
-      {!loading && !error && summaryNotice ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-          {summaryNotice}
-        </div>
-      ) : null}
-
-      {!loading && !error && run ? (
-        <div
-          className={`rounded-2xl border px-5 py-4 ${
-            importing
-              ? 'border-sky-200 bg-sky-50'
-              : run.status === 'succeeded_with_errors'
-                ? 'border-amber-200 bg-amber-50'
-                : run.status === 'failed'
-                  ? 'border-rose-200 bg-rose-50'
-                  : 'border-emerald-200 bg-emerald-50'
-          }`}
-        >
-          <p className="text-sm font-medium uppercase tracking-[0.25em] text-slate-500">{getRunTitle(run)}</p>
-          <p className="mt-2 text-sm leading-6 text-slate-700">{getRunDescription(run)}</p>
-          <p className="mt-2 text-sm leading-6 text-slate-700">{formatRunSummary(run)}</p>
-          {run.providerAccountEmail ? (
-            <p className="mt-2 text-sm leading-6 text-slate-600">Connected account: {run.providerAccountEmail}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {!loading && !error && !blockedState && !run ? (
-        <p className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-6 text-slate-600">
-          No calendar import has run yet.
-        </p>
-      ) : null}
-
-      {showStartButton ? (
-        <button
-          type="button"
-          onClick={handleStartImport}
-          disabled={starting}
-          className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {starting ? 'Starting Google Calendar import...' : 'Start Google Calendar import'}
-        </button>
-      ) : null}
     </section>
   );
 }

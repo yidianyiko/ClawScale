@@ -62,6 +62,10 @@ function CustomerSubscriptionPageContent() {
   const [error, setError] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const loadModeRef = useRef<PageMode | null>(null);
+  const pageClassName = 'customer-view customer-view--narrow';
+  const panelClassName = 'customer-panel customer-panel--narrow';
+  const primaryActionClassName = 'customer-action customer-action--primary';
+  const secondaryActionClassName = 'customer-action customer-action--secondary';
 
   useEffect(() => {
     if (mode === 'cancel') {
@@ -132,29 +136,29 @@ function CustomerSubscriptionPageContent() {
     const successReadyForSetup = snapshot?.subscriptionActive === true;
 
     return (
-      <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{successCopy.title}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{successCopy.description}</p>
+      <section className={pageClassName}>
+        <div className={panelClassName}>
+          <p className="customer-panel__eyebrow">{locale === 'zh' ? '支付状态' : 'Payment status'}</p>
+          <h1 className="customer-panel__title">{successCopy.title}</h1>
+          <p className="customer-panel__body">{successCopy.description}</p>
         {loading ? (
-          <p className="mt-3 text-sm leading-6 text-slate-600">Refreshing your subscription status...</p>
+          <p className="customer-inline-note">Refreshing your subscription status...</p>
         ) : error ? (
-          <p className="mt-3 text-sm leading-6 text-rose-700">{error}</p>
+          <p className="customer-inline-note customer-inline-note--error">{error}</p>
         ) : null}
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href={successReadyForSetup ? '/channels/wechat-personal' : '/account/subscription'}
-            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            {successReadyForSetup ? successCopy.primaryCta : successCopy.secondaryCta}
-          </Link>
-          {successReadyForSetup ? (
+          <div className="customer-action-row">
             <Link
-              href="/account/subscription"
-              className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
+              href={successReadyForSetup ? '/channels/wechat-personal' : '/account/subscription'}
+              className={primaryActionClassName}
             >
-              {successCopy.secondaryCta}
+              {successReadyForSetup ? successCopy.primaryCta : successCopy.secondaryCta}
             </Link>
-          ) : null}
+            {successReadyForSetup ? (
+              <Link href="/account/subscription" className={secondaryActionClassName}>
+                {successCopy.secondaryCta}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </section>
     );
@@ -162,22 +166,19 @@ function CustomerSubscriptionPageContent() {
 
   if (mode === 'cancel') {
     return (
-      <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{cancelCopy.title}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{cancelCopy.description}</p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href="/account/subscription"
-            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            {cancelCopy.primaryCta}
-          </Link>
-          <Link
-            href="/channels/wechat-personal"
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
-            {cancelCopy.secondaryCta}
-          </Link>
+      <section className={pageClassName}>
+        <div className={panelClassName}>
+          <p className="customer-panel__eyebrow">{locale === 'zh' ? '支付状态' : 'Payment status'}</p>
+          <h1 className="customer-panel__title">{cancelCopy.title}</h1>
+          <p className="customer-panel__body">{cancelCopy.description}</p>
+          <div className="customer-action-row">
+            <Link href="/account/subscription" className={primaryActionClassName}>
+              {cancelCopy.primaryCta}
+            </Link>
+            <Link href="/channels/wechat-personal" className={secondaryActionClassName}>
+              {cancelCopy.secondaryCta}
+            </Link>
+          </div>
         </div>
       </section>
     );
@@ -191,62 +192,59 @@ function CustomerSubscriptionPageContent() {
   const mustVerifyEmail = snapshot?.accountAccessDeniedReason === 'email_not_verified';
 
   return (
-    <section className="mx-auto max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-8 shadow-sm">
-      <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{renewCopy.title}</h1>
+    <section className={pageClassName}>
+      <div className={panelClassName}>
+        <p className="customer-panel__eyebrow">{locale === 'zh' ? '账号访问' : 'Account access'}</p>
+        <h1 className="customer-panel__title">{renewCopy.title}</h1>
 
-      {loading ? (
-        <p className="mt-3 text-sm leading-6 text-slate-600">Loading subscription status...</p>
-      ) : error ? (
-        <p className="mt-3 text-sm leading-6 text-rose-700">{error}</p>
-      ) : snapshot ? (
-        <div className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
-          <p>
-            {snapshot.subscriptionActive ? 'Subscription is active.' : 'Subscription renewal is required.'}
-            {expiry ? ` Expires ${expiry}.` : ''}
-          </p>
-          <p>
-            {snapshot.emailVerified
-              ? 'Email is verified.'
-              : 'Email verification is still required before checkout is available.'}
-          </p>
-          <p>
-            {snapshot.accountStatus === 'suspended'
-              ? 'The customer account is suspended.'
-              : 'The customer account is active.'}
-          </p>
-        </div>
-      ) : null}
+        {loading ? (
+          <p className="customer-inline-note">Loading subscription status...</p>
+        ) : error ? (
+          <p className="customer-inline-note customer-inline-note--error">{error}</p>
+        ) : snapshot ? (
+          <div className="customer-status-list">
+            <p>
+              {snapshot.subscriptionActive ? 'Subscription is active.' : 'Subscription renewal is required.'}
+              {expiry ? ` Expires ${expiry}.` : ''}
+            </p>
+            <p>
+              {snapshot.emailVerified
+                ? 'Email is verified.'
+                : 'Email verification is still required before checkout is available.'}
+            </p>
+            <p>
+              {snapshot.accountStatus === 'suspended'
+                ? 'The customer account is suspended.'
+                : 'The customer account is active.'}
+            </p>
+          </div>
+        ) : null}
 
-      {!loading && !error && snapshot ? (
-        <div className="mt-8 flex flex-wrap gap-3">
-          {canStartCheckout ? (
-            <button
-              type="button"
-              onClick={handleCheckout}
-              disabled={checkoutLoading}
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {checkoutLoading ? 'Starting checkout...' : copy.renewSubscription}
-            </button>
-          ) : null}
-          {mustVerifyEmail ? (
-            <Link
-              href="/auth/verify-email"
-              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              {copy.verifyEmail}
+        {!loading && !error && snapshot ? (
+          <div className="customer-action-row">
+            {canStartCheckout ? (
+              <button
+                type="button"
+                onClick={handleCheckout}
+                disabled={checkoutLoading}
+                className={primaryActionClassName}
+              >
+                {checkoutLoading ? 'Starting checkout...' : copy.renewSubscription}
+              </button>
+            ) : null}
+            {mustVerifyEmail ? (
+              <Link href="/auth/verify-email" className={primaryActionClassName}>
+                {copy.verifyEmail}
+              </Link>
+            ) : null}
+            <Link href="/channels/wechat-personal" className={secondaryActionClassName}>
+              {renewCopy.backToSetup}
             </Link>
-          ) : null}
-          <Link
-            href="/channels/wechat-personal"
-            className="rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-950 hover:text-slate-950"
-          >
-            {renewCopy.backToSetup}
-          </Link>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
 
-      {checkoutLoading ? <p className="mt-4 text-sm text-slate-500">Opening checkout…</p> : null}
+        {checkoutLoading ? <p className="customer-inline-note">Opening checkout…</p> : null}
+      </div>
     </section>
   );
 }

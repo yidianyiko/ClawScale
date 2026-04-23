@@ -40,11 +40,15 @@ describe('CokeHomepage', () => {
     });
 
     expect(container.querySelector('.coke-site')).toBeTruthy();
-    expect(container.querySelector('#platforms')).toBeTruthy();
-    expect(container.querySelector('#features')).toBeTruthy();
-    expect(container.querySelector('#architecture')).toBeTruthy();
-    expect(container.querySelector('#contact')).toBeTruthy();
+    expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
+    expect(container.querySelector('#capabilities')).toBeTruthy();
+    expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#voices')).toBeTruthy();
+    expect(container.querySelector('#download')).toBeTruthy();
+    expect(container.querySelector('.ticker')).toBeTruthy();
     expect(container.querySelector('.hero__title em')).toBeTruthy();
+    expect(container.textContent).toContain('Kap AI');
+    expect(container.textContent).toContain('© 2026 Kap AI');
     expect(container.textContent).toContain('WeChat');
     expect(container.textContent).toContain('Telegram');
     expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
@@ -60,7 +64,10 @@ describe('CokeHomepage', () => {
       );
     });
 
+    expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
     expect(container.textContent).toContain('AI 助手');
     expect(container.textContent).toContain('不断进化的');
+    expect(container.textContent).toContain('Kap AI');
+    expect(container.textContent).toContain('© 2026 Kap AI');
   });
 });
