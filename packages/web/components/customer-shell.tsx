@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { type Locale } from '../lib/i18n';
+import { KapKoalaBadge } from './kap-brand';
 import { LocaleSwitch } from './locale-switch';
 import { useLocale } from './locale-provider';
 
@@ -35,8 +36,8 @@ export function CustomerShell({ children }: { children: ReactNode }) {
         <div className="customer-shell__header-inner">
           <div className="customer-shell__header-top">
             <Link href="/" className="brand" aria-label="Kap AI">
+              <KapKoalaBadge className="brand__icon" />
               <span className="brand__mark">kap</span>
-              <span className="brand__dot" aria-hidden="true" />
             </Link>
 
             <p className="customer-shell__header-copy">{copy.brandTagline}</p>

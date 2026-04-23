@@ -17,4 +17,8 @@ describe('root metadata', () => {
       'Kap AI public homepage, user sign-in, registration, and personal channel setup.',
     );
   });
+
+  it('points the public site icon at the koala badge asset', () => {
+    expect(metadata.icons).toEqual({ icon: '/kap-koala-badge.png' });
+  });
 });

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Fraunces, Inter, JetBrains_Mono } from 'next/font/google';
 import Script from 'next/script';
 
+import { KapKoalaBadge } from '../components/kap-brand';
 import { LocaleProvider } from '../components/locale-provider';
 import { getLocaleBootstrapScript } from '../lib/i18n';
 import './globals.css';
@@ -29,7 +30,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'kap | An AI Partner That Grows With You',
   description: 'Kap AI public homepage, user sign-in, registration, and personal channel setup.',
-  icons: { icon: '/logo.png' },
+  icons: { icon: '/kap-koala-badge.png' },
 };
 
 export default function RootLayout({
@@ -45,8 +46,8 @@ export default function RootLayout({
         />
         <div id="locale-splash" className="coke-site-splash">
           <div className="coke-site-splash__card">
+            <KapKoalaBadge className="coke-site-splash__icon" />
             <span className="coke-site-splash__mark">kap</span>
-            <span className="coke-site-splash__dot" aria-hidden="true" />
             <p className="coke-site-splash__body">Preparing your workspace...</p>
           </div>
         </div>

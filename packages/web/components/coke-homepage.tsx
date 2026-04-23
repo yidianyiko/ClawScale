@@ -14,6 +14,7 @@ import {
   Workflow as WorkflowIcon,
 } from 'lucide-react';
 
+import { KapKoalaBadge, KapKoalaHero } from './kap-brand';
 import { type Locale } from '../lib/i18n';
 import { CokePublicShell } from './coke-public-shell';
 import { useLocale } from './locale-provider';
@@ -393,9 +394,8 @@ function Hero({ locale }: { locale: Locale }) {
               <div className="tag-speech">{decor.stickerLeft}</div>
               <div className="tag-speech r">{decor.stickerRight}</div>
 
-              <div className="hero-mascots">
-                <div className="hero-mascot hero-mascot--olive">K</div>
-                <div className="hero-mascot hero-mascot--orange">AI</div>
+              <div className="hero-mascot-figure">
+                <KapKoalaHero />
               </div>
 
               <div className="hero-stage-card">
@@ -670,8 +670,8 @@ function Footer() {
       <div className="site-footer__inner">
         <div>
           <Link href="/" className="site-footer__brand brand" aria-label="Kap AI">
+            <KapKoalaBadge className="brand__icon" />
             <span className="brand__mark">kap</span>
-            <span className="brand__dot" aria-hidden="true" />
           </Link>
           <p className="site-footer__copy">{homepage.footer.tagline}</p>
         </div>

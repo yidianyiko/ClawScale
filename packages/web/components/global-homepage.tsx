@@ -1,5 +1,7 @@
 import { ArrowRight, CalendarCheck2, CheckCheck, MessageCircle, Sparkles, Waypoints } from 'lucide-react';
 
+import { KapKoalaBadge } from './kap-brand';
+
 export const GLOBAL_WHATSAPP_URL =
   'https://api.whatsapp.com/send/?phone=8619917902815&text=Hi%20Kap%2C%20I%27d%20like%20to%20get%20started.';
 
@@ -70,8 +72,8 @@ export function GlobalHomepage() {
       <header className="global-header">
         <div className="global-header__inner">
           <a href="/global" className="global-brand" aria-label="Kap global">
+            <KapKoalaBadge className="global-brand__icon" />
             <span className="global-brand__wordmark">kap</span>
-            <span className="global-brand__dot" aria-hidden="true" />
           </a>
 
           <nav className="global-nav" aria-label="Global page">

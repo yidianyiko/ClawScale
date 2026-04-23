@@ -99,23 +99,26 @@
 
 .coke-site .brand {
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
   font-size: 26px;
   letter-spacing: -0.03em;
   color: var(--ink-900);
+  line-height: 1;
   font-variation-settings: 'SOFT' 30;
 }
-.coke-site .brand__dot {
+.coke-site .brand__icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+.coke-site .brand__mark {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--claw-500);
-  transform: translateY(-1px);
+  transform: translateY(1px);
 }
 
 .coke-site .site-nav {
@@ -1460,6 +1463,12 @@
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+.coke-site-splash__icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
 .coke-site-splash__mark {
   font-family: var(--font-fraunces, 'Fraunces', Georgia, serif);
   font-style: italic;
@@ -1467,13 +1476,6 @@
   font-size: 22px;
   letter-spacing: -0.03em;
   color: #1B1410;
-}
-.coke-site-splash__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #E8693C;
-  transform: translateY(-4px);
 }
 .coke-site-splash__body {
   margin: 0 0 0 4px;
@@ -1519,22 +1521,21 @@
 
 .global-site .global-brand {
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
+  align-items: center;
+  gap: 12px;
   color: #F7F3EC;
   font-family: var(--font-display);
   font-style: italic;
   font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.04em;
+  line-height: 1;
 }
-
-.global-site .global-brand__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--global-accent);
-  transform: translateY(-2px);
+.global-site .global-brand__icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .global-site .global-nav {
@@ -2421,41 +2422,21 @@
   background: #fff9f1;
 }
 
-.coke-site .hero-mascots {
+.coke-site .hero-mascot-figure {
   position: absolute;
-  left: 54px;
-  right: 54px;
-  bottom: 188px;
+  left: 36px;
+  width: min(44%, 268px);
+  bottom: 150px;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-}
-
-.coke-site .hero-mascot {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  border: 3px solid rgba(27, 20, 16, 0.16);
-  color: var(--ink-1000);
-  font-family: var(--font-display);
-  font-size: 44px;
-  font-style: italic;
-  font-weight: 700;
-  box-shadow: 0 14px 28px rgba(27, 20, 16, 0.12);
+  z-index: 2;
 }
-
-.coke-site .hero-mascot--olive {
-  width: 152px;
-  height: 184px;
-  border-radius: 46% 46% 34% 34%;
-  background: #949057;
-}
-
-.coke-site .hero-mascot--orange {
-  width: 138px;
-  height: 170px;
-  border-radius: 46% 46% 34% 34%;
-  background: #ef8d53;
+.coke-site .hero-mascot-figure img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 28px rgba(27, 20, 16, 0.16));
 }
 
 .coke-site .hero-stage-card {
@@ -3302,9 +3283,10 @@
     right: 18px;
   }
 
-  .coke-site .hero-mascots {
-    left: 26px;
-    right: 26px;
+  .coke-site .hero-mascot-figure {
+    left: 22px;
+    width: min(48%, 210px);
+    bottom: 158px;
   }
 
   .coke-site .hero-stats,

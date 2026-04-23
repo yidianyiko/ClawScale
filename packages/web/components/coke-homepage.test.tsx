@@ -41,12 +41,15 @@ describe('CokeHomepage', () => {
 
     expect(container.querySelector('.coke-site')).toBeTruthy();
     expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('#capabilities')).toBeTruthy();
     expect(container.querySelector('#scenarios')).toBeTruthy();
     expect(container.querySelector('#voices')).toBeTruthy();
     expect(container.querySelector('#download')).toBeTruthy();
     expect(container.querySelector('.ticker')).toBeTruthy();
     expect(container.querySelector('.hero__title em')).toBeTruthy();
+    expect(container.querySelector('.hero-mascot-figure')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.textContent).toContain('Kap AI');
     expect(container.textContent).toContain('© 2026 Kap AI');
     expect(container.textContent).toContain('WeChat');
@@ -65,6 +68,8 @@ describe('CokeHomepage', () => {
     });
 
     expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.textContent).toContain('AI 助手');
     expect(container.textContent).toContain('不断进化的');
     expect(container.textContent).toContain('Kap AI');

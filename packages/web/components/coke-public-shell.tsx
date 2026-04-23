@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { KapKoalaBadge } from './kap-brand';
 import { LocaleSwitch } from './locale-switch';
 import { useLocale } from './locale-provider';
 import { cn } from '../lib/utils';
@@ -30,8 +31,8 @@ export function CokePublicShell({
       <header className="site-header">
         <div className="site-header__inner">
           <Link href="/" className="brand" aria-label="Kap AI">
+            <KapKoalaBadge className="brand__icon" />
             <span className="brand__mark">kap</span>
-            <span className="brand__dot" aria-hidden="true" />
           </Link>
 
           <nav className="site-nav">
