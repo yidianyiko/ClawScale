@@ -51,6 +51,9 @@ describe('CustomerAuthLayout', () => {
     expect(container.querySelector('.coke-site')).toBeTruthy();
     expect(container.querySelector('.auth-shell')).toBeTruthy();
     expect(container.querySelector('.auth-hero')).toBeTruthy();
+    expect(container.querySelector('.auth-hero__spotlight')).toBeTruthy();
+    expect(container.querySelector('.auth-shell__stage')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
     expect(container.textContent).toContain('统一管理客户登录与通道接入');
     expect(container.textContent).toContain('处理登录、验证与个人微信接入');

@@ -1,6 +1,6 @@
 import { ArrowRight, CalendarCheck2, CheckCheck, MessageCircle, Sparkles, Waypoints } from 'lucide-react';
 
-import { KapKoalaBadge } from './kap-brand';
+import { KapKoalaBadge, KapKoalaHero } from './kap-brand';
 
 export const GLOBAL_WHATSAPP_URL =
   'https://api.whatsapp.com/send/?phone=8619917902815&text=Hi%20Kap%2C%20I%27d%20like%20to%20get%20started.';
@@ -55,6 +55,13 @@ const CHAT_THREAD: ReadonlyArray<ChatThreadMessage> = [
   { who: 'coke', text: 'On it. I will keep everything in this thread so you can adjust on the fly.', status: 'Sent' },
 ] as const;
 
+const GLOBAL_TICKER_ITEMS = [
+  'One warm thread on WhatsApp',
+  'Keep moving after the first message',
+  'Kap follows through in the same chat',
+  'Same brand language, one focused entry',
+] as const;
+
 function WhatsAppButton({ label, className = '' }: { label: string; className?: string }) {
   const resolvedClassName = className ? `global-cta global-cta--primary ${className}` : 'global-cta global-cta--primary';
 
@@ -68,7 +75,7 @@ function WhatsAppButton({ label, className = '' }: { label: string; className?: 
 
 export function GlobalHomepage() {
   return (
-    <div className="coke-site global-site">
+    <div className="coke-site global-site global-site--kap">
       <header className="global-header">
         <div className="global-header__inner">
           <a href="/global" className="global-brand" aria-label="Kap global">
@@ -131,6 +138,11 @@ export function GlobalHomepage() {
             </div>
 
             <div className="global-hero__stage" aria-hidden="true">
+              <div className="global-hero__mascot-wrap">
+                <div className="global-hero__sticker">Keep it in one warm thread.</div>
+                <KapKoalaHero className="global-hero__mascot" />
+              </div>
+
               <div className="global-stage-card">
                 <div className="global-stage-card__top">
                   <div className="global-stage-card__avatar">
@@ -174,6 +186,17 @@ export function GlobalHomepage() {
             </div>
           </div>
         </section>
+
+        <div className="global-ticker" aria-hidden="true">
+          <div className="global-ticker__track">
+            {[...GLOBAL_TICKER_ITEMS, ...GLOBAL_TICKER_ITEMS].map((item, index) => (
+              <span key={`${item}-${index}`}>
+                {item}
+                <span className="sep">●</span>
+              </span>
+            ))}
+          </div>
+        </div>
 
         <section id="promise" className="global-section">
           <div className="global-section__head">

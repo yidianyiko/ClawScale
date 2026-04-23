@@ -33,8 +33,10 @@ describe('GlobalHomepage', () => {
       root.render(<GlobalHomepage />);
     });
 
-    expect(container.querySelector('.global-site')).toBeTruthy();
+    expect(container.querySelector('.global-site.global-site--kap')).toBeTruthy();
+    expect(container.querySelector('.global-ticker')).toBeTruthy();
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
+    expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.textContent).toContain('An AI partner that grows with you');
     expect(container.textContent).toContain('WhatsApp');
     expect(container.textContent).toContain('Kap');

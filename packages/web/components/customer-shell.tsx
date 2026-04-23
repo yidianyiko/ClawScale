@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { type Locale } from '../lib/i18n';
-import { KapKoalaBadge } from './kap-brand';
+import { KapKoalaBadge, KapKoalaHero } from './kap-brand';
 import { LocaleSwitch } from './locale-switch';
 import { useLocale } from './locale-provider';
 
@@ -72,10 +72,21 @@ export function CustomerShell({ children }: { children: ReactNode }) {
       <main className="customer-shell__main">
         <section className="customer-shell__grid">
           <aside className="customer-shell__hero">
-            <p className="customer-shell__eyebrow">{copy.eyebrow}</p>
-            <h1 className="customer-shell__title">{copy.title}</h1>
-            <p className="customer-shell__body">{copy.body}</p>
-            <p className="customer-shell__secondary">{copy.secondaryBody}</p>
+            <div className="customer-shell__spotlight">
+              <div className="customer-shell__spotlight-copy">
+                <p className="customer-shell__eyebrow">{copy.eyebrow}</p>
+                <h1 className="customer-shell__title">{copy.title}</h1>
+                <p className="customer-shell__body">{copy.body}</p>
+                <p className="customer-shell__secondary">{copy.secondaryBody}</p>
+              </div>
+
+              <div className="customer-shell__spotlight-visual" aria-hidden="true">
+                <div className="customer-shell__spotlight-note">
+                  {locale === 'zh' ? '真正使用 Kap 的地方，就应该长得像 Kap。' : 'The real Kap product should look like Kap.'}
+                </div>
+                <KapKoalaHero className="customer-shell__mascot" />
+              </div>
+            </div>
 
             <div className="customer-shell__trust">
               {copy.trustLines.map((line) => (
@@ -86,7 +97,13 @@ export function CustomerShell({ children }: { children: ReactNode }) {
             </div>
           </aside>
 
-          <div className="customer-shell__content">{children}</div>
+          <div className="customer-shell__workspace">
+            <div className="customer-shell__workspace-bar">
+              <span>{copy.navLabel}</span>
+              <strong>{locale === 'zh' ? '用户主界面' : 'User-facing workspace'}</strong>
+            </div>
+            <div className="customer-shell__content">{children}</div>
+          </div>
         </section>
       </main>
     </div>
