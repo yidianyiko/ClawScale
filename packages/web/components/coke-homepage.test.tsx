@@ -60,6 +60,9 @@ describe('CokeHomepage', () => {
     expect(container.textContent).not.toContain('one public experience that feels coherent');
     expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
     expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/coke/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/api/coke/auth/login"]')).toBeFalsy();
   });
 
   it('renders Chinese hero copy', () => {

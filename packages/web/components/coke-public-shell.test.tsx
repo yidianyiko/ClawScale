@@ -47,6 +47,9 @@ describe('CokePublicShell', () => {
     expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/coke/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/api/coke/auth/login"]')).toBeFalsy();
     expect(container.textContent).toContain('Capabilities');
     expect(container.textContent).toContain('Scenarios');
     expect(container.textContent).toContain('Proof');
@@ -77,6 +80,9 @@ describe('CokePublicShell', () => {
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/register"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/coke/login"]')).toBeFalsy();
+    expect(container.querySelector('a[href="/api/coke/auth/login"]')).toBeFalsy();
     expect(container.textContent).toContain('能力');
     expect(container.textContent).toContain('场景');
     expect(container.textContent).toContain('口碑');
