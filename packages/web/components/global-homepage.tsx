@@ -7,59 +7,59 @@ export const GLOBAL_WHATSAPP_URL =
 
 const PROMISE_CARDS = [
   {
-    title: 'Think with you, not just answer you',
-    body: 'Use Kap as one steady thread for planning, drafting, coordinating, and remembering what still matters next.',
+    title: 'Start where the conversation already lives',
+    body: 'If WhatsApp is the fastest way to begin, Kap should meet you there without adding a second product to learn.',
   },
   {
-    title: 'Move from idea to follow-through',
-    body: 'Ask for outreach, reminders, light research, trip planning, or meeting coordination without juggling tools.',
+    title: 'Carry the next action in the same thread',
+    body: 'Plan the day, draft the follow-up, set the reminder, and keep the next move visible without resetting context.',
   },
   {
-    title: 'Stay in one familiar chat',
-    body: 'No setup ceremony. No dashboard maze. Just start talking in WhatsApp and keep the thread moving.',
+    title: 'Keep the entry simple',
+    body: 'Open the chat, send the real task, and keep moving. No dashboard maze, no extra ceremony.',
   },
 ] as const;
 
 const WORKFLOW_STEPS = [
   {
-    label: 'Start with a real task',
-    title: 'Drop the thing that is on your mind',
-    body: 'A meeting to schedule. A trip to plan. A note to send. Kap is designed for live requests, not demo prompts.',
+    label: 'Start with the task',
+    title: 'Say what needs to happen next',
+    body: 'A follow-up to send. A day to line up. A reminder to keep. Start with the real thing that needs moving.',
   },
   {
-    label: 'Keep the thread alive',
-    title: 'Ask follow-up questions without resetting context',
-    body: 'The conversation stays warm, so you can refine tone, timing, priorities, and next actions in one place.',
+    label: 'Keep it in one thread',
+    title: 'Refine the next move without starting over',
+    body: 'Adjust tone, timing, or priorities in the same chat instead of rebuilding the context from scratch.',
   },
   {
-    label: 'Let it close the loop',
-    title: 'Use Kap when the next move matters',
-    body: 'Turn open loops into sent messages, coordinated plans, reminders, and concrete next steps you can act on.',
+    label: 'Keep momentum',
+    title: 'Let Kap carry the open loop forward',
+    body: 'Use the same thread for drafts, reminders, and the next action that still needs to happen after the first reply.',
   },
 ] as const;
 
 type ChatThreadMessage = {
-  who: 'user' | 'coke';
+  who: 'user' | 'kap';
   text: string;
   status?: string;
 };
 
 const CHAT_THREAD: ReadonlyArray<ChatThreadMessage> = [
-  { who: 'user', text: 'Need a clean plan for tomorrow before 10am.' },
+  { who: 'user', text: 'Need the follow-up sent after the call.' },
   {
-    who: 'coke',
-    text: "You have space before 9:30. I can line up the morning, draft the follow-up, and remind you before it's time.",
-    status: 'Ready',
+    who: 'kap',
+    text: 'I will draft it, keep the tone calm, and remind you before it goes out.',
+    status: 'Ready to send',
   },
-  { who: 'user', text: 'Do that, and keep the tone calm.' },
-  { who: 'coke', text: 'On it. I will keep everything in this thread so you can adjust on the fly.', status: 'Sent' },
+  { who: 'user', text: 'Also line up tomorrow morning.' },
+  { who: 'kap', text: 'On it. I will keep both in this same thread.', status: 'Thread active' },
 ] as const;
 
 const GLOBAL_TICKER_ITEMS = [
-  'One warm thread on WhatsApp',
-  'Keep moving after the first message',
-  'Kap follows through in the same chat',
-  'Same brand language, one focused entry',
+  'One WhatsApp entry',
+  'The next move stays visible',
+  'Kap keeps the same thread moving',
+  'Start fast, keep context',
 ] as const;
 
 function WhatsAppButton({ label, className = '' }: { label: string; className?: string }) {
@@ -110,11 +110,11 @@ export function GlobalHomepage() {
                 <span>Available on WhatsApp</span>
               </div>
 
-              <h1 className="global-hero__title">An AI partner that grows with you</h1>
-              <p className="global-hero__lede">One chat to plan, coordinate, and follow through.</p>
+              <h1 className="global-hero__title">Start with one WhatsApp message.</h1>
+              <p className="global-hero__lede">Tell Kap what needs doing, then keep the same thread moving.</p>
               <p className="global-hero__body">
-                Kap is built for the moments when you need momentum, not another inbox. Message once, keep the thread
-                alive, and use the same conversation for planning, reminders, and next actions.
+                Plan the day, draft the follow-up, set the reminder, or hand off the next step without leaving the
+                chat you already opened.
               </p>
 
               <div className="global-hero__actions">
@@ -124,64 +124,47 @@ export function GlobalHomepage() {
               <ul className="global-proof" aria-label="Product promise">
                 <li className="global-proof__item">
                   <Sparkles size={14} aria-hidden="true" />
-                  <span>Fast first response</span>
+                  <span>Open chat in one tap</span>
                 </li>
                 <li className="global-proof__item">
                   <Waypoints size={14} aria-hidden="true" />
-                  <span>One ongoing thread</span>
+                  <span>Stay in one thread</span>
                 </li>
                 <li className="global-proof__item">
                   <CalendarCheck2 size={14} aria-hidden="true" />
-                  <span>Built for real follow-through</span>
+                  <span>No extra setup</span>
                 </li>
               </ul>
             </div>
 
             <div className="global-hero__stage" aria-hidden="true">
-              <div className="global-hero__mascot-wrap">
-                <div className="global-hero__sticker">Keep it in one warm thread.</div>
+              <div className="global-hero__scene">
+                <div className="global-hero__scene-sticker">WhatsApp first</div>
                 <KapKoalaHero className="global-hero__mascot" />
-              </div>
 
-              <div className="global-stage-card">
-                <div className="global-stage-card__top">
-                  <div className="global-stage-card__avatar">
-                    <MessageCircle size={15} />
-                  </div>
-                  <div>
-                    <div className="global-stage-card__name">Kap on WhatsApp</div>
-                    <div className="global-stage-card__meta">online and ready to help</div>
-                  </div>
-                </div>
-
-                <div className="global-thread">
-                  {CHAT_THREAD.map((message, index) => (
-                    <div key={index} className={`global-thread__bubble global-thread__bubble--${message.who}`}>
-                      <p>{message.text}</p>
-                      {message.status ? (
-                        <span className="global-thread__status">
-                          <CheckCheck size={12} aria-hidden="true" />
-                          {message.status}
-                        </span>
-                      ) : null}
+                <div className="global-hero__phone">
+                  <div className="global-hero__phone-top">
+                    <div className="global-hero__phone-app">
+                      <MessageCircle size={14} />
+                      <span>WhatsApp thread</span>
                     </div>
-                  ))}
+                    <div className="global-hero__phone-meta">Kap is ready</div>
+                  </div>
+
+                  <div className="global-thread">
+                    {CHAT_THREAD.map((message, index) => (
+                      <div key={index} className={`global-thread__bubble global-thread__bubble--${message.who}`}>
+                        <p>{message.text}</p>
+                        {message.status ? (
+                          <span className="global-thread__status">
+                            <CheckCheck size={12} aria-hidden="true" />
+                            {message.status}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-
-                <div className="global-stage-card__composer">
-                  <Sparkles size={14} aria-hidden="true" />
-                  <span>Kap is keeping your next move in view.</span>
-                </div>
-              </div>
-
-              <div className="global-stage-note global-stage-note--upper">
-                <span className="global-stage-note__label">steady context</span>
-                <p>Keep planning, drafting, and reminders in the same chat instead of starting over.</p>
-              </div>
-
-              <div className="global-stage-note global-stage-note--lower">
-                <span className="global-stage-note__label">clean conversion</span>
-                <p>Open the chat, send the first message, and you are in.</p>
               </div>
             </div>
           </div>
@@ -201,10 +184,10 @@ export function GlobalHomepage() {
         <section id="promise" className="global-section">
           <div className="global-section__head">
             <span className="global-section__eyebrow">Why Kap</span>
-            <h2 className="global-section__title">A personal operating rhythm, not a pile of tools</h2>
+            <h2 className="global-section__title">One focused entry into the same Kap product</h2>
             <p className="global-section__body">
-              The global page keeps the same Kap positioning as the main site, but everything points to one place:
-              your WhatsApp conversation.
+              The global page only has one job: get you into the WhatsApp thread fast, then keep the next action
+              moving there.
             </p>
           </div>
 
@@ -247,10 +230,10 @@ export function GlobalHomepage() {
           <div className="global-close__inner">
             <div>
               <span className="global-section__eyebrow global-section__eyebrow--light">Open the thread</span>
-              <h2 className="global-close__title">Start on WhatsApp and let the conversation compound.</h2>
+              <h2 className="global-close__title">Start on WhatsApp, then keep everything in the same thread.</h2>
               <p className="global-close__body">
-                There is no extra setup on this path. Open the chat, send a message, and use Kap like a partner who
-                stays with the task.
+                Open the chat, send the task once, and let Kap carry the draft, reminder, and next action forward
+                from there.
               </p>
             </div>
 

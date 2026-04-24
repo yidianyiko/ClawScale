@@ -82,65 +82,65 @@ const CAPABILITY_CARDS = {
   en: [
     {
       tone: 'c1',
-      eyebrow: 'Start fast',
-      title: 'Use the public homepage as a launchpad, not a brochure.',
-      body: 'The first screen points straight to sign-in, registration, and channel setup instead of hiding the product behind generic marketing copy.',
+      eyebrow: 'Plan',
+      title: 'Plan meetings, reminders, and the next move in one thread.',
+      body: 'Use Kap to line up tomorrow, a busy afternoon, or the first handoff before the context cools down.',
     },
     {
       tone: 'c2',
-      eyebrow: 'One shell',
-      title: 'Kap now carries one visual system across the public journey.',
-      body: 'Homepage, auth, and customer surfaces all inherit the same warm palette, stamped controls, and bold hierarchy.',
+      eyebrow: 'Draft',
+      title: 'Turn the loose thought into a sendable message.',
+      body: 'Ask Kap to draft replies, summaries, handoff notes, and check-in messages before you lose the thread.',
     },
     {
       tone: 'c3',
-      eyebrow: 'Persistent context',
-      title: 'The conversation preview promises follow-through, not one-off answers.',
-      body: 'Planning, reminders, subscription state, and setup actions all stay connected instead of living in separate visual worlds.',
+      eyebrow: 'Remind',
+      title: 'Do not stop at the answer. Keep the task moving.',
+      body: 'Carry reminders, follow-through, and open loops in the same conversation instead of restarting from zero.',
     },
     {
       tone: 'c4',
-      eyebrow: 'Clear routes',
-      title: 'Registration, login, renewal, and WeChat setup stay explicit.',
-      body: 'No route changes, no hidden jumps. The redesign only changes presentation and branding, not product behavior.',
+      eyebrow: 'Connect',
+      title: 'Start on the web, then continue in the channel you actually use.',
+      body: 'Sign in, register, personal WeChat setup, and WhatsApp entry points should feel like one product.',
     },
     {
       tone: 'c5',
-      eyebrow: 'Brand reset',
-      title: 'Kap now anchors every visible brand touchpoint.',
-      body: 'Shared shells, homepage copy, global WhatsApp funnel, auth text, and customer-facing account pages all speak in the same brand voice.',
+      eyebrow: 'Recover',
+      title: 'When access breaks, the next required action should still be obvious.',
+      body: 'Email verification, renewal, and reconnect steps stay readable instead of sending you into a detached flow.',
     },
   ],
   zh: [
     {
       tone: 'c1',
-      eyebrow: '快速开始',
-      title: '公开首页应该是启动台，而不是只会讲故事的 brochure。',
-      body: '第一屏直接把用户带到登录、注册和通道设置，不再用泛泛的营销语言挡住真实入口。',
+      eyebrow: '规划',
+      title: '把会议、提醒和下一步放进同一个线程里。',
+      body: '让 Kap 先帮你排顺明天、一个忙乱的下午，或第一个 handoff 之前该做的事。',
     },
     {
       tone: 'c2',
-      eyebrow: '统一外壳',
-      title: 'Kap 现在用一套视觉系统贯穿公开链路。',
-      body: '首页、认证、客户页面共享同一套暖色调、印章式按钮和更强的视觉层级。',
+      eyebrow: '起草',
+      title: '把要发出去的那条消息先起草出来。',
+      body: '在上下文还热的时候，让 Kap 先起草回复、总结、handoff 说明和跟进消息。',
     },
     {
       tone: 'c3',
-      eyebrow: '持续上下文',
-      title: '对话预览强调的是持续推进，不是一次性回答。',
-      body: '规划、提醒、续费状态和微信设置都在同一种产品叙事里，不再像几个拼起来的页面。',
+      eyebrow: '提醒',
+      title: '不要只拿到答案，还要把事情继续推进。',
+      body: '把提醒、跟进和待办都留在同一个线程里，不用每次重新讲一遍背景。',
     },
     {
       tone: 'c4',
-      eyebrow: '路径清晰',
-      title: '注册、登录、续费、微信设置这些关键入口仍然非常明确。',
-      body: '这次改版不碰路由和行为，只调整呈现方式和品牌语言。',
+      eyebrow: '连接',
+      title: '先从网页开始，再继续到你真正使用的渠道里。',
+      body: '登录、注册、个人微信设置和 WhatsApp 入口应该像同一个产品，而不是分开的几段流程。',
     },
     {
       tone: 'c5',
-      eyebrow: '品牌切换',
-      title: '所有用户可见的品牌触点现在都统一成 Kap。',
-      body: '共享 shell、主页文案、WhatsApp 落地页、auth 文案以及客户账号页都会用同一套 Kap 品牌表达。',
+      eyebrow: '恢复',
+      title: '访问受阻时，下一步该做什么也要一眼看懂。',
+      body: '邮箱验证、续费和重连动作保持清楚，不把你甩进割裂的恢复流程里。',
     },
   ],
 } satisfies Record<
@@ -152,92 +152,92 @@ const SCENARIOS = {
   en: [
     {
       tag: 'Planning',
-      title: 'Prepare tomorrow before the day starts.',
-      body: 'Use Kap to line up meetings, notes, reminders, and the first follow-up before the morning gets noisy.',
+      title: 'Line up tomorrow before the first meeting.',
+      body: 'Give Kap the rough plan first, then come back to a cleaner order, a draft follow-up, and a useful reminder.',
       previewClass: 'o',
       preview: [
-        { type: 'me', text: 'Need the day lined up before 10am.' },
-        { type: 'ai', text: 'I can sort the order, draft the follow-up, and remind you before the first handoff.' },
+        { type: 'me', text: 'Before 10am, sort the day and tell me what lands first.' },
+        { type: 'ai', text: 'I will line up the order, draft the first follow-up, and remind you before the handoff.' },
         { type: 'file', text: 'Tomorrow-plan.md', meta: 'Agenda, follow-up draft, and reminder timing' },
       ],
     },
     {
-      tag: 'Channels',
-      title: 'Bring the assistant into the channel you already use.',
-      body: 'From homepage to WeChat setup, the path stays visually coherent and operationally explicit.',
+      tag: 'Draft',
+      title: 'Turn the loose thought into a message you can send.',
+      body: 'When you already know the intent, let Kap draft the follow-up, summary, or handoff note before it fades.',
       previewClass: 'g',
       preview: [
-        { type: 'me', text: 'I want this tied to my personal WeChat.' },
-        { type: 'ai', text: 'Create the channel, scan the QR code, and I will keep the setup state visible.' },
-        { type: 'file', text: 'wechat-setup', meta: 'QR login, connection state, and reconnect actions' },
+        { type: 'me', text: 'Need a calm follow-up after today’s meeting.' },
+        { type: 'ai', text: 'I will draft the note and keep a cleaner version ready for you.' },
+        { type: 'file', text: 'follow-up-draft', meta: 'Reply draft, summary, and handoff note' },
       ],
     },
     {
-      tag: 'Renewal',
-      title: 'Handle blocked access without losing the thread.',
-      body: 'Subscription and verification pages should feel like part of the product, not a disconnected billing detour.',
+      tag: 'WeChat',
+      title: 'Reconnect your personal channel without guessing the state.',
+      body: 'If you need your own WeChat channel back online, Kap should keep the setup state and next action clear.',
       previewClass: 'b',
       preview: [
-        { type: 'me', text: 'What do I need before I can reconnect?' },
-        { type: 'ai', text: 'Verify email, renew access, then come back here to reconnect the channel.' },
-        { type: 'file', text: 'account-status', meta: 'Verification, renewal, and return-to-setup actions' },
+        { type: 'me', text: 'What do I need before I reconnect my WeChat?' },
+        { type: 'ai', text: 'Check verification, renew access if needed, then scan to reconnect.' },
+        { type: 'file', text: 'wechat-status', meta: 'Connection state, verification, and reconnect action' },
       ],
     },
     {
-      tag: 'Global',
-      title: 'Use the WhatsApp page as a focused global funnel.',
-      body: 'The global route still points to one chat entrypoint, but now it feels like the same product as the main site.',
+      tag: 'WhatsApp',
+      title: 'Start globally with one message and stay in the same thread.',
+      body: 'The global entry stays focused on WhatsApp, but it should still feel like the same Kap product.',
       previewClass: '',
       preview: [
-        { type: 'me', text: 'I just want to start on WhatsApp.' },
-        { type: 'ai', text: 'Open the chat, send one message, and stay in the same thread for the next move.' },
-        { type: 'file', text: 'global-entry', meta: 'WhatsApp CTA with the same Kap brand language' },
+        { type: 'me', text: 'I want to start from WhatsApp only.' },
+        { type: 'ai', text: 'Open the chat, send the task once, and keep the next steps in the same thread.' },
+        { type: 'file', text: 'whatsapp-entry', meta: 'Direct chat start and the next action' },
       ],
     },
   ],
   zh: [
     {
       tag: '规划',
-      title: '在一天真正开始之前，把明天先排出来。',
-      body: '让 Kap 先把会议、笔记、提醒和第一条 follow-up 排好，早上就不会被噪音打断。',
+      title: '在第一场会开始前，把明天先排顺。',
+      body: '先把粗略计划交给 Kap，回来时你会拿到更顺的顺序、第一条草稿和有用的提醒。',
       previewClass: 'o',
       preview: [
-        { type: 'me', text: '明天 10 点前，帮我把整天先排顺。' },
-        { type: 'ai', text: '我来整理顺序、起草跟进消息，并在第一个 handoff 前提醒你。' },
+        { type: 'me', text: '10 点前，先帮我排顺明天的顺序。' },
+        { type: 'ai', text: '我来整理顺序、起草第一条跟进，并在 handoff 前提醒你。' },
         { type: 'file', text: '明日计划.md', meta: '议程、跟进草稿和提醒时间' },
       ],
     },
     {
-      tag: '通道',
-      title: '把助手直接带进你已经在用的渠道里。',
-      body: '从首页到个人微信设置，整条路径应该既统一又清楚，而不是多个页面各说各话。',
+      tag: '起草',
+      title: '把脑子里那句模糊的话，先变成能发出去的消息。',
+      body: '当你的意图已经明确时，让 Kap 先把跟进、总结或 handoff 说明起草出来。',
       previewClass: 'g',
       preview: [
-        { type: 'me', text: '我想把它接到自己的微信里。' },
-        { type: 'ai', text: '先创建通道，再扫二维码登录，我会把整个连接状态持续显示出来。' },
-        { type: 'file', text: '微信设置', meta: '扫码登录、连接状态、重连动作' },
+        { type: 'me', text: '帮我起草今天会后的跟进。' },
+        { type: 'ai', text: '我会先写出一版稳妥的消息，再给你留一版更精简的。' },
+        { type: 'file', text: '跟进草稿', meta: '回复草稿、总结和 handoff 说明' },
       ],
     },
     {
-      tag: '续费',
-      title: '访问受阻时，也不要把用户从主产品体验里甩出去。',
-      body: '续费和验证页面应该还是同一个产品的一部分，而不是割裂的计费流程。',
+      tag: '微信',
+      title: '重连个人微信时，不要靠猜来判断状态。',
+      body: '如果你要把自己的微信重新连上，Kap 应该把连接状态和下一步动作说清楚。',
       previewClass: 'b',
       preview: [
-        { type: 'me', text: '重新连上之前，我还差什么？' },
-        { type: 'ai', text: '先完成邮箱验证和续费，然后回到这里继续重连通道。' },
-        { type: 'file', text: '账号状态', meta: '验证、续费与回到设置的动作' },
+        { type: 'me', text: '重新连微信之前，我还差哪一步？' },
+        { type: 'ai', text: '先检查验证状态，需要的话先续费，然后回来扫码重连。' },
+        { type: 'file', text: '微信状态', meta: '连接状态、验证状态与重连动作' },
       ],
     },
     {
-      tag: '全球入口',
-      title: '把 WhatsApp 页面做成更聚焦的全球入口。',
-      body: '它仍然只服务一个聊天入口，但现在会像同一个产品，而不是额外拼出来的落地页。',
+      tag: 'WhatsApp',
+      title: '从一条 WhatsApp 消息开始，然后留在同一个线程里继续。',
+      body: '全球入口只服务 WhatsApp，但它也应该像同一个 Kap 产品，而不是另一套落地页。',
       previewClass: '',
       preview: [
-        { type: 'me', text: '我就想直接从 WhatsApp 开始。' },
-        { type: 'ai', text: '打开聊天，先发一条消息，后面的动作都在同一个线程里继续。' },
-        { type: 'file', text: '全球入口', meta: 'WhatsApp CTA 与统一的 Kap 品牌语气' },
+        { type: 'me', text: '我就想从 WhatsApp 直接开始。' },
+        { type: 'ai', text: '打开聊天，把任务先发出去，后面的下一步都留在同一个线程里。' },
+        { type: 'file', text: 'WhatsApp 入口', meta: '直接开聊与后续动作' },
       ],
     },
   ],
@@ -254,50 +254,50 @@ const SCENARIOS = {
 
 const QUOTE_BAND = {
   en: {
-    quote: 'It should not feel like a set of disconnected screens.',
-    accent: 'It should feel like one product that keeps the task moving.',
-    cite: 'Kap public redesign',
+    quote: 'Give Kap the task once.',
+    accent: 'Come back to a clearer next move.',
+    cite: 'Kap',
   },
   zh: {
-    quote: '它不应该只是几个互不相干的页面拼在一起。',
-    accent: '它应该像一个会持续推进任务的完整产品。',
-    cite: 'Kap 公开站点改版',
+    quote: '把任务交给 Kap 一次。',
+    accent: '回来时拿到更清楚的下一步。',
+    cite: 'Kap',
   },
 } satisfies Record<Locale, { quote: string; accent: string; cite: string }>;
 
 const VOICES = {
   en: [
     {
-      avatar: 'PM',
-      role: 'Product',
-      quote: 'The public site now points to a real workflow instead of hovering above the product.',
-    },
-    {
       avatar: 'OP',
-      role: 'Operations',
-      quote: 'Account recovery, renewal, and channel setup finally look like the same service.',
+      role: 'Founder',
+      quote: 'When I open Kap in the morning, the order, the reminder, and the first follow-up are already clearer.',
     },
     {
-      avatar: 'UX',
-      role: 'Design',
-      quote: 'The warmer palette and stamped controls make the interface feel intentional instead of generic.',
+      avatar: 'CS',
+      role: 'Support',
+      quote: 'When WeChat drops, I can see whether the next move is verification, renewal, or a fresh scan.',
+    },
+    {
+      avatar: 'GL',
+      role: 'Global',
+      quote: 'Switching between the web entry and WhatsApp no longer feels like learning two different products.',
     },
   ],
   zh: [
     {
       avatar: '产',
-      role: '产品',
-      quote: '公开首页终于不只是讲愿景，而是真的把用户带进一条可执行的流程。',
+      role: '创始人',
+      quote: '早上打开时，Kap 已经把会议顺序、提醒和第一条跟进整理得更清楚了。',
     },
     {
       avatar: '运',
-      role: '运营',
-      quote: '账号找回、续费和微信设置终于像同一个服务，而不是几个割裂页面。',
+      role: '支持',
+      quote: '微信掉线后，我能直接看见下一步是该验证邮箱、续费，还是重新扫码。',
     },
     {
       avatar: '设',
-      role: '设计',
-      quote: '暖色调和印章式控件让整个界面终于有了明确的性格，而不是模板味。',
+      role: '全球',
+      quote: '我在网页和 WhatsApp 之间切换时，不需要重新理解另一套产品。',
     },
   ],
 } satisfies Record<Locale, ReadonlyArray<{ avatar: string; role: string; quote: string }>>;
@@ -455,14 +455,14 @@ function Capabilities({ locale }: { locale: Locale }) {
       <div className="wrap">
         <span className="eyebrow">{locale === 'zh' ? '核心能力' : 'Capabilities'}</span>
         <h2>
-          {locale === 'zh' ? '不是只把页面换个颜色，' : 'Not just a new coat of paint,'}
+          {locale === 'zh' ? 'Kap 应该像一条持续推进的工作线程，' : 'Kap should feel like one steady operating thread,'}
           <br />
-          <em>{locale === 'zh' ? '而是把公开体验收成一个完整产品。' : 'but one public experience that feels coherent.'}</em>
+          <em>{locale === 'zh' ? '从第一屏一直到下一步。' : 'from the first page to the next action.'}</em>
         </h2>
         <p className="lead">
           {locale === 'zh'
-            ? '这轮改版把主页、认证、客户页面和全球入口统一成同一种产品语言，让用户从第一屏到关键操作都不会掉出上下文。'
-            : 'This pass pulls homepage, auth, customer surfaces, and the global funnel into one product language so users do not fall out of context between screens.'}
+            ? '把计划、草稿、提醒、重连和继续推进放进同一套产品体验里，用户才不会在关键动作前掉出上下文。'
+            : 'Planning, drafting, reminders, reconnect flows, and the next action should all live inside the same product experience.'}
         </p>
 
         <div className="caps">
@@ -493,16 +493,16 @@ function Scenarios({ locale }: { locale: Locale }) {
   return (
     <section className="block scenarios-block" id="scenarios">
       <div className="wrap">
-        <span className="eyebrow">{locale === 'zh' ? '使用场景' : 'Scenarios'}</span>
+        <span className="eyebrow">{locale === 'zh' ? '真实任务' : 'Real tasks'}</span>
         <h2>
-          {locale === 'zh' ? '让真实入口、真实状态、真实下一步' : 'Show the real entrypoints,'}
+          {locale === 'zh' ? '从一个真实任务开始，' : 'Start from a real task,'}
           <br />
-          <span className="accent">{locale === 'zh' ? '在同一套视觉里出现。' : 'real state, and real next steps.'}</span>
+          <span className="accent">{locale === 'zh' ? '然后把它继续推进。' : 'then keep it moving.'}</span>
         </h2>
         <p className="lead">
           {locale === 'zh'
-            ? '参考稿的价值不在于某个 hero，而在于它把营销表达和实际操作感揉成了一个页面。'
-            : 'The reference works because it fuses marketing energy with operational clarity instead of separating them into different visual worlds.'}
+            ? 'Kap 的价值不在于一段漂亮文案，而在于你把事情交给它之后，它会继续把下一步往前带。'
+            : 'Kap matters when it helps carry a real task forward after the first message, not when it only sounds good in a headline.'}
         </p>
 
         <div className="scen-grid">
@@ -550,8 +550,8 @@ function Voices({ locale }: { locale: Locale }) {
   return (
     <section className="block" id="voices">
       <div className="wrap">
-        <span className="eyebrow">{locale === 'zh' ? '用户声音' : 'Proof'}</span>
-        <h2>{locale === 'zh' ? '让公开站点更像产品，' : 'Make the public site feel'} <span className="accent">{locale === 'zh' ? '而不是模板。' : 'like the product, not the template.'}</span></h2>
+        <span className="eyebrow">{locale === 'zh' ? '真实反馈' : 'Proof'}</span>
+        <h2>{locale === 'zh' ? '人们回来，不是为了看界面，' : 'People return for the next move,'} <span className="accent">{locale === 'zh' ? '而是为了让事情继续往前。' : 'not to admire the interface.'}</span></h2>
         <div className="voices">
           {voices.map((voice) => (
             <div key={`${voice.avatar}-${voice.role}`} className="voice">

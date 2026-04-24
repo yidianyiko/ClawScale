@@ -54,6 +54,10 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('© 2026 Kap AI');
     expect(container.textContent).toContain('WeChat');
     expect(container.textContent).toContain('Telegram');
+    expect(container.textContent).toContain('Plan meetings, reminders, and the next move in one thread.');
+    expect(container.textContent).toContain('Turn the loose thought into a sendable message.');
+    expect(container.textContent).not.toContain('Not just a new coat of paint');
+    expect(container.textContent).not.toContain('one public experience that feels coherent');
     expect(container.querySelector('a[href="/channels/wechat-personal"]')).toBeTruthy();
     expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
   });
@@ -74,5 +78,10 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('不断进化的');
     expect(container.textContent).toContain('Kap AI');
     expect(container.textContent).toContain('© 2026 Kap AI');
+    expect(container.textContent).toContain('把会议、提醒和下一步放进同一个线程里。');
+    expect(container.textContent).toContain('把要发出去的那条消息先起草出来。');
+    expect(container.textContent).not.toContain('不是只把页面换个颜色');
+    expect(container.textContent).not.toContain('这轮改版把主页、认证、客户页面和全球入口统一成同一种产品语言');
+    expect(container.textContent).not.toContain('让公开站点更像产品');
   });
 });

@@ -82,7 +82,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
 
               <div className="customer-shell__spotlight-visual" aria-hidden="true">
                 <div className="customer-shell__spotlight-note">
-                  {locale === 'zh' ? '真正使用 Kap 的地方，就应该长得像 Kap。' : 'The real Kap product should look like Kap.'}
+                  {locale === 'zh' ? '回来之后，直接继续你的下一步。' : 'Come back and pick up the next step.'}
                 </div>
                 <KapKoalaHero className="customer-shell__mascot" />
               </div>
@@ -100,7 +100,7 @@ export function CustomerShell({ children }: { children: ReactNode }) {
           <div className="customer-shell__workspace">
             <div className="customer-shell__workspace-bar">
               <span>{copy.navLabel}</span>
-              <strong>{locale === 'zh' ? '用户主界面' : 'User-facing workspace'}</strong>
+              <strong>{locale === 'zh' ? '继续你的 Kap 流程' : 'Continue your Kap flow'}</strong>
             </div>
             <div className="customer-shell__content">{children}</div>
           </div>

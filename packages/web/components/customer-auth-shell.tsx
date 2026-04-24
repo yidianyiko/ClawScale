@@ -33,7 +33,7 @@ function getActiveAuthCta(pathname: string | null): 'signIn' | 'register' | null
 }
 
 export function CustomerAuthShell({ children }: { children: ReactNode }) {
-  const { messages } = useLocale();
+  const { locale, messages } = useLocale();
   const pathname = usePathname();
   const copy = messages.customerLayout;
 
@@ -53,7 +53,9 @@ export function CustomerAuthShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="auth-hero__visual" aria-hidden="true">
-              <div className="auth-hero__sticker">Secure entry, warm handoff.</div>
+              <div className="auth-hero__sticker">
+                {locale === 'zh' ? '安全进入，然后继续下一步。' : 'Secure entry, then keep going.'}
+              </div>
               <KapKoalaHero className="auth-hero__mascot" />
             </div>
           </div>

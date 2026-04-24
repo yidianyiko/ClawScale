@@ -35,9 +35,13 @@ describe('GlobalHomepage', () => {
 
     expect(container.querySelector('.global-site.global-site--kap')).toBeTruthy();
     expect(container.querySelector('.global-ticker')).toBeTruthy();
+    expect(container.querySelector('.global-hero__scene')).toBeTruthy();
+    expect(container.querySelector('.global-hero__phone')).toBeTruthy();
+    expect(container.querySelector('.global-stage-note')).toBeNull();
+    expect(container.querySelector('.global-stage-card__composer')).toBeNull();
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
-    expect(container.textContent).toContain('An AI partner that grows with you');
+    expect(container.textContent).toContain('Start with one WhatsApp message.');
     expect(container.textContent).toContain('WhatsApp');
     expect(container.textContent).toContain('Kap');
     expect(container.textContent).not.toContain('Coke');
@@ -57,7 +61,7 @@ describe('GlobalHomepage', () => {
       root.render(<GlobalHomepage />);
     });
 
-    expect(container.textContent).toContain('One chat to plan, coordinate, and follow through.');
+    expect(container.textContent).toContain('Tell Kap what needs doing, then keep the same thread moving.');
     expect(container.textContent).toContain('Message Kap on WhatsApp');
     expect(container.textContent).not.toContain('WeChat');
     expect(container.textContent).not.toContain('Telegram');

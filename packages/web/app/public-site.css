@@ -1739,26 +1739,26 @@
 }
 
 .global-site .global-hero__stage {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.global-site .global-hero__scene {
   position: relative;
-  min-height: 620px;
+  width: min(100%, 520px);
+  min-height: 560px;
+  padding: 28px;
+  border-radius: 34px;
+  border: 2px solid rgba(27, 20, 16, 0.12);
+  background: linear-gradient(180deg, rgba(255, 249, 241, 0.96) 0%, rgba(244, 235, 221, 0.92) 100%);
+  box-shadow: 0 18px 40px rgba(27, 20, 16, 0.14);
 }
-.global-site .global-hero__mascot-wrap {
+
+.global-site .global-hero__scene-sticker {
   position: absolute;
-  left: 12px;
-  top: 18px;
-  z-index: 1;
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-}
-.global-site .global-hero__mascot {
-  width: min(100%, 240px);
-  max-width: 240px;
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 18px 26px rgba(27, 20, 16, 0.14));
-}
-.global-site .global-hero__sticker {
+  left: 28px;
+  top: 24px;
+  z-index: 3;
   width: fit-content;
   padding: 10px 14px;
   border-radius: 999px;
@@ -1773,50 +1773,66 @@
   transform: rotate(-4deg);
 }
 
-.global-site .global-stage-card {
+.global-site .global-hero__mascot {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  z-index: 1;
+  width: min(100%, 250px);
+  max-width: 250px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 26px rgba(27, 20, 16, 0.14));
+}
+
+.global-site .global-hero__phone {
   position: relative;
   z-index: 2;
-  width: min(100%, 410px);
+  width: min(100%, 320px);
   margin-left: auto;
-  padding: 24px;
-  border-radius: 32px;
+  margin-top: 84px;
+  padding: 18px;
+  border-radius: 30px;
   border: 2px solid rgba(27, 20, 16, 0.12);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 237, 225, 0.92) 100%);
-  box-shadow: 0 18px 40px rgba(27, 20, 16, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 34px rgba(27, 20, 16, 0.14);
 }
 
-.global-site .global-stage-card__top {
+.global-site .global-hero__phone-top {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
 }
 
-.global-site .global-stage-card__avatar {
-  width: 42px;
-  height: 42px;
+.global-site .global-hero__phone-app {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--global-accent-soft) 0%, rgba(132, 177, 191, 0.2) 100%);
+  gap: 8px;
   color: var(--ink-1000);
-}
-
-.global-site .global-stage-card__name {
-  color: var(--ink-1000);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
-.global-site .global-stage-card__meta {
-  margin-top: 4px;
+.global-site .global-hero__phone-meta {
   color: var(--fg-muted);
   font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
 }
 
 .global-site .global-thread {
-  margin-top: 20px;
+  margin-top: 18px;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.global-site .global-thread__bubble {
+  max-width: 92%;
+  padding: 14px 14px 12px;
+  border-radius: 20px;
+  display: inline-flex;
   flex-direction: column;
   gap: 12px;
 }
@@ -1843,6 +1859,7 @@
   border-bottom-right-radius: 8px;
 }
 
+.global-site .global-thread__bubble--kap,
 .global-site .global-thread__bubble--coke {
   background: #FFFFFF;
   color: var(--ink-1000);
@@ -1859,54 +1876,6 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-
-.global-site .global-stage-card__composer {
-  margin-top: 18px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(27, 20, 16, 0.06);
-  color: var(--ink-700);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.global-site .global-stage-note {
-  position: absolute;
-  max-width: 220px;
-  padding: 16px 18px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(27, 20, 16, 0.08);
-  box-shadow: 0 18px 28px rgba(27, 20, 16, 0.12);
-}
-
-.global-site .global-stage-note p {
-  margin: 8px 0 0;
-  color: var(--ink-700);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.global-site .global-stage-note__label {
-  color: var(--ink-900);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-}
-
-.global-site .global-stage-note--upper {
-  top: 48px;
-  left: 0;
-}
-
-.global-site .global-stage-note--lower {
-  right: 24px;
-  bottom: 32px;
 }
 
 .global-site .global-section {
@@ -2125,24 +2094,7 @@
   }
 
   .global-site .global-hero__stage {
-    min-height: auto;
-    display: grid;
-    gap: 18px;
-  }
-
-  .global-site .global-hero__mascot-wrap {
-    position: static;
-    justify-items: flex-start;
-  }
-
-  .global-site .global-stage-card {
-    margin: 0;
-  }
-
-  .global-site .global-stage-note {
-    position: static;
-    max-width: none;
-    margin-top: 16px;
+    justify-content: flex-start;
   }
 
   .global-site .global-close__cta {
@@ -2187,13 +2139,22 @@
     padding-bottom: 72px;
   }
 
-  .global-site .global-hero__mascot {
-    max-width: 180px;
+  .global-site .global-hero__scene {
+    min-height: 500px;
+    padding: 22px;
   }
 
-  .global-site .global-stage-card {
-    padding: 18px;
-    border-radius: 26px;
+  .global-site .global-hero__mascot {
+    left: 12px;
+    bottom: 12px;
+    max-width: 190px;
+  }
+
+  .global-site .global-hero__phone {
+    width: min(100%, 280px);
+    margin-top: 92px;
+    padding: 16px;
+    border-radius: 24px;
   }
 
   .global-site .global-ticker__track {

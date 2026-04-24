@@ -55,8 +55,9 @@ describe('CustomerAuthLayout', () => {
     expect(container.querySelector('.auth-shell__stage')).toBeTruthy();
     expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.querySelector('a[href="/auth/login"][aria-current="page"]')).toBeTruthy();
-    expect(container.textContent).toContain('统一管理客户登录与通道接入');
-    expect(container.textContent).toContain('处理登录、验证与个人微信接入');
+    expect(container.textContent).toContain('把你的下一步继续推进');
+    expect(container.textContent).toContain('账号访问、验证与微信连接');
+    expect(container.textContent).toContain('在同一个地方完成下一步');
     expect(container.textContent).toContain('全程加密传输');
     expect(container.textContent).toContain('EN');
     expect(container.textContent).toContain('中文');
