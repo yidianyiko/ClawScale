@@ -47,6 +47,14 @@ function getStringConfig(config: Record<string, unknown>, key: string): string {
   return typeof config[key] === 'string' ? config[key] : '';
 }
 
+function hasEcloudConfigChanged(
+  config: Record<string, unknown>,
+  appId: string,
+  baseUrl: string,
+): boolean {
+  return getStringConfig(config, 'appId') !== appId || getStringConfig(config, 'baseUrl') !== baseUrl;
+}
+
 function AdminSharedChannelDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -149,25 +157,41 @@ function AdminSharedChannelDetailPageContent() {
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
-      let config: Record<string, unknown>;
+      const payload: {
+        name: string;
+        agentId: string;
+        config?: Record<string, unknown>;
+      } = {
+        name: nextName,
+        agentId: nextAgentId,
+      };
+
       if (isWhatsAppEvolutionKind(record.kind)) {
-        config = {
+        payload.config = {
           instanceName: nextInstanceName,
         };
       } else if (isWechatEcloudKind(record.kind)) {
-        config = {
-          appId: formEcloudAppId || ecloudAppId.trim() || getStringConfig(record.config, 'appId'),
-          baseUrl: formEcloudBaseUrl || ecloudBaseUrl.trim() || getStringConfig(record.config, 'baseUrl'),
-        };
+        const nextEcloudAppId =
+          formEcloudAppId || ecloudAppId.trim() || getStringConfig(record.config, 'appId');
+        const nextEcloudBaseUrl =
+          formEcloudBaseUrl || ecloudBaseUrl.trim() || getStringConfig(record.config, 'baseUrl');
+        if (
+          record.status !== 'connected' &&
+          hasEcloudConfigChanged(record.config, nextEcloudAppId, nextEcloudBaseUrl)
+        ) {
+          payload.config = {
+            appId: nextEcloudAppId,
+            baseUrl: nextEcloudBaseUrl,
+          };
+        }
       } else {
-        config = parseConfig(nextConfigText);
+        payload.config = parseConfig(nextConfigText);
       }
 
-      const response = await adminApi.patch<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id, {
-        name: nextName,
-        agentId: nextAgentId,
-        config,
-      });
+      const response = await adminApi.patch<AdminSharedChannelDetail>(
+        '/api/admin/shared-channels/' + id,
+        payload,
+      );
 
       if (!response.ok) {
         setError(response.error);

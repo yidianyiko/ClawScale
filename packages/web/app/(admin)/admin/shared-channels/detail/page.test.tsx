@@ -449,4 +449,84 @@ describe('AdminSharedChannelDetailPage', () => {
     expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
     expect(container.textContent).toContain('Disconnected');
   });
+
+  it('omits wechat_ecloud config when saving only name and agent while connected', async () => {
+    vi.mocked(adminApi.get).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Ecloud WeChat',
+        kind: 'wechat_ecloud',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.geweapi.com',
+          callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:00:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.patch).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Ecloud WeChat Renamed',
+        kind: 'wechat_ecloud',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_2',
+          slug: 'other',
+          name: 'Other agent',
+        },
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.geweapi.com',
+          callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T11:00:00.000Z',
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelDetailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Ecloud WeChat');
+      expect(container.textContent).toContain('Connected');
+    });
+
+    const nameInput = container.querySelector('#shared-channel-detail-name') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-detail-agent-id') as HTMLInputElement;
+    nameInput.value = 'Ecloud WeChat Renamed';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_2';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    (container.querySelector('button[data-testid="save-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.patch)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1', {
+      name: 'Ecloud WeChat Renamed',
+      agentId: 'agent_2',
+    });
+    expect(container.textContent).toContain('Ecloud WeChat Renamed');
+  });
 });

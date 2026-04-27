@@ -1322,6 +1322,46 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('rejects legacy wechat_ecloud connect without webhookToken instead of mutating config', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud_legacy',
+      name: 'Legacy Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud_legacy/connect', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_wechat_ecloud_config:webhookToken',
+    });
+    expect(db.channel.update).not.toHaveBeenCalled();
+    expect(setWebhook).not.toHaveBeenCalled();
+    expect(clearWebhook).not.toHaveBeenCalled();
+  });
+
   it('restores the remote webhook when local disconnect state write fails', async () => {
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_1',

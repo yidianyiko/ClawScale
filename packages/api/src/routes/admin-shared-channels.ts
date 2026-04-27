@@ -211,28 +211,6 @@ async function ensureEvolutionWebhookToken(
   };
 }
 
-async function ensureEcloudWebhookToken(
-  channel: SharedChannelRow,
-): Promise<{ channel: SharedChannelRow; config: StoredWechatEcloudConfig }> {
-  const config = ensureStoredWechatEcloudConfig(channel.config, randomUUID);
-  if (hasWechatEcloudWebhookToken(channel.config)) {
-    return { channel, config };
-  }
-
-  const updated = await db.channel.update({
-    where: { id: channel.id },
-    data: {
-      config: buildStoredEcloudConfig(config),
-    },
-    select: sharedChannelSelect,
-  });
-
-  return {
-    channel: updated as SharedChannelRow,
-    config,
-  };
-}
-
 async function rollbackEvolutionConnect(client: EvolutionApiClient, instanceName: string) {
   try {
     await client.clearWebhook(instanceName);
@@ -520,9 +498,20 @@ export const adminSharedChannelsRouter = new Hono()
     }
 
     if (existing.type === 'wechat_ecloud') {
-      const prepared = await ensureEcloudWebhookToken(existing);
+      try {
+        parseStoredWechatEcloudConfig(existing.config);
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+          },
+          409,
+        );
+      }
+
       const updated = (await db.channel.update({
-        where: { id: prepared.channel.id },
+        where: { id: existing.id },
         data: { status: 'connected' },
         select: sharedChannelSelect,
       })) as SharedChannelRow;
