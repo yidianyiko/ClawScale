@@ -52,4 +52,65 @@ describe('WechatEcloudApiClient', () => {
       ),
     ).rejects.toThrow('Ecloud API request failed');
   });
+
+  it('uses bounded sanitized HTTP error text without leaking the full raw body', async () => {
+    const rawBody = `provider secret ${'x'.repeat(300)} <script>alert(1)</script>`;
+    fetchImpl.mockResolvedValue(
+      new Response(rawBody, {
+        status: 502,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+
+    let error: unknown;
+    try {
+      await new WechatEcloudApiClient('https://api.example.test', 'token_1', fetchImpl as never).sendText(
+        'app_1',
+        'wxid_1',
+        'hello',
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(/Ecloud API request failed \(502\).*provider secret/);
+    expect(message).not.toContain(rawBody);
+    expect(message.length).toBeLessThan(260);
+  });
+
+  it('uses JSON message fields for HTTP errors when present', async () => {
+    fetchImpl.mockResolvedValue(
+      new Response(JSON.stringify({ msg: 'bad token', data: { secret: 'do not leak' } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      new WechatEcloudApiClient('https://api.example.test', 'token_1', fetchImpl as never).sendText(
+        'app_1',
+        'wxid_1',
+        'hello',
+      ),
+    ).rejects.toThrow('Ecloud API request failed (401) /gewe/v2/api/message/postText: bad token');
+  });
+
+  it('throws when success response body is invalid JSON', async () => {
+    fetchImpl.mockResolvedValue(
+      new Response('not-json', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(
+      new WechatEcloudApiClient('https://api.example.test', 'token_1', fetchImpl as never).sendText(
+        'app_1',
+        'wxid_1',
+        'hello',
+      ),
+    ).rejects.toThrow('invalid_json');
+  });
 });

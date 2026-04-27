@@ -53,12 +53,34 @@ function readConfigRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function normalizeBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('invalid_wechat_ecloud_config:baseUrl');
+  }
+
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error('invalid_wechat_ecloud_config:baseUrl');
+  }
+
+  return parsed.href.replace(/\/+$/, '');
+}
+
 export function parseWechatEcloudConfigInput(value: unknown): ParsedWechatEcloudConfigInput {
   const record = readConfigRecord(value);
+  const baseUrl = readOptionalNonBlankString(record, 'baseUrl');
   return {
     appId: readNonBlankString(record, 'appId'),
     token: readNonBlankString(record, 'token'),
-    baseUrl: readOptionalNonBlankString(record, 'baseUrl') ?? DEFAULT_WECHAT_ECLOUD_BASE_URL,
+    baseUrl: baseUrl ? normalizeBaseUrl(baseUrl) : DEFAULT_WECHAT_ECLOUD_BASE_URL,
     webhookToken: readOptionalNonBlankString(record, 'webhookToken'),
   };
 }

@@ -4,12 +4,42 @@ function buildBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-async function readErrorBody(response: Response): Promise<string> {
+function sanitizeErrorText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+function readProviderMessage(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const message = value['msg'] ?? value['message'];
+  return typeof message === 'string' && message.trim() ? sanitizeErrorText(message) : undefined;
+}
+
+async function readSafeErrorDetail(response: Response): Promise<string> {
+  let text: string;
   try {
-    return (await response.text()).trim();
+    text = await response.text();
   } catch {
     return '';
   }
+
+  if (!text.trim()) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    const providerMessage = readProviderMessage(parsed);
+    if (providerMessage) {
+      return providerMessage;
+    }
+  } catch {
+    // Fall through to a bounded text excerpt.
+  }
+
+  return sanitizeErrorText(text);
 }
 
 function readErrorMessage(error: unknown): string {
@@ -56,10 +86,10 @@ export class WechatEcloudApiClient {
     }
 
     if (!response.ok) {
-      const body = await readErrorBody(response);
+      const detail = await readSafeErrorDetail(response);
       throw new Error(
-        body
-          ? `Ecloud API request failed (${response.status}) ${path}: ${body}`
+        detail
+          ? `Ecloud API request failed (${response.status}) ${path}: ${detail}`
           : `Ecloud API request failed (${response.status}) ${path}`,
       );
     }

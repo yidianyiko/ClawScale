@@ -26,6 +26,43 @@ describe('wechat ecloud config helpers', () => {
     });
   });
 
+  it('normalizes explicit baseUrl and preserves webhookToken', () => {
+    expect(
+      ensureStoredWechatEcloudConfig(
+        {
+          appId: ' app_1 ',
+          token: ' token_1 ',
+          baseUrl: ' https://api.example.test/ ',
+          webhookToken: ' existing_secret ',
+        },
+        () => 'generated_token',
+      ),
+    ).toEqual({
+      appId: 'app_1',
+      token: 'token_1',
+      baseUrl: 'https://api.example.test',
+      webhookToken: 'existing_secret',
+    });
+  });
+
+  it('rejects malformed or unsafe explicit baseUrl values', () => {
+    for (const baseUrl of [
+      'not a url',
+      'ftp://api.example.test',
+      'https://user:pass@api.example.test',
+      'https://api.example.test?token=secret',
+      'https://api.example.test#fragment',
+    ]) {
+      expect(() =>
+        parseWechatEcloudConfigInput({
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl,
+        }),
+      ).toThrow('invalid_wechat_ecloud_config:baseUrl');
+    }
+  });
+
   it('scrubs token and webhookToken from public config', () => {
     expect(
       buildPublicWechatEcloudConfig({

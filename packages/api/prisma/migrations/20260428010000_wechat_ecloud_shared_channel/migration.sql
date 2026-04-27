@@ -16,6 +16,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "inbound_webhook_receipts_provider_idempotency
 CREATE INDEX IF NOT EXISTS "inbound_webhook_receipts_channel_id_created_at_idx"
   ON "inbound_webhook_receipts"("channel_id", "created_at");
 
-ALTER TABLE "inbound_webhook_receipts"
-  ADD CONSTRAINT "inbound_webhook_receipts_channel_id_fkey"
-  FOREIGN KEY ("channel_id") REFERENCES "channels"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'inbound_webhook_receipts_channel_id_fkey'
+  ) THEN
+    ALTER TABLE "inbound_webhook_receipts"
+      ADD CONSTRAINT "inbound_webhook_receipts_channel_id_fkey"
+      FOREIGN KEY ("channel_id") REFERENCES "channels"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
