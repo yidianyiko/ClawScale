@@ -12,6 +12,7 @@ import { getAdminCopy } from '../../../../../lib/admin-copy';
 import { formatDateTime } from '../../../../../lib/utils';
 
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
+const LINQ_KIND = 'linq';
 
 function titleCase(value: string): string {
   return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : value;
@@ -19,6 +20,14 @@ function titleCase(value: string): string {
 
 function isWhatsAppEvolutionKind(kind: string): boolean {
   return kind === WHATSAPP_EVOLUTION_KIND;
+}
+
+function isLinqKind(kind: string): boolean {
+  return kind === LINQ_KIND;
+}
+
+function supportsSharedChannelLifecycle(kind: string): boolean {
+  return isWhatsAppEvolutionKind(kind) || isLinqKind(kind);
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -38,6 +47,14 @@ function getEvolutionInstanceName(config: Record<string, unknown>): string {
   return typeof config.instanceName === 'string' ? config.instanceName : '';
 }
 
+function getLinqFromNumber(config: Record<string, unknown>): string {
+  return typeof config.fromNumber === 'string' ? config.fromNumber : '';
+}
+
+function getLinqWebhookSubscriptionId(config: Record<string, unknown>): string {
+  return typeof config.webhookSubscriptionId === 'string' ? config.webhookSubscriptionId : '';
+}
+
 function AdminSharedChannelDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -54,6 +71,7 @@ function AdminSharedChannelDetailPageContent() {
   const [name, setName] = useState('');
   const [agentId, setAgentId] = useState('');
   const [instanceName, setInstanceName] = useState('');
+  const [fromNumber, setFromNumber] = useState('');
   const [configText, setConfigText] = useState('{}');
 
   useEffect(() => {
@@ -88,6 +106,8 @@ function AdminSharedChannelDetailPageContent() {
       setAgentId(nextRecord.agent?.id ?? '');
       if (isWhatsAppEvolutionKind(nextRecord.kind)) {
         setInstanceName(getEvolutionInstanceName(nextRecord.config));
+      } else if (isLinqKind(nextRecord.kind)) {
+        setFromNumber(getLinqFromNumber(nextRecord.config));
       } else {
         setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
       }
@@ -106,6 +126,8 @@ function AdminSharedChannelDetailPageContent() {
     setAgentId(nextRecord.agent?.id ?? '');
     if (isWhatsAppEvolutionKind(nextRecord.kind)) {
       setInstanceName(getEvolutionInstanceName(nextRecord.config));
+    } else if (isLinqKind(nextRecord.kind)) {
+      setFromNumber(getLinqFromNumber(nextRecord.config));
     } else {
       setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
     }
@@ -124,20 +146,30 @@ function AdminSharedChannelDetailPageContent() {
     const nextName = String(form.get('name') ?? '').trim();
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const formInstanceName = String(form.get('instanceName') ?? '').trim();
+    const formFromNumber = String(form.get('fromNumber') ?? '').trim();
     const nextInstanceName = isWhatsAppEvolutionKind(record.kind)
       ? formInstanceName || instanceName.trim() || getEvolutionInstanceName(record.config)
       : formInstanceName;
+    const nextFromNumber = isLinqKind(record.kind)
+      ? formFromNumber || fromNumber.trim() || getLinqFromNumber(record.config)
+      : formFromNumber;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
+      const config = isWhatsAppEvolutionKind(record.kind)
+        ? {
+            instanceName: nextInstanceName,
+          }
+        : isLinqKind(record.kind)
+          ? {
+              fromNumber: nextFromNumber,
+            }
+          : parseConfig(nextConfigText);
+
       const response = await adminApi.patch<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id, {
         name: nextName,
         agentId: nextAgentId,
-        config: isWhatsAppEvolutionKind(record.kind)
-          ? {
-              instanceName: nextInstanceName,
-            }
-          : parseConfig(nextConfigText),
+        config,
       });
 
       if (!response.ok) {
@@ -154,7 +186,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleConnect() {
-    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+    if (!record || !supportsSharedChannelLifecycle(record.kind)) {
       return;
     }
 
@@ -173,7 +205,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleDisconnect() {
-    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+    if (!record || !supportsSharedChannelLifecycle(record.kind)) {
       return;
     }
 
@@ -210,7 +242,11 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   const evolutionChannel = record ? isWhatsAppEvolutionKind(record.kind) : false;
+  const linqChannel = record ? isLinqKind(record.kind) : false;
   const instanceNameLocked = evolutionChannel && record?.status === 'connected';
+  const fromNumberLocked = linqChannel && record?.status === 'connected';
+  const webhookSubscriptionId =
+    linqChannel && record ? getLinqWebhookSubscriptionId(record.config) : '';
 
   return (
     <div className="p-8">
@@ -250,6 +286,26 @@ function AdminSharedChannelDetailPageContent() {
                   </p>
                 </div>
               ) : null}
+              {linqChannel ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookSubscriptionId}</p>
+                    <p className="mt-1 text-base text-gray-900">{webhookSubscriptionId || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookToken}</p>
+                    <p className="mt-1 text-base text-gray-900">
+                      {record.hasWebhookToken ? copy.sharedChannels.webhookTokenHidden : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.signingSecret}</p>
+                    <p className="mt-1 text-base text-gray-900">
+                      {record.hasSigningSecret ? copy.sharedChannels.signingSecretHidden : '—'}
+                    </p>
+                  </div>
+                </>
+              ) : null}
             </div>
 
             {evolutionChannel ? (
@@ -269,6 +325,49 @@ function AdminSharedChannelDetailPageContent() {
                   />
                   <p className="mt-2 text-xs text-gray-500">
                     {instanceNameLocked ? copy.sharedChannels.instanceNameLocked : copy.sharedChannels.instanceNameHelp}
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  {record.status === 'connected' ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="disconnect-shared-channel"
+                      disabled={disconnecting}
+                      onClick={() => void handleDisconnect()}
+                    >
+                      {disconnecting ? copy.common.loading : copy.sharedChannels.actions.disconnect}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="connect-shared-channel"
+                      disabled={connecting}
+                      onClick={() => void handleConnect()}
+                    >
+                      {connecting ? copy.common.loading : copy.sharedChannels.actions.connect}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : linqChannel ? (
+              <>
+                <div>
+                  <label htmlFor="shared-channel-detail-from-number" className="label">
+                    {copy.sharedChannels.fields.fromNumber}
+                  </label>
+                  <input
+                    id="shared-channel-detail-from-number"
+                    name="fromNumber"
+                    className="input"
+                    value={fromNumber}
+                    placeholder="+13213108456"
+                    onInput={(event) => setFromNumber(event.currentTarget.value)}
+                    disabled={fromNumberLocked}
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    {fromNumberLocked ? copy.sharedChannels.fromNumberLocked : copy.sharedChannels.fromNumberHelp}
                   </p>
                 </div>
                 <div className="flex gap-3">

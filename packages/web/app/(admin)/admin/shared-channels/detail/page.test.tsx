@@ -339,4 +339,128 @@ describe('AdminSharedChannelDetailPage', () => {
     expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
     expect(container.textContent).toContain('Disconnected');
   });
+
+  it('shows connected linq typed config, hidden secret indicators, disconnect action, and save payload', async () => {
+    vi.mocked(adminApi.get).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Linq SMS',
+        kind: 'linq',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          fromNumber: '+13213108456',
+          webhookSubscriptionId: 'linq-sub-123',
+        },
+        hasWebhookToken: true,
+        hasSigningSecret: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:00:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.patch).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Linq SMS Updated',
+        kind: 'linq',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_2',
+          slug: 'other',
+          name: 'Other agent',
+        },
+        config: {
+          fromNumber: '+13213108456',
+          webhookSubscriptionId: 'linq-sub-123',
+        },
+        hasWebhookToken: true,
+        hasSigningSecret: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T11:00:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Linq SMS Updated',
+        kind: 'linq',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_2',
+          slug: 'other',
+          name: 'Other agent',
+        },
+        config: {
+          fromNumber: '+13213108456',
+        },
+        hasWebhookToken: true,
+        hasSigningSecret: false,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T11:10:00.000Z',
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelDetailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(adminApi.get)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1');
+      expect(container.textContent).toContain('Linq SMS');
+      expect(container.textContent).toContain('Webhook subscription');
+      expect(container.textContent).toContain('linq-sub-123');
+      expect(container.textContent).toContain('Webhook token');
+      expect(container.textContent).toContain('Signing secret');
+      expect(container.textContent).toContain('Hidden and managed server-side.');
+      expect(container.querySelector('#shared-channel-detail-from-number')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-detail-config')).toBeNull();
+      expect(container.querySelector('button[data-testid="disconnect-shared-channel"]')).toBeTruthy();
+    });
+
+    const fromNumberInput = container.querySelector('#shared-channel-detail-from-number') as HTMLInputElement;
+    expect(fromNumberInput.disabled).toBe(true);
+    expect(fromNumberInput.value).toBe('+13213108456');
+    expect(container.textContent).toContain('Disconnect before changing the Linq sender number.');
+
+    const nameInput = container.querySelector('#shared-channel-detail-name') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-detail-agent-id') as HTMLInputElement;
+    nameInput.value = 'Linq SMS Updated';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_2';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    (container.querySelector('button[data-testid="save-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.patch)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1', {
+      name: 'Linq SMS Updated',
+      agentId: 'agent_2',
+      config: {
+        fromNumber: '+13213108456',
+      },
+    });
+
+    (container.querySelector('button[data-testid="disconnect-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
+    expect(container.textContent).toContain('Disconnected');
+  });
 });

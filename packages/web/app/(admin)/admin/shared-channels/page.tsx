@@ -15,6 +15,7 @@ import { formatDateTime } from '../../../../lib/utils';
 const PAGE_SIZE = 50;
 const DEFAULT_KIND = 'whatsapp';
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
+const LINQ_KIND = 'linq';
 
 function buildSharedChannelDetailHref(id: string): string {
   return '/admin/shared-channels/detail?id=' + encodeURIComponent(id);
@@ -22,6 +23,10 @@ function buildSharedChannelDetailHref(id: string): string {
 
 function isWhatsAppEvolutionKind(kind: string): boolean {
   return kind === WHATSAPP_EVOLUTION_KIND;
+}
+
+function isLinqKind(kind: string): boolean {
+  return kind === LINQ_KIND;
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -51,6 +56,7 @@ export default function AdminSharedChannelsPage() {
   const [agentId, setAgentId] = useState('');
   const [configText, setConfigText] = useState('{}');
   const [instanceName, setInstanceName] = useState('');
+  const [fromNumber, setFromNumber] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -94,18 +100,25 @@ export default function AdminSharedChannelsPage() {
     const nextKind = String(form.get('kind') ?? DEFAULT_KIND).trim() || DEFAULT_KIND;
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const nextInstanceName = String(form.get('instanceName') ?? '').trim();
+    const nextFromNumber = String(form.get('fromNumber') ?? '').trim();
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
+      const config = isWhatsAppEvolutionKind(nextKind)
+        ? {
+            instanceName: nextInstanceName,
+          }
+        : isLinqKind(nextKind)
+          ? {
+              fromNumber: nextFromNumber,
+            }
+          : parseConfig(nextConfigText);
+
       const response = await adminApi.post<AdminSharedChannelRow>('/api/admin/shared-channels', {
         name: nextName,
         kind: nextKind,
         agentId: nextAgentId,
-        config: isWhatsAppEvolutionKind(nextKind)
-          ? {
-              instanceName: nextInstanceName,
-            }
-          : parseConfig(nextConfigText),
+        config,
       });
 
       if (!response.ok) {
@@ -122,6 +135,7 @@ export default function AdminSharedChannelsPage() {
   }
 
   const evolutionCreateMode = isWhatsAppEvolutionKind(kind);
+  const linqCreateMode = isLinqKind(kind);
 
   return (
     <div className="p-8">
@@ -171,6 +185,7 @@ export default function AdminSharedChannelsPage() {
                 <option value="whatsapp">whatsapp</option>
                 <option value="whatsapp_business">whatsapp_business</option>
                 <option value="whatsapp_evolution">whatsapp_evolution</option>
+                <option value="linq">linq</option>
                 <option value="telegram">telegram</option>
                 <option value="wechat_personal">wechat_personal</option>
               </select>
@@ -202,6 +217,21 @@ export default function AdminSharedChannelsPage() {
                   required
                 />
                 <p className="mt-2 text-xs text-gray-500">{copy.sharedChannels.instanceNameHelp}</p>
+              </div>
+            ) : linqCreateMode ? (
+              <div>
+                <label htmlFor="shared-channel-from-number" className="label">
+                  {copy.sharedChannels.fields.fromNumber}
+                </label>
+                <input
+                  id="shared-channel-from-number"
+                  name="fromNumber"
+                  className="input"
+                  value={fromNumber}
+                  placeholder="+13213108456"
+                  onInput={(event) => setFromNumber(event.currentTarget.value)}
+                />
+                <p className="mt-2 text-xs text-gray-500">{copy.sharedChannels.fromNumberHelp}</p>
               </div>
             ) : (
               <div>
