@@ -15,6 +15,8 @@ import { formatDateTime } from '../../../../lib/utils';
 const PAGE_SIZE = 50;
 const DEFAULT_KIND = 'whatsapp';
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
+const WECHAT_ECLOUD_KIND = 'wechat_ecloud';
+const DEFAULT_WECHAT_ECLOUD_BASE_URL = 'https://api.geweapi.com';
 
 function buildSharedChannelDetailHref(id: string): string {
   return '/admin/shared-channels/detail?id=' + encodeURIComponent(id);
@@ -22,6 +24,10 @@ function buildSharedChannelDetailHref(id: string): string {
 
 function isWhatsAppEvolutionKind(kind: string): boolean {
   return kind === WHATSAPP_EVOLUTION_KIND;
+}
+
+function isWechatEcloudKind(kind: string): boolean {
+  return kind === WECHAT_ECLOUD_KIND;
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -51,6 +57,9 @@ export default function AdminSharedChannelsPage() {
   const [agentId, setAgentId] = useState('');
   const [configText, setConfigText] = useState('{}');
   const [instanceName, setInstanceName] = useState('');
+  const [ecloudAppId, setEcloudAppId] = useState('');
+  const [ecloudToken, setEcloudToken] = useState('');
+  const [ecloudBaseUrl, setEcloudBaseUrl] = useState(DEFAULT_WECHAT_ECLOUD_BASE_URL);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -94,18 +103,33 @@ export default function AdminSharedChannelsPage() {
     const nextKind = String(form.get('kind') ?? DEFAULT_KIND).trim() || DEFAULT_KIND;
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const nextInstanceName = String(form.get('instanceName') ?? '').trim();
+    const nextEcloudAppId = String(form.get('ecloudAppId') ?? '').trim();
+    const nextEcloudToken = String(form.get('ecloudToken') ?? '').trim();
+    const nextEcloudBaseUrl =
+      String(form.get('ecloudBaseUrl') ?? '').trim() || DEFAULT_WECHAT_ECLOUD_BASE_URL;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
+      let config: Record<string, unknown>;
+      if (isWhatsAppEvolutionKind(nextKind)) {
+        config = {
+          instanceName: nextInstanceName,
+        };
+      } else if (isWechatEcloudKind(nextKind)) {
+        config = {
+          appId: nextEcloudAppId,
+          token: nextEcloudToken,
+          baseUrl: nextEcloudBaseUrl,
+        };
+      } else {
+        config = parseConfig(nextConfigText);
+      }
+
       const response = await adminApi.post<AdminSharedChannelRow>('/api/admin/shared-channels', {
         name: nextName,
         kind: nextKind,
         agentId: nextAgentId,
-        config: isWhatsAppEvolutionKind(nextKind)
-          ? {
-              instanceName: nextInstanceName,
-            }
-          : parseConfig(nextConfigText),
+        config,
       });
 
       if (!response.ok) {
@@ -122,6 +146,7 @@ export default function AdminSharedChannelsPage() {
   }
 
   const evolutionCreateMode = isWhatsAppEvolutionKind(kind);
+  const ecloudCreateMode = isWechatEcloudKind(kind);
 
   return (
     <div className="p-8">
@@ -171,6 +196,7 @@ export default function AdminSharedChannelsPage() {
                 <option value="whatsapp">whatsapp</option>
                 <option value="whatsapp_business">whatsapp_business</option>
                 <option value="whatsapp_evolution">whatsapp_evolution</option>
+                <option value="wechat_ecloud">wechat_ecloud</option>
                 <option value="telegram">telegram</option>
                 <option value="wechat_personal">wechat_personal</option>
               </select>
@@ -202,6 +228,47 @@ export default function AdminSharedChannelsPage() {
                   required
                 />
                 <p className="mt-2 text-xs text-gray-500">{copy.sharedChannels.instanceNameHelp}</p>
+              </div>
+            ) : ecloudCreateMode ? (
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="shared-channel-ecloud-app-id" className="label">
+                    App ID
+                  </label>
+                  <input
+                    id="shared-channel-ecloud-app-id"
+                    name="ecloudAppId"
+                    className="input"
+                    value={ecloudAppId}
+                    onInput={(event) => setEcloudAppId(event.currentTarget.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="shared-channel-ecloud-token" className="label">
+                    Token
+                  </label>
+                  <input
+                    id="shared-channel-ecloud-token"
+                    name="ecloudToken"
+                    className="input"
+                    value={ecloudToken}
+                    onInput={(event) => setEcloudToken(event.currentTarget.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="shared-channel-ecloud-base-url" className="label">
+                    Base URL
+                  </label>
+                  <input
+                    id="shared-channel-ecloud-base-url"
+                    name="ecloudBaseUrl"
+                    className="input"
+                    value={ecloudBaseUrl}
+                    onInput={(event) => setEcloudBaseUrl(event.currentTarget.value)}
+                  />
+                </div>
               </div>
             ) : (
               <div>

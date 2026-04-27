@@ -20,6 +20,7 @@ const CHANNEL_KIND_VALUES = [
   'whatsapp_business',
   'whatsapp_evolution',
   'wechat_personal',
+  'wechat_ecloud',
 ] as const;
 
 const listQuerySchema = z

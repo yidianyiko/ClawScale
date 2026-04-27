@@ -339,4 +339,114 @@ describe('AdminSharedChannelDetailPage', () => {
     expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
     expect(container.textContent).toContain('Disconnected');
   });
+
+  it('shows wechat_ecloud public config and local connect controls without Evolution fields', async () => {
+    vi.mocked(adminApi.get).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_1',
+        name: 'Ecloud WeChat',
+        kind: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.geweapi.com',
+          callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T09:00:00.000Z',
+        updatedAt: '2026-04-16T10:00:00.000Z',
+      },
+    });
+    vi.mocked(adminApi.post)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Ecloud WeChat',
+          kind: 'wechat_ecloud',
+          status: 'connected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_coke',
+            slug: 'coke',
+            name: 'Coke',
+          },
+          config: {
+            appId: 'app_1',
+            baseUrl: 'https://api.geweapi.com',
+            callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T11:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 'ch_1',
+          name: 'Ecloud WeChat',
+          kind: 'wechat_ecloud',
+          status: 'disconnected',
+          ownershipKind: 'shared',
+          customerId: null,
+          agent: {
+            id: 'agent_coke',
+            slug: 'coke',
+            name: 'Coke',
+          },
+          config: {
+            appId: 'app_1',
+            baseUrl: 'https://api.geweapi.com',
+            callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+          },
+          hasWebhookToken: true,
+          createdAt: '2026-04-16T09:00:00.000Z',
+          updatedAt: '2026-04-16T11:30:00.000Z',
+        },
+      });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelDetailPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Ecloud WeChat');
+      expect(container.textContent).toContain('/gateway/ecloud/wechat/:channelId/:token');
+      expect(container.textContent).toContain('Hidden and managed server-side.');
+      expect((container.querySelector('#shared-channel-detail-ecloud-app-id') as HTMLInputElement).value).toBe('app_1');
+      expect((container.querySelector('#shared-channel-detail-ecloud-base-url') as HTMLInputElement).value).toBe('https://api.geweapi.com');
+      expect(container.querySelector('#shared-channel-detail-instance-name')).toBeNull();
+      expect(container.querySelector('#shared-channel-detail-config')).toBeNull();
+      expect(container.querySelector('button[data-testid="connect-shared-channel"]')).toBeTruthy();
+    });
+
+    (container.querySelector('button[data-testid="connect-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/connect');
+    await vi.waitFor(() => {
+      expect(container.querySelector('button[data-testid="disconnect-shared-channel"]')).toBeTruthy();
+      expect(container.textContent).toContain('Connected');
+    });
+
+    (container.querySelector('button[data-testid="disconnect-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels/ch_1/disconnect');
+    expect(container.textContent).toContain('Disconnected');
+  });
 });

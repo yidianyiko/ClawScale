@@ -19,10 +19,17 @@ import { startLineBot, stopLineBot } from '../adapters/line.js';
 import { startSignalBot, stopSignalBot } from '../adapters/signal.js';
 import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
 import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-config.js';
+import {
+  buildPublicWechatEcloudConfig,
+  ensureStoredWechatEcloudConfig,
+  hasWechatEcloudWebhookToken,
+  parseStoredWechatEcloudConfig,
+  parseWechatEcloudConfigInput,
+} from '../lib/wechat-ecloud-config.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal', 'wechat_ecloud',
 ] as const;
 
 const createSchema = z.object({
@@ -94,6 +101,27 @@ export const channelsRouter = new Hono()
         instanceName: parsedConfig.data.instanceName,
         webhookToken: randomUUID(),
       };
+    } else if (body.type === 'wechat_ecloud') {
+      if ('webhookToken' in body.config) {
+        return c.json({ ok: false, error: 'webhook_token_not_mutable' }, 400);
+      }
+
+      try {
+        config = {
+          ...ensureStoredWechatEcloudConfig(
+            parseWechatEcloudConfigInput(body.config),
+            randomUUID,
+          ),
+        };
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+          },
+          400,
+        );
+      }
     }
 
     const id = generateId('ch');
@@ -127,6 +155,17 @@ export const channelsRouter = new Hono()
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type === 'wechat_ecloud') {
+      return c.json({
+        ok: true,
+        data: {
+          ...channel,
+          config: buildPublicWechatEcloudConfig(channel.config),
+          hasWebhookToken: hasWechatEcloudWebhookToken(channel.config),
+        },
+      });
+    }
+
     return c.json({ ok: true, data: channel });
   })
 
@@ -167,6 +206,43 @@ export const channelsRouter = new Hono()
           instanceName: parsedConfig.data.instanceName,
           webhookToken: storedConfig.webhookToken,
         };
+      } else if (existing.type === 'wechat_ecloud') {
+        if ('webhookToken' in body.config) {
+          return c.json({ ok: false, error: 'webhook_token_not_mutable' }, 400);
+        }
+        if ('token' in body.config) {
+          return c.json({ ok: false, error: 'token_not_mutable' }, 400);
+        }
+        if (existing.status === 'connected') {
+          return c.json({ ok: false, error: 'disconnect_before_config_change' }, 409);
+        }
+
+        try {
+          const storedConfig = parseStoredWechatEcloudConfig(existing.config);
+          data.config = ensureStoredWechatEcloudConfig(
+            {
+              appId:
+                typeof body.config.appId === 'string'
+                  ? body.config.appId
+                  : storedConfig.appId,
+              token: storedConfig.token,
+              baseUrl:
+                typeof body.config.baseUrl === 'string'
+                  ? body.config.baseUrl
+                  : storedConfig.baseUrl,
+              webhookToken: storedConfig.webhookToken,
+            },
+            () => storedConfig.webhookToken,
+          );
+        } catch (error) {
+          return c.json(
+            {
+              ok: false,
+              error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+            },
+            400,
+          );
+        }
       } else {
         data.config = body.config;
       }

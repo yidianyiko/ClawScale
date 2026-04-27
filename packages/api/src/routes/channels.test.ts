@@ -254,6 +254,59 @@ describe('channels router', () => {
     });
   });
 
+  it('creates wechat_ecloud channels with default baseUrl and generated webhook token', async () => {
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'wechat_ecloud',
+      name: 'Ecloud WeChat',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'wechat_ecloud',
+      name: 'Ecloud WeChat',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'wechat_ecloud',
+        name: 'Ecloud WeChat',
+        config: { appId: 'app_1', token: 'token_1' },
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'wechat_ecloud',
+        name: 'Ecloud WeChat',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'token_uuid_1',
+        },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        customerId: null,
+      }),
+    });
+  });
+
   it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
     mocks.findFirst.mockResolvedValueOnce({
       id: 'ch_1',

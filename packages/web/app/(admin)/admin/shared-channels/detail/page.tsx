@@ -12,6 +12,7 @@ import { getAdminCopy } from '../../../../../lib/admin-copy';
 import { formatDateTime } from '../../../../../lib/utils';
 
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
+const WECHAT_ECLOUD_KIND = 'wechat_ecloud';
 
 function titleCase(value: string): string {
   return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : value;
@@ -19,6 +20,10 @@ function titleCase(value: string): string {
 
 function isWhatsAppEvolutionKind(kind: string): boolean {
   return kind === WHATSAPP_EVOLUTION_KIND;
+}
+
+function isWechatEcloudKind(kind: string): boolean {
+  return kind === WECHAT_ECLOUD_KIND;
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -38,6 +43,10 @@ function getEvolutionInstanceName(config: Record<string, unknown>): string {
   return typeof config.instanceName === 'string' ? config.instanceName : '';
 }
 
+function getStringConfig(config: Record<string, unknown>, key: string): string {
+  return typeof config[key] === 'string' ? config[key] : '';
+}
+
 function AdminSharedChannelDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -54,6 +63,8 @@ function AdminSharedChannelDetailPageContent() {
   const [name, setName] = useState('');
   const [agentId, setAgentId] = useState('');
   const [instanceName, setInstanceName] = useState('');
+  const [ecloudAppId, setEcloudAppId] = useState('');
+  const [ecloudBaseUrl, setEcloudBaseUrl] = useState('');
   const [configText, setConfigText] = useState('{}');
 
   useEffect(() => {
@@ -88,6 +99,9 @@ function AdminSharedChannelDetailPageContent() {
       setAgentId(nextRecord.agent?.id ?? '');
       if (isWhatsAppEvolutionKind(nextRecord.kind)) {
         setInstanceName(getEvolutionInstanceName(nextRecord.config));
+      } else if (isWechatEcloudKind(nextRecord.kind)) {
+        setEcloudAppId(getStringConfig(nextRecord.config, 'appId'));
+        setEcloudBaseUrl(getStringConfig(nextRecord.config, 'baseUrl'));
       } else {
         setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
       }
@@ -106,6 +120,9 @@ function AdminSharedChannelDetailPageContent() {
     setAgentId(nextRecord.agent?.id ?? '');
     if (isWhatsAppEvolutionKind(nextRecord.kind)) {
       setInstanceName(getEvolutionInstanceName(nextRecord.config));
+    } else if (isWechatEcloudKind(nextRecord.kind)) {
+      setEcloudAppId(getStringConfig(nextRecord.config, 'appId'));
+      setEcloudBaseUrl(getStringConfig(nextRecord.config, 'baseUrl'));
     } else {
       setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
     }
@@ -124,20 +141,32 @@ function AdminSharedChannelDetailPageContent() {
     const nextName = String(form.get('name') ?? '').trim();
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const formInstanceName = String(form.get('instanceName') ?? '').trim();
+    const formEcloudAppId = String(form.get('ecloudAppId') ?? '').trim();
+    const formEcloudBaseUrl = String(form.get('ecloudBaseUrl') ?? '').trim();
     const nextInstanceName = isWhatsAppEvolutionKind(record.kind)
       ? formInstanceName || instanceName.trim() || getEvolutionInstanceName(record.config)
       : formInstanceName;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
+      let config: Record<string, unknown>;
+      if (isWhatsAppEvolutionKind(record.kind)) {
+        config = {
+          instanceName: nextInstanceName,
+        };
+      } else if (isWechatEcloudKind(record.kind)) {
+        config = {
+          appId: formEcloudAppId || ecloudAppId.trim() || getStringConfig(record.config, 'appId'),
+          baseUrl: formEcloudBaseUrl || ecloudBaseUrl.trim() || getStringConfig(record.config, 'baseUrl'),
+        };
+      } else {
+        config = parseConfig(nextConfigText);
+      }
+
       const response = await adminApi.patch<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id, {
         name: nextName,
         agentId: nextAgentId,
-        config: isWhatsAppEvolutionKind(record.kind)
-          ? {
-              instanceName: nextInstanceName,
-            }
-          : parseConfig(nextConfigText),
+        config,
       });
 
       if (!response.ok) {
@@ -154,7 +183,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleConnect() {
-    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+    if (!record || (!isWhatsAppEvolutionKind(record.kind) && !isWechatEcloudKind(record.kind))) {
       return;
     }
 
@@ -173,7 +202,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleDisconnect() {
-    if (!record || !isWhatsAppEvolutionKind(record.kind)) {
+    if (!record || (!isWhatsAppEvolutionKind(record.kind) && !isWechatEcloudKind(record.kind))) {
       return;
     }
 
@@ -210,6 +239,8 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   const evolutionChannel = record ? isWhatsAppEvolutionKind(record.kind) : false;
+  const ecloudChannel = record ? isWechatEcloudKind(record.kind) : false;
+  const connectableChannel = evolutionChannel || ecloudChannel;
   const instanceNameLocked = evolutionChannel && record?.status === 'connected';
 
   return (
@@ -242,7 +273,7 @@ function AdminSharedChannelDetailPageContent() {
                 <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.columns.updated}</p>
                 <p className="mt-1 text-base text-gray-900">{formatDateTime(record.updatedAt)}</p>
               </div>
-              {evolutionChannel ? (
+              {connectableChannel ? (
                 <div>
                   <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookToken}</p>
                   <p className="mt-1 text-base text-gray-900">
@@ -270,6 +301,68 @@ function AdminSharedChannelDetailPageContent() {
                   <p className="mt-2 text-xs text-gray-500">
                     {instanceNameLocked ? copy.sharedChannels.instanceNameLocked : copy.sharedChannels.instanceNameHelp}
                   </p>
+                </div>
+                <div className="flex gap-3">
+                  {record.status === 'connected' ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="disconnect-shared-channel"
+                      disabled={disconnecting}
+                      onClick={() => void handleDisconnect()}
+                    >
+                      {disconnecting ? copy.common.loading : copy.sharedChannels.actions.disconnect}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      data-testid="connect-shared-channel"
+                      disabled={connecting}
+                      onClick={() => void handleConnect()}
+                    >
+                      {connecting ? copy.common.loading : copy.sharedChannels.actions.connect}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : ecloudChannel ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="shared-channel-detail-ecloud-app-id" className="label">
+                      App ID
+                    </label>
+                    <input
+                      id="shared-channel-detail-ecloud-app-id"
+                      name="ecloudAppId"
+                      className="input"
+                      value={ecloudAppId}
+                      onInput={(event) => setEcloudAppId(event.currentTarget.value)}
+                      required
+                      disabled={record.status === 'connected'}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="shared-channel-detail-ecloud-base-url" className="label">
+                      Base URL
+                    </label>
+                    <input
+                      id="shared-channel-detail-ecloud-base-url"
+                      name="ecloudBaseUrl"
+                      className="input"
+                      value={ecloudBaseUrl}
+                      onInput={(event) => setEcloudBaseUrl(event.currentTarget.value)}
+                      required
+                      disabled={record.status === 'connected'}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-sm font-medium text-gray-500">Callback path</p>
+                    <p className="mt-1 break-all text-base text-gray-900">
+                      {getStringConfig(record.config, 'callbackPath') || '—'}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   {record.status === 'connected' ? (
