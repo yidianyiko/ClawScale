@@ -29,6 +29,11 @@ function isLinqKind(kind: string): boolean {
   return kind === LINQ_KIND;
 }
 
+function buildLinqConfig(fromNumber: string): Record<string, unknown> {
+  const trimmed = fromNumber.trim();
+  return trimmed ? { fromNumber: trimmed } : {};
+}
+
 function parseConfig(value: string): Record<string, unknown> {
   if (!value.trim()) {
     return {};
@@ -100,7 +105,7 @@ export default function AdminSharedChannelsPage() {
     const nextKind = String(form.get('kind') ?? DEFAULT_KIND).trim() || DEFAULT_KIND;
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const nextInstanceName = String(form.get('instanceName') ?? '').trim();
-    const nextFromNumber = String(form.get('fromNumber') ?? '').trim();
+    const nextFromNumber = String(form.get('fromNumber') ?? '');
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
@@ -109,9 +114,7 @@ export default function AdminSharedChannelsPage() {
             instanceName: nextInstanceName,
           }
         : isLinqKind(nextKind)
-          ? {
-              fromNumber: nextFromNumber,
-            }
+          ? buildLinqConfig(nextFromNumber)
           : parseConfig(nextConfigText);
 
       const response = await adminApi.post<AdminSharedChannelRow>('/api/admin/shared-channels', {

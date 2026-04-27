@@ -30,6 +30,11 @@ function supportsSharedChannelLifecycle(kind: string): boolean {
   return isWhatsAppEvolutionKind(kind) || isLinqKind(kind);
 }
 
+function buildLinqConfig(fromNumber: string): Record<string, unknown> {
+  const trimmed = fromNumber.trim();
+  return trimmed ? { fromNumber: trimmed } : {};
+}
+
 function parseConfig(value: string): Record<string, unknown> {
   if (!value.trim()) {
     return {};
@@ -146,13 +151,14 @@ function AdminSharedChannelDetailPageContent() {
     const nextName = String(form.get('name') ?? '').trim();
     const nextAgentId = String(form.get('agentId') ?? '').trim();
     const formInstanceName = String(form.get('instanceName') ?? '').trim();
-    const formFromNumber = String(form.get('fromNumber') ?? '').trim();
+    const formFromNumber = String(form.get('fromNumber') ?? '');
     const nextInstanceName = isWhatsAppEvolutionKind(record.kind)
       ? formInstanceName || instanceName.trim() || getEvolutionInstanceName(record.config)
       : formInstanceName;
-    const nextFromNumber = isLinqKind(record.kind)
-      ? formFromNumber || fromNumber.trim() || getLinqFromNumber(record.config)
-      : formFromNumber;
+    const nextFromNumber =
+      isLinqKind(record.kind) && record.status === 'connected'
+        ? fromNumber.trim() || getLinqFromNumber(record.config)
+        : formFromNumber;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
@@ -161,9 +167,7 @@ function AdminSharedChannelDetailPageContent() {
             instanceName: nextInstanceName,
           }
         : isLinqKind(record.kind)
-          ? {
-              fromNumber: nextFromNumber,
-            }
+          ? buildLinqConfig(nextFromNumber)
           : parseConfig(nextConfigText);
 
       const response = await adminApi.patch<AdminSharedChannelDetail>('/api/admin/shared-channels/' + id, {

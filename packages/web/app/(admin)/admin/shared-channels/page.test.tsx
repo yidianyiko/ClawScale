@@ -202,7 +202,7 @@ describe('AdminSharedChannelsPage', () => {
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_evo');
   });
 
-  it('creates linq shared channels with fromNumber instead of raw JSON config', async () => {
+  it('creates linq shared channels with blank fromNumber omitted from config', async () => {
     vi.mocked(adminApi.post).mockResolvedValueOnce({
       ok: true,
       data: {
@@ -266,9 +266,7 @@ describe('AdminSharedChannelsPage', () => {
       name: 'Linq SMS',
       kind: 'linq',
       agentId: 'agent_coke',
-      config: {
-        fromNumber: '',
-      },
+      config: {},
     });
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_linq');
   });
