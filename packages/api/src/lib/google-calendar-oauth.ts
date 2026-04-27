@@ -3,8 +3,10 @@ import jwt from 'jsonwebtoken';
 
 const GOOGLE_OAUTH_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_CALENDAR_READONLY_SCOPE =
-  'https://www.googleapis.com/auth/calendar.events.readonly';
+const GOOGLE_CALENDAR_READONLY_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+];
 const GOOGLE_STATE_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '10m';
 
 export interface GoogleCalendarAuthUrlInput {
@@ -186,7 +188,7 @@ export async function buildGoogleCalendarAuthUrl(
   url.searchParams.set('client_id', readGoogleCalendarClientId());
   url.searchParams.set('redirect_uri', input.redirectUri);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', GOOGLE_CALENDAR_READONLY_SCOPE);
+  url.searchParams.set('scope', GOOGLE_CALENDAR_READONLY_SCOPES.join(' '));
   url.searchParams.set('access_type', 'online');
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('state', state);
