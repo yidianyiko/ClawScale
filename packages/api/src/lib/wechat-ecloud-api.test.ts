@@ -53,6 +53,34 @@ describe('WechatEcloudApiClient', () => {
     ).rejects.toThrow('Ecloud API request failed');
   });
 
+  it('sanitizes provider failure messages without leaking the full raw value', async () => {
+    const rawMessage = `sensitive provider failure ${'x'.repeat(300)}\nsecret-token-123`;
+    fetchImpl.mockResolvedValue(
+      new Response(JSON.stringify({ ret: 500, msg: rawMessage }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    let error: unknown;
+    try {
+      await new WechatEcloudApiClient('https://api.example.test', 'token_1', fetchImpl as never).sendText(
+        'app_1',
+        'wxid_1',
+        'hello',
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(/Ecloud API request failed.*sensitive provider failure/);
+    expect(message).not.toContain(rawMessage);
+    expect(message).not.toContain('secret-token-123');
+    expect(message.length).toBeLessThan(240);
+  });
+
   it('uses bounded sanitized HTTP error text without leaking the full raw body', async () => {
     const rawBody = `provider secret ${'x'.repeat(300)} <script>alert(1)</script>`;
     fetchImpl.mockResolvedValue(

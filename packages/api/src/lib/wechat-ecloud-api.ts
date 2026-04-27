@@ -102,7 +102,8 @@ export class WechatEcloudApiClient {
     }
 
     if (!isRecord(body) || body['ret'] !== 200) {
-      const message = isRecord(body) && typeof body['msg'] === 'string' ? `: ${body['msg']}` : '';
+      const providerMessage = readProviderMessage(body);
+      const message = providerMessage ? `: ${providerMessage}` : '';
       throw new Error(`Ecloud API request failed ${path}${message}`);
     }
 

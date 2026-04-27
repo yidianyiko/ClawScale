@@ -22,6 +22,7 @@ BEGIN
     SELECT 1
     FROM pg_constraint
     WHERE conname = 'inbound_webhook_receipts_channel_id_fkey'
+      AND conrelid = '"inbound_webhook_receipts"'::regclass
   ) THEN
     ALTER TABLE "inbound_webhook_receipts"
       ADD CONSTRAINT "inbound_webhook_receipts_channel_id_fkey"
