@@ -20,7 +20,7 @@ describe('LinqApiClient', () => {
 
     await client.createChat({
       from: '+13213108456',
-      to: '+8615201780593',
+      to: ['+8615201780593'],
       text: 'hello',
     });
 
@@ -107,7 +107,7 @@ describe('LinqApiClient', () => {
     await expect(
       client.createChat({
         from: '+13213108456',
-        to: '+8615201780593',
+        to: ['+8615201780593'],
         text: 'hello',
       }),
     ).rejects.toThrow('Linq API request failed /chats: socket hang up');

@@ -5,7 +5,7 @@ export const LINQ_WEBHOOK_EVENTS = ['message.received'] as const;
 
 export interface CreateChatParams {
   from: string;
-  to: string;
+  to: string[];
   text: string;
 }
 
@@ -92,7 +92,7 @@ export class LinqApiClient {
       method: 'POST',
       body: JSON.stringify({
         from: params.from,
-        to: [params.to],
+        to: params.to,
         message: {
           parts: [{ type: 'text', value: params.text }],
         },
