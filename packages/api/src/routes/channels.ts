@@ -19,10 +19,6 @@ import { startLineBot, stopLineBot } from '../adapters/line.js';
 import { startSignalBot, stopSignalBot } from '../adapters/signal.js';
 import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
 import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-config.js';
-import {
-  buildPublicWechatEcloudConfig,
-  hasWechatEcloudWebhookToken,
-} from '../lib/wechat-ecloud-config.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
@@ -138,14 +134,7 @@ export const channelsRouter = new Hono()
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
     if (channel.type === 'wechat_ecloud') {
-      return c.json({
-        ok: true,
-        data: {
-          ...channel,
-          config: buildPublicWechatEcloudConfig(channel.config),
-          hasWebhookToken: hasWechatEcloudWebhookToken(channel.config),
-        },
-      });
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
     }
 
     return c.json({ ok: true, data: channel });

@@ -280,6 +280,39 @@ describe('channels router', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it('rejects generic wechat_ecloud detail without serializing malformed config', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      tenantId: 'tnt_1',
+      type: 'wechat_ecloud',
+      name: 'Ecloud WeChat',
+      status: 'disconnected',
+      config: {
+        token: 'token_1',
+        webhookToken: 'secret-token',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_ecloud', {
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toEqual({
+      ok: false,
+      error: 'wechat_ecloud channels can only be managed through shared-channel admin routes',
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
+    expect(JSON.stringify(body)).not.toContain('secret-token');
+  });
+
   it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
     mocks.findFirst.mockResolvedValueOnce({
       id: 'ch_1',
