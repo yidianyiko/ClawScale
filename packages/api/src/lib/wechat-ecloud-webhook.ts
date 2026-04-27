@@ -43,6 +43,22 @@ function readReceiptKey(data: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function readBestDisplayName(
+  payload: Record<string, unknown>,
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
+  return (
+    readTrimmedString(data['nickName']) ??
+    readTrimmedString(data['nickname']) ??
+    readTrimmedString(data['fromName']) ??
+    readTrimmedString(payload['nickName']) ??
+    readTrimmedString(payload['nickname']) ??
+    readTrimmedString(payload['fromName']) ??
+    fallback
+  );
+}
+
 function buildBaseMeta(
   data: Record<string, unknown>,
   appId: string,
@@ -186,6 +202,7 @@ export function normalizeWechatEcloudWebhook(
   }
 
   const meta = buildBaseMeta(data, appId, messageType, fromUser, toUser);
+  const displayName = readBestDisplayName(payload, data, fromUser);
 
   if (messageType === '60001') {
     const text = readTrimmedString(data['content']);
@@ -196,6 +213,7 @@ export function normalizeWechatEcloudWebhook(
     return {
       kind: 'route',
       externalId: fromUser,
+      displayName,
       text,
       meta,
       receiptKey,
@@ -220,7 +238,7 @@ export function normalizeWechatEcloudWebhook(
   return {
     kind: 'route',
     externalId: fromUser,
-    displayName: title,
+    displayName: title ?? displayName,
     text: visibleText,
     meta,
     receiptKey,

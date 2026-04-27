@@ -17,9 +17,21 @@ const textPayload = {
 
 describe('normalizeWechatEcloudWebhook', () => {
   it('normalizes text callbacks into route decisions', () => {
-    expect(normalizeWechatEcloudWebhook(textPayload, 'app_1')).toEqual({
+    expect(
+      normalizeWechatEcloudWebhook(
+        {
+          ...textPayload,
+          data: {
+            ...textPayload.data,
+            nickName: 'Alice',
+          },
+        },
+        'app_1',
+      ),
+    ).toEqual({
       kind: 'route',
       externalId: 'wxid_user',
+      displayName: 'Alice',
       text: 'hello',
       receiptKey: '456',
       meta: {
@@ -33,6 +45,16 @@ describe('normalizeWechatEcloudWebhook', () => {
         timestamp: 1710000000,
       },
     });
+  });
+
+  it('falls back to external id when text callbacks omit nicknames', () => {
+    expect(normalizeWechatEcloudWebhook(textPayload, 'app_1')).toEqual(
+      expect.objectContaining({
+        kind: 'route',
+        externalId: 'wxid_user',
+        displayName: 'wxid_user',
+      }),
+    );
   });
 
   it('extracts visible reference title/content and bounded XML fields', () => {

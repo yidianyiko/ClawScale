@@ -350,6 +350,7 @@ describe('gatewayRouter ecloud wechat route', () => {
           self: false,
           fromUser: 'wxid_user',
           toUser: 'wxid_bot',
+          nickName: 'Alice',
           content: '  hello from ecloud  ',
           msgId: 123,
           newMsgId: '456',
@@ -371,7 +372,7 @@ describe('gatewayRouter ecloud wechat route', () => {
     expect(routeInboundMessage).toHaveBeenCalledWith({
       channelId: 'ch_ecloud',
       externalId: 'wxid_user',
-      displayName: undefined,
+      displayName: 'Alice',
       text: 'hello from ecloud',
       meta: {
         platform: 'wechat_ecloud',
@@ -384,6 +385,35 @@ describe('gatewayRouter ecloud wechat route', () => {
         timestamp: 1710000000,
       },
     });
+  });
+
+  it('falls back to external id as displayName when text callbacks omit nicknames', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/ecloud/wechat/ch_ecloud/webhook_token_1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messageType: '60001',
+        data: {
+          self: false,
+          fromUser: 'wxid_user',
+          toUser: 'wxid_bot',
+          content: 'hello from ecloud',
+          msgId: 'msg_fallback',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(routeInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalId: 'wxid_user',
+        displayName: 'wxid_user',
+        text: 'hello from ecloud',
+      }),
+    );
   });
 
   it('routes valid reference callbacks', async () => {
