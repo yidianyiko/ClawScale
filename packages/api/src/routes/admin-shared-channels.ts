@@ -411,6 +411,21 @@ export const adminSharedChannelsRouter = new Hono()
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
 
+    let ecloudStoredConfig: StoredWechatEcloudConfig | undefined;
+    if (existing.type === 'wechat_ecloud') {
+      try {
+        ecloudStoredConfig = parseStoredWechatEcloudConfig(existing.config);
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+          },
+          409,
+        );
+      }
+    }
+
     let config: Prisma.InputJsonValue | undefined;
     if (parsedBody.data.config !== undefined) {
       if (existing.type === 'whatsapp_evolution') {
@@ -446,17 +461,9 @@ export const adminSharedChannelsRouter = new Hono()
           return c.json({ ok: false, error: 'disconnect_before_config_change' }, 409);
         }
 
-        let storedConfig: StoredWechatEcloudConfig;
-        try {
-          storedConfig = parseStoredWechatEcloudConfig(existing.config);
-        } catch (error) {
-          return c.json(
-            {
-              ok: false,
-              error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
-            },
-            409,
-          );
+        const storedConfig = ecloudStoredConfig;
+        if (!storedConfig) {
+          return c.json({ ok: false, error: 'invalid_wechat_ecloud_config' }, 409);
         }
 
         const mergedConfig = {
