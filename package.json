@@ -2,7 +2,7 @@
   "name": "clawscale",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw, unlocked for your whole team — multi-tenant workspace layer",
+  "description": "ClawScale customer and shared-channel gateway for Coke/Kap",
   "scripts": {
     "dev": "pnpm --parallel -r --filter \"!@clawscale/cli-bridge\" dev",
     "build": "pnpm -r build",

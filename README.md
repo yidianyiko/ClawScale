@@ -1,256 +1,216 @@
-<p align="center">
-  <img src="https://clawscale.org/logo.png" alt="ClawScale" width="200" />
-</p>
+# ClawScale Gateway
 
-<h1 align="center">ClawScale</h1>
-<p align="center"><strong>Connect your AI agents to any messaging platform</strong></p>
-<p align="center">English | <a href="README.zh-CN.md">中文</a></p>
+ClawScale Gateway is the platform layer that connects customer-facing channels
+to a business runtime. In this repository it is used by Coke/Kap: Gateway owns
+customer accounts, channel records, shared-channel provisioning, delivery-route
+state, and the web/API surfaces that sit between public channels and the Coke
+runtime.
 
-ClawScale is an open-source gateway that connects AI agents — OpenClaw, Claude Code, LLMs, or any custom agent — to WhatsApp, Discord, Slack, Telegram, and 10+ other messaging platforms. It handles multi-tenant isolation, conversation routing, and backend orchestration so hundreds of users can talk to your agents without interfering with each other.
+The current architecture is not the old "generic AI backend dashboard" model.
+Gateway no longer presents itself as an OpenClaw wrapper, a multi-backend chat
+command system, or a CLI bridge product. Its live role is to provide a stable
+channel and customer platform for the Coke supervision runtime.
 
-## What can you do with ClawScale?
+## Current Responsibilities
 
-- **Deploy AI agents to messaging platforms** — connect any LLM or AI agent to WhatsApp, Discord, Slack, Telegram, Teams, and more from a single dashboard
-- **Support many users at once** — each user gets isolated conversations, memory, and state. No cross-contamination between users
-- **Mix and match AI backends** — run OpenClaw, GPT, Claude, self-hosted models, or all of them at once. Users can talk to multiple agents in the same chat
-- **Manage everything from a dashboard** — channels, backends, users, roles, and audit logs in one place
+- **Customer provisioning** - create and authenticate customer accounts, resolve
+  external identities, provision customer ownership, and expose customer account
+  flows.
+- **Customer-owned channels** - let a signed-in customer manage their own
+  personal channel, currently centered on `wechat_personal`.
+- **Shared channels** - let an admin configure a shared channel once, then map
+  inbound external users into Gateway customers through normalized external
+  identities.
+- **Inbound routing** - normalize channel webhooks into `routeInboundMessage()`
+  and forward business messages to the configured agent/runtime boundary.
+- **Outbound delivery** - receive Coke runtime output through `/api/outbound`,
+  resolve the exact delivery route, apply idempotency, and send the message
+  through the owning channel adapter.
+- **Admin operations** - expose admin views for agents, customers, channels,
+  shared channels, deliveries, and admin accounts.
 
-## Supported channels
+## Runtime Shape
 
-| Channel | Connection method |
-|---|---|
-| WhatsApp (Personal) | QR code scan |
-| WhatsApp Business | Meta Cloud API webhook |
-| Discord | Bot token |
-| Telegram | Bot token |
-| Slack | Bot token (Socket Mode) |
-| LINE | Channel access token (webhook) |
-| Signal | signal-cli REST API |
-| Microsoft Teams | Azure Bot Service (webhook) |
-| Matrix | Homeserver URL + access token |
-| WeChat Work (WeCom) | Bot token (WebSocket) |
-| WeChat Personal | QR code scan |
-| Web Chat Widget | Webhook |
-| Instagram | Meta API |
-| Facebook | Webhook |
+```text
+External channel
+  -> Gateway channel adapter / webhook route
+  -> ExternalIdentity + Customer provisioning
+  -> Business conversation + delivery route
+  -> Agent/runtime endpoint
+  -> /api/outbound
+  -> Gateway outbound delivery
+  -> External channel
+```
 
-Add channels from the dashboard — provide credentials and hit **Connect**. WhatsApp and WeChat Personal show a QR code for pairing.
+The web app runs on `4040`. The API runs on `4041`.
 
-## Supported AI backends
+The Coke Python runtime and bridge are separate processes. Gateway owns the
+platform/channel side; Coke owns business memory, workflows, reminders, and the
+assistant turn pipeline.
 
-ClawScale doesn't lock you into one AI provider. Connect any combination of these:
+## Channel Models
 
-| Backend | Description |
-|---|---|
-| **OpenClaw** | One or more OpenClaw instances with their own tools, memory, and prompts |
-| **OpenAI** | GPT models via OpenAI API |
-| **Anthropic** | Claude models via Anthropic API |
-| **OpenRouter** | Access hundreds of models through one API key |
-| **Pulse** | Pulse Editor AI agent |
-| **CLI Bridge** | Any local CLI agent (e.g. Claude Code) running on your machine — connected via WebSocket tunnel, no public IP needed |
-| **Custom** | Any OpenAI-compatible endpoint (vLLM, Ollama, self-hosted models, etc.) |
+### Customer-Owned Personal Channel
 
-Users can have multiple backends active at once. Replies are labeled by source (e.g. `[GPT-4o]`, `[Claude]`) so users know which agent is responding.
+`wechat_personal` is the current customer-facing personal channel flow.
 
-## Getting started
+Supported customer pages and APIs:
 
-### Prerequisites
+- `/channels/wechat-personal`
+- `GET /api/customer/channels/wechat-personal/status`
+- `POST /api/customer/channels/wechat-personal`
+- `POST /api/customer/channels/wechat-personal/connect`
+- `POST /api/customer/channels/wechat-personal/disconnect`
+- `DELETE /api/customer/channels/wechat-personal`
+
+Gateway treats the channel row as the source of truth for ownership and
+lifecycle state.
+
+### Shared Channels
+
+Shared channels are admin-managed channels that many external users can enter
+through. On first inbound contact, Gateway:
+
+1. normalizes the external identity by provider, identity type, and value
+2. creates or reuses the matching `Customer`
+3. creates an unclaimed owner identity and agent binding when needed
+4. provisions the configured shared-channel agent
+5. parks the inbound event if provisioning is still pending
+
+Current and active shared-channel work is centered on the `whatsapp_evolution`
+shape, with the same model intended for additional shared adapters such as
+Linq or WeChat Ecloud.
+
+Important admin/API surfaces:
+
+- `/admin/shared-channels`
+- `/api/admin/shared-channels`
+- `/gateway/evolution/whatsapp/:channelId/:webhookToken`
+
+Shared-channel secrets stay server-side. Public/admin responses must not expose
+stored webhook tokens or provider credentials.
+
+## API Namespaces
+
+Gateway uses audience-first route namespaces:
+
+- `/api/auth/*` - customer authentication and session hydration
+- `/api/customer/*` - signed-in customer resources and customer-triggered
+  actions
+- `/api/public/*` - unauthenticated tokenized or externally linked handoff
+  endpoints
+- `/api/webhooks/*` - third-party callbacks
+- `/api/admin/*` - authenticated admin/operator interfaces
+- `/api/internal/*` - bridge/runtime/internal operational calls
+
+Do not add new public routes under `/coke/*`, `/api/coke/*`, or `/user/*`.
+Those names are retired compatibility surfaces.
+
+## Local Development
+
+Prerequisites:
 
 - Node.js 20+
-- pnpm
-- Docker (for PostgreSQL)
+- pnpm 9+
+- PostgreSQL
 
-### Quick start
+Setup:
 
 ```bash
-# 1. Start Postgres
-docker compose up postgres -d
-
-# 2. Configure environment
 cp .env.example .env
-# Edit .env — defaults work for local dev
-
-# 3. Install dependencies
 pnpm install
-
-# 4. Push database schema
-cd packages/api && pnpm db:push && cd ../..
-
-# 5. Start API and web (separate terminals)
-cd packages/api && pnpm dev
-cd packages/web && pnpm dev
+pnpm db:push
 ```
 
-- **Dashboard**: http://localhost:4040
-- **API**: http://localhost:4041
-
-Or run everything with Docker:
+Run API and web:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+pnpm dev
 ```
 
-Open the dashboard and **Register** to create your workspace. You're the admin.
-
-## How it works
-
-```
-End-user (WhatsApp, Discord, Slack, etc.)
-    |
-    v
-Channel Adapter ──> POST /gateway/:channelId
-    |
-    v
-Message Router
-    ├── Parse commands (/team, /backends, etc.)
-    ├── Resolve target backend(s)
-    ├── Load conversation history
-    ├── Call AI backend(s)
-    └── Save messages + return reply
-    |
-    v
-Channel Adapter ──> Reply to end-user
-```
-
-1. A user sends a message on any connected platform
-2. The channel adapter normalizes the message and forwards it to ClawScale
-3. ClawScale routes the message to the right AI backend(s), keeping each user's conversation history isolated
-4. The AI response is sent back through the same channel
-
-## Attachment support
-
-ClawScale passes attachments (images, audio, video, documents) from users straight through to your AI backends. Supported on every channel that carries media:
-
-| Channel | Supported attachment types |
-|---|---|
-| WhatsApp (Personal & Business) | Images, audio, video, documents |
-| Discord | Images, files |
-| Telegram | Photos, documents, audio, video |
-| Slack | Files |
-| LINE | Images, audio, video, files |
-| Signal | Attachments |
-| Matrix | Files |
-| Microsoft Teams | Files |
-| WeChat Personal & WeCom | Images |
-
-AI backends that support vision (e.g. GPT-4o, Claude 3) will receive image attachments as part of the conversation. Other backends receive a placeholder noting the attachment.
-
-## CLI Bridge
-
-Run any local CLI agent (such as Claude Code) on your machine and connect it to ClawScale as a backend — no public IP or server deployment required.
-
-```
-Your Machine                          ClawScale Server
-+-----------------+                   +------------------+
-| Local Agent     |                   |                  |
-| (Claude Code)   |<-- spawn         |   ClawScale API  |
-|                 |                   |                  |
-| clawscale-bridge|---WebSocket------>|   /bridge (WS)   |
-|                 |   (outbound)      |                  |
-+-----------------+                   +------------------+
-                                             |
-                                      Chat Platforms
-                                      (Telegram, Discord, etc.)
-```
-
-**Quick start:**
-
-1. Go to **AI Backends** in the dashboard, click **Add backend**, choose **CLI Bridge**, and copy the generated bridge token.
-2. Run the bridge on your machine:
+Or run them separately:
 
 ```bash
-npx @clawscale/cli-bridge \
-  --server wss://your-clawscale-server/bridge \
-  --token brg_xxxxxxxxxxxx \
-  --agent claude-code
+pnpm --dir packages/api dev
+pnpm --dir packages/web dev
 ```
 
-The bridge opens an outbound WebSocket connection (no inbound ports needed) and reconnects automatically with exponential backoff if it drops.
+Useful URLs:
 
-| Option | Description |
-|---|---|
-| `--server` | ClawScale WebSocket URL, e.g. `wss://your-server/bridge` |
-| `--token` | Bridge token from the dashboard |
-| `--agent` | Agent type — currently `claude-code` |
+- Web: `http://localhost:4040`
+- API health: `http://localhost:4041/health`
+- Admin: `http://localhost:4040/admin/login`
+- Customer login: `http://localhost:4040/auth/login`
+- Personal channel setup: `http://localhost:4040/channels/wechat-personal`
 
-## Chat commands
+## Key Environment Variables
 
-End-users can run commands directly in chat to manage their experience:
+Core:
 
-| Command | What it does |
-|---|---|
-| `/backends` | List available AI backends |
-| `/team` | Show which backends are active |
-| `/team invite <name>` | Add a backend to the conversation |
-| `/team kick <name>` | Remove a backend |
-| `/clear` | Delete conversation history |
-| `/help` | Show all commands |
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `CUSTOMER_JWT_SECRET`
+- `CORS_ORIGIN`
+- `DOMAIN_CLIENT`
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_COKE_API_URL`
 
-To message a specific backend: `gpt> explain quantum computing`
+Coke/ClawScale runtime boundary:
 
-## Multi-tenant isolation
+- `CLAWSCALE_OUTBOUND_API_KEY`
+- `CLAWSCALE_IDENTITY_API_KEY`
+- `CLAWSCALE_WECHAT_CHANNEL_API_KEY`
+- `COKE_PLATFORM_TENANT_ID`
 
-ClawScale is designed for multi-user deployments. Every user's conversations, memory, and state are fully isolated — data never crosses boundaries.
+Email and subscription flows:
 
-**Access control** — workspace admins decide who can interact with the bot:
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `EMAIL_FROM_NAME`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_ID`
 
-- **Anonymous** — anyone can chat (default)
-- **Whitelist** — only approved users
-- **Blacklist** — block specific users
+Shared-channel adapters may require additional provider-specific secrets.
 
-**Roles** — each workspace has three roles:
+## Testing
 
-| Role | Access |
-|---|---|
-| **Admin** | Full access — channels, backends, settings, members, audit logs |
-| **Member** | Manage conversations and workflows |
-| **Viewer** | Read-only access |
+Run all Gateway tests:
 
-**Plans**: Starter (5 members, 3 channels), Business (50 members, 20 channels), Enterprise (unlimited).
-
-## Comparison with OpenClaw
-
-ClawScale originated from [OpenClaw](https://github.com/pulseeditor/openclaw). OpenClaw bundles messaging gateways and an AI agent into one process — great for personal use, but conversations bleed into each other when multiple users share the same instance.
-
-ClawScale separates the gateway layer from the agent layer, so each can scale independently:
-
-| | OpenClaw | ClawScale |
-|---|---|---|
-| **Architecture** | Monolithic — gateways + agent in one process | Decoupled — gateway layer + pluggable agent backends |
-| **Users** | Single user, shared memory | Multi-tenant with isolated memory per user |
-| **Agents** | One built-in agent | Multiple backends per tenant |
-| **Scaling** | One instance | Horizontal — multiple agents behind one gateway |
-| **Admin controls** | None | Dashboard with RBAC, audit logs, access policies |
-
-## Tech stack
-
-- **API** — [Hono](https://hono.dev) + [Prisma](https://prisma.io) + PostgreSQL
-- **Web** — [Next.js](https://nextjs.org) 16 + React 19 + Tailwind CSS
-- **AI** — OpenAI SDK, Anthropic SDK, LangChain
-- **Monorepo** — pnpm workspaces
-
+```bash
+pnpm test
 ```
+
+Run focused package tests:
+
+```bash
+pnpm --dir packages/api test
+pnpm --dir packages/web test
+```
+
+Useful focused areas:
+
+```bash
+pnpm --dir packages/api test -- src/routes/admin-shared-channels.test.ts src/lib/shared-channel-provisioning.test.ts src/routes/outbound.test.ts
+pnpm --dir packages/web test -- 'app/(admin)/admin/shared-channels/page.test.tsx' 'app/(customer)/channels/wechat-personal/page.test.tsx'
+```
+
+## Package Layout
+
+```text
 packages/
-├── api/       # Backend, channel adapters, AI routing, Prisma schema
-├── web/       # Next.js dashboard
-└── shared/    # Shared TypeScript types
+  api/       Hono API, Prisma schema, channel adapters, routing, delivery
+  web/       Next.js public, customer, and admin surfaces
+  shared/    shared TypeScript types
 ```
 
-## Environment variables
+## What Is Retired
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret for signing auth tokens |
-| `OPENAI_API_KEY` | OpenAI API key (optional) |
-| `CORS_ORIGIN` | Frontend URL (default: `http://localhost:4040`) |
-| `PORT` | API port (default: `4041`) |
-| `WHATSAPP_AUTH_DIR` | WhatsApp session files directory (default: `./data/whatsapp`) |
-| `OPENCLAW_BIN` | Path to OpenClaw binary (optional) |
-| `OPENCLAW_PORT_BASE` | Dynamic port assignment base (default: `19000`) |
-| `OPENCLAW_DATA_DIR` | Per-tenant OpenClaw data directory (default: `./data/tenants`) |
+The following older README claims are no longer the current Gateway product
+positioning:
 
-## License
-
-MIT
+- OpenClaw wrapper or comparison-driven positioning
+- end-user chat commands such as `/team` and `/backends` as the main product
+- generic multi-AI-backend dashboard as the primary surface
+- public `/coke/*` or `/api/coke/*` compatibility routes
+- Coke-owned direct channel runtimes outside the Gateway/channel boundary

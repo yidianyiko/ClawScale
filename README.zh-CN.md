@@ -1,256 +1,196 @@
-<p align="center">
-  <img src="https://clawscale.org/logo.png" alt="ClawScale" width="200" />
-</p>
+# ClawScale Gateway
 
-<h1 align="center">ClawScale</h1>
-<p align="center"><strong>将你的 AI 智能体连接到任意消息平台</strong></p>
-<p align="center"><a href="README.md">English</a> | 中文</p>
+ClawScale Gateway 是连接外部消息渠道和业务运行时的平台层。在当前仓库里，
+它服务于 Coke/Kap：Gateway 负责客户账号、渠道记录、共享渠道开通、
+投递路由状态，以及位于公开渠道和 Coke 运行时之间的 Web/API 表面。
 
-ClawScale 是一个开源网关，可以将 AI 智能体（OpenClaw、Claude Code、大语言模型或任何自定义智能体）连接到 WhatsApp、Discord、Slack、Telegram 等 10 多个消息平台。它负责多租户隔离、会话路由和后端编排，让数百个用户可以同时与你的智能体对话，互不干扰。
+当前架构已经不是旧的“通用 AI 后端 Dashboard”。Gateway 不再把自己定位成
+OpenClaw 包装层、多后端聊天命令系统或 CLI Bridge 产品。它现在的核心职责是
+为 Coke 监督运行时提供稳定的渠道平台和客户平台。
 
-## ClawScale 能做什么？
+## 当前职责
 
-- **将 AI 智能体部署到消息平台** — 通过统一面板将任何大语言模型或 AI 智能体连接到 WhatsApp、Discord、Slack、Telegram、Teams 等平台
-- **支持大量用户同时使用** — 每个用户拥有独立的会话、记忆和状态，用户之间完全隔离
-- **灵活组合 AI 后端** — 同时运行 OpenClaw、GPT、Claude、自托管模型等，用户可以在同一个聊天中与多个智能体对话
-- **统一管理面板** — 在一个地方管理频道、后端、用户、角色和审计日志
+- **客户开通**：创建和认证客户账号，解析外部身份，建立客户归属关系，并暴露客户账号流程。
+- **客户自有渠道**：让登录客户管理自己的个人渠道，目前核心是 `wechat_personal`。
+- **共享渠道**：管理员只配置一次共享渠道，外部用户进入后通过标准化外部身份映射成 Gateway 客户。
+- **入站路由**：把渠道 webhook 标准化为 `routeInboundMessage()` 输入，并转发到配置好的 agent / runtime 边界。
+- **出站投递**：通过 `/api/outbound` 接收 Coke 运行时输出，解析精确投递路由，做幂等控制，并通过对应渠道适配器发送。
+- **管理员操作**：提供 agents、customers、channels、shared channels、deliveries 和 admin accounts 的管理界面。
 
-## 支持的频道
+## 运行时形态
 
-| 频道 | 连接方式 |
-|---|---|
-| WhatsApp（个人版） | 扫描二维码 |
-| WhatsApp Business | Meta Cloud API Webhook |
-| Discord | Bot Token |
-| Telegram | Bot Token |
-| Slack | Bot Token（Socket Mode） |
-| LINE | Channel Access Token（Webhook） |
-| Signal | signal-cli REST API |
-| Microsoft Teams | Azure Bot Service（Webhook） |
-| Matrix | Homeserver URL + Access Token |
-| 企业微信 | Bot Token（WebSocket） |
-| 微信个人版 | 扫描二维码 |
-| 网页聊天组件 | Webhook |
-| Instagram | Meta API |
-| Facebook | Webhook |
+```text
+外部渠道
+  -> Gateway 渠道适配器 / webhook route
+  -> ExternalIdentity + Customer provisioning
+  -> Business conversation + delivery route
+  -> Agent/runtime endpoint
+  -> /api/outbound
+  -> Gateway outbound delivery
+  -> 外部渠道
+```
 
-在面板中添加频道 — 填写凭据后点击**连接**即可。WhatsApp 和微信个人版会显示二维码供扫描配对。
+Web 运行在 `4040`，API 运行在 `4041`。
 
-## 支持的 AI 后端
+Coke Python runtime 和 bridge 是独立进程。Gateway 负责平台和渠道侧；
+Coke 负责业务记忆、工作流、提醒，以及助手的回合处理流水线。
 
-ClawScale 不绑定任何单一 AI 供应商。你可以自由组合以下后端：
+## 渠道模型
 
-| 后端 | 说明 |
-|---|---|
-| **OpenClaw** | 一个或多个 OpenClaw 实例，拥有独立的工具、记忆和提示词 |
-| **OpenAI** | 通过 OpenAI API 使用 GPT 模型 |
-| **Anthropic** | 通过 Anthropic API 使用 Claude 模型 |
-| **OpenRouter** | 通过一个 API Key 访问数百种模型 |
-| **Pulse** | Pulse Editor AI 智能体 |
-| **CLI Bridge** | 运行在本地机器上的任意 CLI 智能体（如 Claude Code）— 通过 WebSocket 隧道连接，无需公网 IP |
-| **自定义** | 任何 OpenAI 兼容的端点（vLLM、Ollama、自托管模型等） |
+### 客户自有个人渠道
 
-用户可以同时激活多个后端。回复会标注来源（如 `[GPT-4o]`、`[Claude]`），方便用户了解是哪个智能体在回复。
+`wechat_personal` 是当前面向客户的个人渠道流程。
 
-## 快速开始
+相关页面和 API：
 
-### 前置要求
+- `/channels/wechat-personal`
+- `GET /api/customer/channels/wechat-personal/status`
+- `POST /api/customer/channels/wechat-personal`
+- `POST /api/customer/channels/wechat-personal/connect`
+- `POST /api/customer/channels/wechat-personal/disconnect`
+- `DELETE /api/customer/channels/wechat-personal`
+
+Gateway 把 channel row 作为所有权和生命周期状态的事实来源。
+
+### 共享渠道
+
+共享渠道由管理员配置，多个外部用户可以从同一个渠道进入。第一次收到外部用户消息时，Gateway 会：
+
+1. 按 provider、identity type、identity value 标准化外部身份
+2. 创建或复用对应的 `Customer`
+3. 在需要时创建未认领的 owner identity 和 agent binding
+4. 为配置的共享渠道 agent 执行开通
+5. 如果开通仍在 pending，就先 park 这条入站事件
+
+当前活跃的共享渠道工作主要围绕 `whatsapp_evolution` 形态展开；Linq、
+WeChat Ecloud 等后续共享适配器也应沿用同一模型。
+
+重要的管理和 API 表面：
+
+- `/admin/shared-channels`
+- `/api/admin/shared-channels`
+- `/gateway/evolution/whatsapp/:channelId/:webhookToken`
+
+共享渠道密钥只保存在服务端。公开或管理员响应不能泄露存储的 webhook token
+或 provider 凭据。
+
+## API 命名空间
+
+Gateway 使用“先区分受众”的路由命名：
+
+- `/api/auth/*`：客户认证和 session hydration
+- `/api/customer/*`：登录客户拥有的资源和客户触发的业务动作
+- `/api/public/*`：无需登录的 token 化或外部链接交接端点
+- `/api/webhooks/*`：第三方回调
+- `/api/admin/*`：管理员/运营接口
+- `/api/internal/*`：bridge、runtime 或内部运维调用
+
+不要再新增 `/coke/*`、`/api/coke/*` 或 `/user/*` 公开路由。这些都是已退役的兼容表面。
+
+## 本地开发
+
+前置要求：
 
 - Node.js 20+
-- pnpm
-- Docker（用于 PostgreSQL）
+- pnpm 9+
+- PostgreSQL
 
-### 启动步骤
+初始化：
 
 ```bash
-# 1. 启动 Postgres
-docker compose up postgres -d
-
-# 2. 配置环境变量
 cp .env.example .env
-# 编辑 .env — 默认配置适用于本地开发
-
-# 3. 安装依赖
 pnpm install
-
-# 4. 推送数据库结构
-cd packages/api && pnpm db:push && cd ../..
-
-# 5. 启动 API 和 Web（分别在不同终端）
-cd packages/api && pnpm dev
-cd packages/web && pnpm dev
+pnpm db:push
 ```
 
-- **管理面板**: http://localhost:4040
-- **API**: http://localhost:4041
-
-或者使用 Docker 一键启动：
+同时启动 API 和 Web：
 
 ```bash
-cp .env.example .env
-docker compose up --build
+pnpm dev
 ```
 
-打开面板并**注册**以创建你的工作区。你将成为管理员。
-
-## 工作原理
-
-```
-终端用户（WhatsApp、Discord、Slack 等）
-    |
-    v
-频道适配器 ──> POST /gateway/:channelId
-    |
-    v
-消息路由器
-    ├── 解析命令（/team、/backends 等）
-    ├── 解析目标后端
-    ├── 加载会话历史
-    ├── 调用 AI 后端
-    └── 保存消息 + 返回回复
-    |
-    v
-频道适配器 ──> 回复终端用户
-```
-
-1. 用户在任意已连接的平台上发送消息
-2. 频道适配器将消息标准化后转发给 ClawScale
-3. ClawScale 将消息路由到对应的 AI 后端，保持每个用户的会话历史隔离
-4. AI 的回复通过同一频道返回给用户
-
-## 附件支持
-
-ClawScale 将用户发送的附件（图片、音频、视频、文件）直接传递给 AI 后端。支持以下所有携带媒体的频道：
-
-| 频道 | 支持的附件类型 |
-|---|---|
-| WhatsApp（个人版与 Business） | 图片、音频、视频、文档 |
-| Discord | 图片、文件 |
-| Telegram | 图片、文档、音频、视频 |
-| Slack | 文件 |
-| LINE | 图片、音频、视频、文件 |
-| Signal | 附件 |
-| Matrix | 文件 |
-| Microsoft Teams | 文件 |
-| 微信个人版 & 企业微信 | 图片 |
-
-支持视觉功能的 AI 后端（如 GPT-4o、Claude 3）将以对话的一部分接收图片附件；其他后端会收到说明附件存在的占位文本。
-
-## CLI Bridge
-
-在本地机器上运行任意 CLI 智能体（如 Claude Code），并将其作为后端连接到 ClawScale — 无需公网 IP 或服务器部署。
-
-```
-本地机器                               ClawScale 服务器
-+-----------------+                   +------------------+
-| 本地智能体       |                   |                  |
-| (Claude Code)   |<-- 子进程         |   ClawScale API  |
-|                 |                   |                  |
-| clawscale-bridge|---WebSocket------>|   /bridge (WS)   |
-|                 |   （出站连接）     |                  |
-+-----------------+                   +------------------+
-                                             |
-                                      聊天平台
-                                      (Telegram, Discord 等)
-```
-
-**快速开始：**
-
-1. 在面板的 **AI Backends** 页面点击 **Add backend**，选择 **CLI Bridge**，复制生成的 Bridge Token。
-2. 在本地机器上运行 Bridge：
+或分别启动：
 
 ```bash
-npx @clawscale/cli-bridge \
-  --server wss://your-clawscale-server/bridge \
-  --token brg_xxxxxxxxxxxx \
-  --agent claude-code
+pnpm --dir packages/api dev
+pnpm --dir packages/web dev
 ```
 
-Bridge 建立出站 WebSocket 连接（无需开放入站端口），断线后自动进行指数退避重连。
+常用地址：
 
-| 选项 | 说明 |
-|---|---|
-| `--server` | ClawScale WebSocket URL，例如 `wss://your-server/bridge` |
-| `--token` | 从面板获取的 Bridge Token |
-| `--agent` | 智能体类型，目前支持 `claude-code` |
+- Web：`http://localhost:4040`
+- API health：`http://localhost:4041/health`
+- Admin：`http://localhost:4040/admin/login`
+- Customer login：`http://localhost:4040/auth/login`
+- Personal channel setup：`http://localhost:4040/channels/wechat-personal`
 
-## 聊天命令
+## 关键环境变量
 
-终端用户可以在聊天中直接使用命令来管理体验：
+核心：
 
-| 命令 | 功能 |
-|---|---|
-| `/backends` | 列出可用的 AI 后端 |
-| `/team` | 显示当前激活的后端 |
-| `/team invite <名称>` | 将后端添加到会话中 |
-| `/team kick <名称>` | 移除后端 |
-| `/clear` | 删除会话历史 |
-| `/help` | 显示所有命令 |
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `CUSTOMER_JWT_SECRET`
+- `CORS_ORIGIN`
+- `DOMAIN_CLIENT`
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_COKE_API_URL`
 
-向指定后端发送消息：`gpt> 解释量子计算`
+Coke / ClawScale 运行时边界：
 
-## 多租户隔离
+- `CLAWSCALE_OUTBOUND_API_KEY`
+- `CLAWSCALE_IDENTITY_API_KEY`
+- `CLAWSCALE_WECHAT_CHANNEL_API_KEY`
+- `COKE_PLATFORM_TENANT_ID`
 
-ClawScale 专为多用户部署设计。每个用户的会话、记忆和状态完全隔离 — 数据绝不会跨越边界。
+邮件和订阅流程：
 
-**访问控制** — 工作区管理员决定谁可以与机器人交互：
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `EMAIL_FROM_NAME`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_ID`
 
-- **匿名** — 任何人都可以聊天（默认）
-- **白名单** — 仅允许已批准的用户
-- **黑名单** — 屏蔽特定用户
+共享渠道适配器可能还需要额外的 provider-specific 密钥。
 
-**角色** — 每个工作区有三种角色：
+## 测试
 
-| 角色 | 权限 |
-|---|---|
-| **管理员** | 完全访问 — 频道、后端、设置、成员、审计日志 |
-| **成员** | 管理会话和工作流 |
-| **查看者** | 只读访问 |
+运行所有 Gateway 测试：
 
-**方案**：入门版（5 名成员、3 个频道）、商业版（50 名成员、20 个频道）、企业版（无限制）。
-
-## 与 OpenClaw 的对比
-
-ClawScale 源自 [OpenClaw](https://github.com/pulseeditor/openclaw)。OpenClaw 将消息网关和 AI 智能体捆绑在一个进程中 — 适合个人使用，但当多个用户共享同一实例时，会话之间会相互干扰。
-
-ClawScale 将网关层与智能体层分离，使两者可以独立扩展：
-
-| | OpenClaw | ClawScale |
-|---|---|---|
-| **架构** | 单体 — 网关 + 智能体在同一进程 | 解耦 — 网关层 + 可插拔的智能体后端 |
-| **用户** | 单用户，共享记忆 | 多租户，每个用户独立记忆 |
-| **智能体** | 一个内置智能体 | 每个租户支持多个后端 |
-| **扩展性** | 单实例 | 水平扩展 — 多个智能体共用一个网关 |
-| **管理功能** | 无 | 面板 + RBAC、审计日志、访问策略 |
-
-## 技术栈
-
-- **API** — [Hono](https://hono.dev) + [Prisma](https://prisma.io) + PostgreSQL
-- **Web** — [Next.js](https://nextjs.org) 16 + React 19 + Tailwind CSS
-- **AI** — OpenAI SDK、Anthropic SDK、LangChain
-- **Monorepo** — pnpm workspaces
-
+```bash
+pnpm test
 ```
+
+按 package 运行：
+
+```bash
+pnpm --dir packages/api test
+pnpm --dir packages/web test
+```
+
+常用聚焦测试：
+
+```bash
+pnpm --dir packages/api test -- src/routes/admin-shared-channels.test.ts src/lib/shared-channel-provisioning.test.ts src/routes/outbound.test.ts
+pnpm --dir packages/web test -- 'app/(admin)/admin/shared-channels/page.test.tsx' 'app/(customer)/channels/wechat-personal/page.test.tsx'
+```
+
+## 包结构
+
+```text
 packages/
-├── api/       # 后端、频道适配器、AI 路由、Prisma 模型
-├── web/       # Next.js 管理面板
-└── shared/    # 共享 TypeScript 类型
+  api/       Hono API、Prisma schema、渠道适配器、路由、投递
+  web/       Next.js 公开页面、客户页面和管理员页面
+  shared/    共享 TypeScript 类型
 ```
 
-## 环境变量
+## 已退役内容
 
-| 变量 | 说明 |
-|---|---|
-| `DATABASE_URL` | PostgreSQL 连接字符串 |
-| `JWT_SECRET` | 用于签署认证令牌的密钥 |
-| `OPENAI_API_KEY` | OpenAI API 密钥（可选） |
-| `CORS_ORIGIN` | 前端 URL（默认：`http://localhost:4040`） |
-| `PORT` | API 端口（默认：`4041`） |
-| `WHATSAPP_AUTH_DIR` | WhatsApp 会话文件目录（默认：`./data/whatsapp`） |
-| `OPENCLAW_BIN` | OpenClaw 二进制文件路径（可选） |
-| `OPENCLAW_PORT_BASE` | 动态端口分配基数（默认：`19000`） |
-| `OPENCLAW_DATA_DIR` | 每租户 OpenClaw 数据目录（默认：`./data/tenants`） |
+旧 README 里的这些说法不再代表当前 Gateway 产品定位：
 
-## 许可证
-
-MIT
+- OpenClaw 包装层或以 OpenClaw 对比为中心的定位
+- `/team`、`/backends` 等终端用户聊天命令作为主产品面
+- 通用多 AI 后端 Dashboard 作为主要表面
+- 公开 `/coke/*` 或 `/api/coke/*` 兼容路由
+- Gateway / channel 边界之外由 Coke 自己维护的直接渠道运行时
