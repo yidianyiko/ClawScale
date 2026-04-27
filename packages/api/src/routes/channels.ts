@@ -22,7 +22,7 @@ import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-c
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'linq', 'wechat_personal',
 ] as const;
 
 const createSchema = z.object({

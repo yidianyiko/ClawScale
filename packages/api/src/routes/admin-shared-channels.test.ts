@@ -430,6 +430,80 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('accepts linq shared channels', async () => {
+    db.channel.create.mockResolvedValueOnce({
+      id: 'ch_linq',
+      name: 'Linq Shared',
+      type: 'linq',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        fromNumber: '+13213108456',
+      },
+      createdAt: new Date('2026-04-16T11:45:00.000Z'),
+      updatedAt: new Date('2026-04-16T11:45:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        kind: 'linq',
+        name: 'Linq Shared',
+        agentId: 'agent_coke',
+        config: {
+          fromNumber: '+13213108456',
+        },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        id: 'ch_linq',
+        name: 'Linq Shared',
+        kind: 'linq',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          fromNumber: '+13213108456',
+        },
+        createdAt: '2026-04-16T11:45:00.000Z',
+        updatedAt: '2026-04-16T11:45:00.000Z',
+      },
+    });
+    expect(db.channel.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'linq',
+        name: 'Linq Shared',
+        config: {
+          fromNumber: '+13213108456',
+        },
+      }),
+      select: expect.any(Object),
+    });
+  });
+
   it('updates shared channel configuration without changing shared ownership', async () => {
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_1',

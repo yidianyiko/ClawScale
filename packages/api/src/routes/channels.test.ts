@@ -254,6 +254,64 @@ describe('channels router', () => {
     });
   });
 
+  it('accepts linq channels through the generic admin route', async () => {
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      name: 'Linq Shared',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      name: 'Linq Shared',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'linq',
+        name: 'Linq Shared',
+        config: { fromNumber: '+13213108456' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_new',
+        type: 'linq',
+        name: 'Linq Shared',
+        status: 'disconnected',
+      },
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'linq',
+        name: 'Linq Shared',
+        config: { fromNumber: '+13213108456' },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        customerId: null,
+      }),
+    });
+  });
+
   it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
     mocks.findFirst.mockResolvedValueOnce({
       id: 'ch_1',
