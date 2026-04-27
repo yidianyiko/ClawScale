@@ -30,7 +30,7 @@ export default function CustomerRegisterPage() {
       });
 
       if (!res.ok) {
-        setError(copy.genericError);
+        setError(res.error === 'email_already_exists' ? copy.emailAlreadyExistsError : copy.genericError);
         return;
       }
 

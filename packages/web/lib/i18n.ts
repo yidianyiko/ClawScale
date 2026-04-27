@@ -115,6 +115,7 @@ type CustomerPagesMessages = {
     submitting: string;
     signInPrompt: string;
     signInLink: string;
+    emailAlreadyExistsError: string;
     genericError: string;
   };
   forgotPassword: {
@@ -550,6 +551,7 @@ export const messages: MessagesCatalog = {
         submitting: 'Creating account...',
         signInPrompt: 'Already registered?',
         signInLink: 'Sign in',
+        emailAlreadyExistsError: 'That email address is already in use. Sign in or use a different email.',
         genericError: 'Unable to create your account right now.',
       },
       forgotPassword: {
@@ -940,6 +942,7 @@ export const messages: MessagesCatalog = {
         submitting: '账号创建中...',
         signInPrompt: '已经注册？',
         signInLink: '去登录',
+        emailAlreadyExistsError: '该邮箱地址已被占用。请直接登录，或使用其他邮箱注册。',
         genericError: '暂时无法创建账号，请稍后再试。',
       },
       forgotPassword: {

@@ -128,4 +128,31 @@ describe('CustomerRegisterPage', () => {
     });
     expect(pushMock).toHaveBeenCalledWith('/auth/verify-email?email=alice%40example.com');
   });
+
+  it('shows the duplicate-email conflict copy when the email already exists', async () => {
+    registerCustomerMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'email_already_exists',
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <CustomerRegisterPage />
+        </LocaleProvider>,
+      );
+    });
+
+    setInputValue('#displayName', 'Alice');
+    setInputValue('#email', 'alice@example.com');
+    setInputValue('#password', 'password-123');
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitForEffects();
+
+    expect(container.textContent).toContain('That email address is already in use.');
+    expect(container.textContent).not.toContain('Unable to create your account right now.');
+    expect(storeCustomerAuthMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
 });
