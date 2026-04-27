@@ -95,12 +95,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const platform = metadataPlatform ?? channel.type ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
   const { tenantId } = channel;
-  const isSharedWhatsAppChannel =
+  const isSharedProvisionedAccessChannel =
     channel.ownershipKind === 'shared' &&
     (
       channel.type === 'whatsapp' ||
       channel.type === 'whatsapp_business' ||
-      channel.type === 'whatsapp_evolution'
+      channel.type === 'whatsapp_evolution' ||
+      channel.type === 'wechat_ecloud'
     );
   const personalChannelOwnership =
     channel.scope === 'personal' &&
@@ -191,9 +192,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
   const routeCokeAccountId =
     resolvedCokeAccountId ??
-    (isSharedWhatsAppChannel ? resolvedChannelCustomerId : null);
+    (isSharedProvisionedAccessChannel ? resolvedChannelCustomerId : null);
   const accessCustomerId =
-    isSharedWhatsAppChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
+    isSharedProvisionedAccessChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
   const resolvedAccessAccountOwner = accessCustomerId
     ? await db.membership.findFirst({
         where: {
@@ -231,11 +232,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           displayName: resolvedAccessAccount.displayName,
           status: resolvedAccessAccount.status,
         },
-        ...(isSharedWhatsAppChannel ? { requireEmailVerified: false } : {}),
+        ...(isSharedProvisionedAccessChannel ? { requireEmailVerified: false } : {}),
       })
     : null;
   const resolvedAccessAccountMetadata =
-    isSharedWhatsAppChannel &&
+    isSharedProvisionedAccessChannel &&
     resolvedAccessAccountDecision?.accountAccessDeniedReason === 'subscription_required' &&
     resolvedChannelCustomerId
       ? {

@@ -373,6 +373,70 @@ describe('routeInboundMessage', () => {
     expect(buildPublicCheckoutUrl).not.toHaveBeenCalled();
   });
 
+  it('resolves shared WeChat Ecloud access against the provisioned customer owner without email gating', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'wechat_ecloud',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_target',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_target',
+      displayName: 'Alice',
+      text: 'hello shared ecloud',
+      meta: { platform: 'wechat_ecloud' },
+    });
+
+    expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'ch_1',
+        agentId: 'agent_shared',
+        provider: 'wechat_ecloud',
+        identityType: 'external_id',
+        rawIdentityValue: 'wxid_target',
+      }),
+    );
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_shared_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata).toEqual(
+      expect.objectContaining({
+        customerId: 'ck_shared_1',
+        customer_id: 'ck_shared_1',
+        accountAccessAllowed: true,
+      }),
+    );
+  });
+
   it('injects a signed public renewal link for shared subscription_required access', async () => {
     resolveCokeAccountAccess.mockResolvedValueOnce({
       accountStatus: 'normal',

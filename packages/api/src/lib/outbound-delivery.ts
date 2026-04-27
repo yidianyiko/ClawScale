@@ -1,6 +1,8 @@
 import { sendWeixinText } from '../adapters/wechat.js';
 import { EvolutionApiClient } from './evolution-api.js';
 import { parseStoredWhatsAppEvolutionConfig } from './whatsapp-evolution-config.js';
+import { WechatEcloudApiClient } from './wechat-ecloud-api.js';
+import { parseStoredWechatEcloudConfig } from './wechat-ecloud-config.js';
 
 function assertConnectedChannel(channel: { id: string; status?: string }) {
   if (channel.status && channel.status !== 'connected') {
@@ -33,6 +35,15 @@ export async function deliverOutboundMessage(
       await new EvolutionApiClient().sendText(
         config.instanceName,
         normalizeWhatsAppTarget(externalEndUserId),
+        text,
+      );
+      return;
+    }
+    case 'wechat_ecloud': {
+      const config = parseStoredWechatEcloudConfig(channel.config);
+      await new WechatEcloudApiClient(config.baseUrl, config.token).sendText(
+        config.appId,
+        externalEndUserId,
         text,
       );
       return;

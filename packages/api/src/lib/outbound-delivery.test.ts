@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendWeixinText = vi.hoisted(() => vi.fn());
 const sendText = vi.hoisted(() => vi.fn());
+const sendWechatEcloudText = vi.hoisted(() => vi.fn());
 
 vi.mock('../adapters/wechat.js', () => ({
   sendWeixinText,
@@ -11,14 +12,21 @@ vi.mock('./evolution-api.js', () => ({
     sendText,
   })),
 }));
+vi.mock('./wechat-ecloud-api.js', () => ({
+  WechatEcloudApiClient: vi.fn().mockImplementation(() => ({
+    sendText: sendWechatEcloudText,
+  })),
+}));
 
 import { deliverOutboundMessage } from './outbound-delivery.js';
+import { WechatEcloudApiClient } from './wechat-ecloud-api.js';
 
 describe('deliverOutboundMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sendWeixinText.mockResolvedValue(undefined as never);
     sendText.mockResolvedValue(undefined as never);
+    sendWechatEcloudText.mockResolvedValue(undefined as never);
   });
 
   it('delivers personal wechat outbound messages', async () => {
@@ -57,6 +65,33 @@ describe('deliverOutboundMessage', () => {
       'hello from coke',
     );
     expect(sendWeixinText).not.toHaveBeenCalled();
+  });
+
+  it('delivers wechat_ecloud messages through Ecloud sendText', async () => {
+    await deliverOutboundMessage(
+      {
+        id: 'ch_ecloud_1',
+        type: 'wechat_ecloud',
+        status: 'connected',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.example.test',
+          webhookToken: 'webhook_token_1',
+        },
+      },
+      'wxid_target',
+      'hello from coke',
+    );
+
+    expect(WechatEcloudApiClient).toHaveBeenCalledWith('https://api.example.test', 'token_1');
+    expect(sendWechatEcloudText).toHaveBeenCalledWith(
+      'app_1',
+      'wxid_target',
+      'hello from coke',
+    );
+    expect(sendWeixinText).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it('rejects outbound sends on disconnected channels', async () => {
