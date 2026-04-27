@@ -56,6 +56,9 @@ export default function CustomerLoginPage() {
     verificationRecovery === 'retry'
       ? copy.verificationRetryDescription
       : copy.verificationRecoveryDescription;
+  const next =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
+  const safeNext = isSafeInternalNext(next) ? next : null;
 
   function showVerificationRecovery(reason: Exclude<VerificationRecoveryReason, null>) {
     setVerificationRecovery(reason);
@@ -108,9 +111,7 @@ export default function CustomerLoginPage() {
       }
 
       setStatusMessage(copy.success);
-      const next =
-        typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
-      router.push(isSafeInternalNext(next) ? next : '/channels/wechat-personal');
+      router.push(safeNext ?? '/channels/wechat-personal');
     } catch {
       if (storedAuth) {
         clearCustomerAuth();
@@ -231,7 +232,10 @@ export default function CustomerLoginPage() {
 
       <div className="auth-linkrow">
         <span className="auth-linkrow__text">{copy.registerPrompt}</span>
-        <Link href="/auth/register" className="auth-linkrow__link">
+        <Link
+          href={safeNext ? `/auth/register?next=${encodeURIComponent(safeNext)}` : '/auth/register'}
+          className="auth-linkrow__link"
+        >
           {copy.registerLink}
         </Link>
       </div>

@@ -21,6 +21,10 @@ import { customerClaimRouter } from './routes/customer-claim-routes.js';
 import { customerChannelRouter } from './routes/customer-channel-routes.js';
 import { customerGoogleCalendarImportRouter } from './routes/customer-google-calendar-import-routes.js';
 import { customerGoogleCalendarImportCallbackRouter } from './routes/customer-google-calendar-import-callback-routes.js';
+import {
+  customerCalendarImportHandoffRouter,
+  internalCalendarImportHandoffRouter,
+} from './routes/calendar-import-handoff-routes.js';
 import { customerSubscriptionRouter } from './routes/customer-subscription-routes.js';
 import { adminAuthRouter } from './routes/admin-auth-routes.js';
 import { adminCustomersRouter } from './routes/admin-customers.js';
@@ -77,6 +81,7 @@ app.route('/api/internal/coke-bindings', cokeBindingsRouter);
 app.route('/api/internal/coke-delivery', cokeDeliveryRoutesRouter);
 app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
 app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
+app.route('/api/internal/calendar-import-handoffs', internalCalendarImportHandoffRouter);
 
 // ─── Public onboarding routes ────────────────────────────────────────────────
 
@@ -86,6 +91,7 @@ app.route('/api/auth', customerAuthRouter);
 app.route('/api/auth/claim', customerClaimRouter);
 app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportRouter);
 app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
+app.route('/api/customer/calendar-import-handoffs', customerCalendarImportHandoffRouter);
 app.route('/api/admin', adminAuthRouter);
 app.route('/api/admin/customers', adminCustomersRouter);
 app.route('/api/admin/channels', adminChannelsRouter);

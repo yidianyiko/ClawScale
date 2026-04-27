@@ -16,6 +16,10 @@ import {
 
 type RecoveryReason = 'manual' | 'expired' | 'retry';
 
+function isSafeInternalNext(next: string | null): next is string {
+  return next != null && next.startsWith('/') && !next.startsWith('//');
+}
+
 export default function CustomerVerifyEmailPage() {
   const { messages } = useLocale();
   const copy = messages.customerPages.verifyEmail;
@@ -32,6 +36,8 @@ export default function CustomerVerifyEmailPage() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token')?.trim() ?? '';
     const queryEmail = params.get('email')?.trim() ?? '';
+    const next = params.get('next');
+    const safeNext = isSafeInternalNext(next) ? next : null;
     const storedEmail =
       getStoredCustomerSession()?.email?.trim() ?? getStoredCustomerProfile()?.email?.trim() ?? '';
     const recoveryEmail = queryEmail || storedEmail;
@@ -75,7 +81,9 @@ export default function CustomerVerifyEmailPage() {
         storeCustomerProfile(profile.data);
 
         router.replace(
-          profile.data.subscription_active === false ? '/account/subscription' : '/channels/wechat-personal',
+          profile.data.subscription_active === false
+            ? '/account/subscription'
+            : safeNext ?? '/channels/wechat-personal',
         );
       } catch {
         if (!cancelled) {

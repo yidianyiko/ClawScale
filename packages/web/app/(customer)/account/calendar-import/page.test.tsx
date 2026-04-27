@@ -11,6 +11,7 @@ const routerMock = vi.hoisted(() => ({
 }));
 const searchParamsMock = vi.hoisted(() => vi.fn(() => new URLSearchParams()));
 const getPreflightMock = vi.hoisted(() => vi.fn());
+const getPreflightForHandoffMock = vi.hoisted(() => vi.fn());
 const startMock = vi.hoisted(() => vi.fn());
 const getStatusMock = vi.hoisted(() => vi.fn());
 
@@ -29,6 +30,8 @@ vi.mock('next/link', () => ({
 
 vi.mock('../../../../lib/customer-google-calendar-import', () => ({
   getCustomerGoogleCalendarImportPreflight: (...args: unknown[]) => getPreflightMock(...args),
+  getCustomerGoogleCalendarImportPreflightForHandoff: (...args: unknown[]) =>
+    getPreflightForHandoffMock(...args),
   startCustomerGoogleCalendarImport: (...args: unknown[]) => startMock(...args),
   getCustomerGoogleCalendarImportStatusForRun: (...args: unknown[]) => getStatusMock(...args),
 }));
@@ -74,6 +77,7 @@ describe('CustomerCalendarImportPage', () => {
     searchParamsMock.mockReset();
     searchParamsMock.mockReturnValue(new URLSearchParams());
     getPreflightMock.mockReset();
+    getPreflightForHandoffMock.mockReset();
     startMock.mockReset();
     getStatusMock.mockReset();
     getPreflightMock.mockResolvedValue({
@@ -192,6 +196,36 @@ describe('CustomerCalendarImportPage', () => {
 
     expect(startMock).toHaveBeenCalledWith();
     expect(openMock).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?state=test-state', '_self');
+  });
+
+  it('uses the handoff token for preflight and start when present', async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams('handoff=tok_1'));
+    getPreflightForHandoffMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        ready: true,
+        latestRun: null,
+      },
+    });
+    startMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        runId: 'cir_2',
+        url: 'https://accounts.google.com/o/oauth2/v2/auth?state=test-state',
+      },
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    const button = container.querySelector('button[type="button"]') as HTMLButtonElement | null;
+    expect(button).toBeTruthy();
+    button?.click();
+    await flushTicks(3);
+
+    expect(getPreflightForHandoffMock).toHaveBeenCalledWith('tok_1');
+    expect(getPreflightMock).not.toHaveBeenCalled();
+    expect(startMock).toHaveBeenCalledWith('tok_1');
   });
 
   it('shows the importing state with the latest run summary from preflight', async () => {

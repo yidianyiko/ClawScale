@@ -46,16 +46,36 @@ export function requestCustomerClaimEmail(
 export function getCustomerGoogleCalendarImportPreflight(): Promise<
   ApiResponse<CustomerGoogleCalendarImportPreflightResult>
 > {
+  return getCustomerGoogleCalendarImportPreflightForHandoff();
+}
+
+export function getCustomerGoogleCalendarImportPreflightForHandoff(
+  handoff?: string,
+): Promise<ApiResponse<CustomerGoogleCalendarImportPreflightResult>> {
   return customerApi.get<ApiResponse<CustomerGoogleCalendarImportPreflightResult>>(
-    '/api/customer/google-calendar-import/preflight',
+    handoff
+      ? `/api/customer/google-calendar-import/preflight?handoff=${encodeURIComponent(handoff)}`
+      : '/api/customer/google-calendar-import/preflight',
   );
 }
 
-export function startCustomerGoogleCalendarImport(): Promise<
+export function startCustomerGoogleCalendarImport(
+  handoff?: string,
+): Promise<
   ApiResponse<CustomerGoogleCalendarImportStartResult>
 > {
   return customerApi.post<ApiResponse<CustomerGoogleCalendarImportStartResult>>(
     '/api/customer/google-calendar-import/start',
+    handoff ? { handoff } : undefined,
+  );
+}
+
+export function claimCustomerCalendarImportHandoff(
+  token: string,
+): Promise<ApiResponse<{ status: string; continue_to: string }>> {
+  return customerApi.post<ApiResponse<{ status: string; continue_to: string }>>(
+    '/api/customer/calendar-import-handoffs/claim',
+    { token },
   );
 }
 

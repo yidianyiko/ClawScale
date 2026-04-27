@@ -11,6 +11,11 @@ import {
   getLatestCalendarImportRun,
 } from '../lib/google-calendar-import-runs.js';
 import {
+  CalendarImportHandoffError,
+  consumeCalendarImportHandoff,
+  resolveClaimedCalendarImportHandoff,
+} from '../lib/calendar-import-handoff.js';
+import {
   preflightGoogleCalendarImport,
 } from '../lib/google-calendar-runtime-client.js';
 import {
@@ -121,12 +126,51 @@ function serializeRun(run: Awaited<ReturnType<typeof getLatestCalendarImportRun>
   };
 }
 
+function readHandoffErrorStatus(error: CalendarImportHandoffError): 404 | 409 {
+  return error.code === 'invalid_handoff' ? 404 : 409;
+}
+
+async function readStartBody(c: Context): Promise<{ handoff?: string } | null> {
+  const contentType = c.req.header('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return {};
+  }
+  try {
+    const body = await c.req.json();
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return null;
+    }
+    const handoff = (body as Record<string, unknown>)['handoff'];
+    return typeof handoff === 'string' && handoff.trim() ? { handoff: handoff.trim() } : {};
+  } catch {
+    return {};
+  }
+}
+
 export const customerGoogleCalendarImportRouter = new Hono()
   .use('/preflight', requireCustomerImportAuth)
   .use('/start', requireCustomerImportAuth)
   .use('/status', requireCustomerImportAuth)
   .get('/preflight', async (c) => {
     const auth = c.get('customerImportAuth');
+    const handoffToken = c.req.query('handoff')?.trim();
+    let handoffContext:
+      | Awaited<ReturnType<typeof resolveClaimedCalendarImportHandoff>>
+      | null = null;
+    if (handoffToken) {
+      try {
+        handoffContext = await resolveClaimedCalendarImportHandoff(db as never, {
+          token: handoffToken,
+          customerId: auth.customerId,
+          identityId: auth.identityId,
+        });
+      } catch (error) {
+        if (error instanceof CalendarImportHandoffError) {
+          return c.json({ ok: false, error: error.code }, readHandoffErrorStatus(error));
+        }
+        throw error;
+      }
+    }
     const [access, latestRun] = await Promise.all([
       resolveImportAccess(auth),
       getLatestCalendarImportRun(db as never, {
@@ -149,6 +193,8 @@ export const customerGoogleCalendarImportRouter = new Hono()
     const preflight = await preflightGoogleCalendarImport({
       customerId: auth.customerId,
       identityId: auth.identityId,
+      businessConversationKey: handoffContext?.businessConversationKey,
+      gatewayConversationId: handoffContext?.gatewayConversationId,
     });
 
     if (!preflight.ok) {
@@ -176,6 +222,28 @@ export const customerGoogleCalendarImportRouter = new Hono()
   })
   .post('/start', async (c) => {
     const auth = c.get('customerImportAuth');
+    const body = await readStartBody(c);
+    if (body === null) {
+      return c.json({ ok: false, error: 'invalid_body' }, 400);
+    }
+    const handoffToken = body.handoff;
+    let handoffContext:
+      | Awaited<ReturnType<typeof resolveClaimedCalendarImportHandoff>>
+      | null = null;
+    if (handoffToken) {
+      try {
+        handoffContext = await resolveClaimedCalendarImportHandoff(db as never, {
+          token: handoffToken,
+          customerId: auth.customerId,
+          identityId: auth.identityId,
+        });
+      } catch (error) {
+        if (error instanceof CalendarImportHandoffError) {
+          return c.json({ ok: false, error: error.code }, readHandoffErrorStatus(error));
+        }
+        throw error;
+      }
+    }
     const access = await resolveImportAccess(auth);
     const denied = mapAccessDeniedReason(access.accountAccessDeniedReason);
     if (denied) {
@@ -185,6 +253,8 @@ export const customerGoogleCalendarImportRouter = new Hono()
     const preflight = await preflightGoogleCalendarImport({
       customerId: auth.customerId,
       identityId: auth.identityId,
+      businessConversationKey: handoffContext?.businessConversationKey,
+      gatewayConversationId: handoffContext?.gatewayConversationId,
     });
 
     if (!preflight.ok) {
@@ -206,8 +276,17 @@ export const customerGoogleCalendarImportRouter = new Hono()
       identityId: auth.identityId,
       targetConversationId: preflight.data.conversationId,
       targetCharacterId: preflight.data.characterId,
-      triggerSource: 'manual_web',
+      triggerSource: handoffContext ? 'whatsapp_handoff' : 'manual_web',
     });
+    if (handoffToken && handoffContext) {
+      await consumeCalendarImportHandoff(db as never, {
+        token: handoffToken,
+        customerId: auth.customerId,
+        identityId: auth.identityId,
+        targetConversationId: preflight.data.conversationId,
+        targetCharacterId: preflight.data.characterId,
+      });
+    }
     const url = await buildGoogleCalendarAuthUrl({
       runId: run.id,
       customerId: auth.customerId,

@@ -3,6 +3,8 @@ import type { GooglePrimaryCalendarDefaults } from './google-calendar-oauth.js';
 export interface GoogleCalendarImportPreflightInput {
   customerId: string;
   identityId: string;
+  businessConversationKey?: string | null;
+  gatewayConversationId?: string | null;
 }
 
 export interface GoogleCalendarImportPreflightReady {
@@ -132,6 +134,12 @@ export async function preflightGoogleCalendarImport(
   const bridge = await postBridgeJson('/bridge/internal/google-calendar-import/preflight', {
     customer_id: input.customerId,
     identity_id: input.identityId,
+    ...(input.businessConversationKey
+      ? { business_conversation_key: input.businessConversationKey }
+      : {}),
+    ...(input.gatewayConversationId
+      ? { gateway_conversation_id: input.gatewayConversationId }
+      : {}),
   });
   if (!bridge.ok) {
     return {

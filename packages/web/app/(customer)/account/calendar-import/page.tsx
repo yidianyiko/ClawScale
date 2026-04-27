@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   getCustomerGoogleCalendarImportPreflight,
+  getCustomerGoogleCalendarImportPreflightForHandoff,
   getCustomerGoogleCalendarImportStatusForRun,
   startCustomerGoogleCalendarImport,
   type CustomerGoogleCalendarImportPreflightResult,
@@ -104,6 +105,7 @@ function CustomerCalendarImportPageContent() {
   const searchParams = useSearchParams();
   const callbackState = searchParams.get('googleCalendarImport');
   const callbackRunId = searchParams.get('runId');
+  const handoffToken = searchParams.get('handoff')?.trim() || undefined;
   const [preflight, setPreflight] = useState<CustomerGoogleCalendarImportPreflightResult | null>(null);
   const [latestRun, setLatestRun] = useState<CustomerGoogleCalendarImportRunSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,7 +125,9 @@ function CustomerCalendarImportPageContent() {
       setSummaryNotice('');
 
       try {
-        const preflightRes = await getCustomerGoogleCalendarImportPreflight();
+        const preflightRes = handoffToken
+          ? await getCustomerGoogleCalendarImportPreflightForHandoff(handoffToken)
+          : await getCustomerGoogleCalendarImportPreflight();
 
         if (cancelled) {
           return;
@@ -135,7 +139,13 @@ function CustomerCalendarImportPageContent() {
             preflightRes.error === 'unauthorized' ||
             preflightRes.error === 'account_not_found'
           ) {
-            router.replace('/auth/login?next=/account/calendar-import');
+            router.replace(
+              handoffToken
+                ? `/auth/login?next=${encodeURIComponent(
+                    `/handoff/calendar-import?token=${encodeURIComponent(handoffToken)}`,
+                  )}`
+                : '/auth/login?next=/account/calendar-import',
+            );
             return;
           }
 
@@ -174,7 +184,7 @@ function CustomerCalendarImportPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [callbackRunId, callbackState, router]);
+  }, [callbackRunId, callbackState, handoffToken, router]);
 
   const readyToStart = preflight?.ready === true;
   const blockedState = preflight?.ready === false ? getBlockedState(preflight.blockedReason) : null;
@@ -193,7 +203,9 @@ function CustomerCalendarImportPageContent() {
     setError('');
 
     try {
-      const res = await startCustomerGoogleCalendarImport();
+      const res = handoffToken
+        ? await startCustomerGoogleCalendarImport(handoffToken)
+        : await startCustomerGoogleCalendarImport();
       if (!res.ok) {
         setError('Unable to start the Google Calendar import right now.');
         return;

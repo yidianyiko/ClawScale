@@ -17,6 +17,10 @@ export default function CustomerRegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const next =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
+  const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : null;
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
@@ -35,7 +39,11 @@ export default function CustomerRegisterPage() {
       }
 
       storeCustomerAuth(res.data);
-      router.push(`/auth/verify-email?email=${encodeURIComponent(res.data.email)}`);
+      router.push(
+        `/auth/verify-email?email=${encodeURIComponent(res.data.email)}${
+          safeNext ? `&next=${encodeURIComponent(safeNext)}` : ''
+        }`,
+      );
     } catch {
       setError(copy.genericError);
     } finally {
@@ -103,7 +111,10 @@ export default function CustomerRegisterPage() {
 
       <div className="auth-linkrow">
         <span className="auth-linkrow__text">{copy.signInPrompt}</span>
-        <Link href="/auth/login" className="auth-linkrow__link">
+        <Link
+          href={safeNext ? `/auth/login?next=${encodeURIComponent(safeNext)}` : '/auth/login'}
+          className="auth-linkrow__link"
+        >
           {copy.signInLink}
         </Link>
       </div>
