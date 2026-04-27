@@ -138,44 +138,89 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
   }
 
   const record = payload as Record<string, unknown>;
-  const comparable: Record<string, string | boolean | string[]> = {};
-  for (const key of [
-    'output_id',
-    'customer_id',
-    'business_conversation_key',
-    'message_type',
-    'text',
-  ]) {
+  const readRequiredString = (key: string, options?: { allowEmpty?: boolean }): string | undefined => {
     const value = record[key];
-    if (typeof value === 'string' && value.length > 0) {
-      comparable[key] = value;
-    }
+    if (typeof value !== 'string') return undefined;
+    if (!options?.allowEmpty && value.length === 0) return undefined;
+    return value;
+  };
+
+  const outputId = readRequiredString('output_id');
+  const customerId = readRequiredString('customer_id');
+  const businessConversationKey = readRequiredString('business_conversation_key');
+  const messageType = readRequiredString('message_type');
+  const text = readRequiredString('text', { allowEmpty: true });
+  const deliveryMode = readRequiredString('delivery_mode');
+  const expectOutputTimestamp = readRequiredString('expect_output_timestamp');
+  const idempotencyKey = readRequiredString('idempotency_key');
+  const traceId = readRequiredString('trace_id');
+
+  if (
+    !outputId ||
+    !customerId ||
+    !businessConversationKey ||
+    (messageType !== 'text' && messageType !== 'image' && messageType !== 'voice') ||
+    text === undefined ||
+    !deliveryMode ||
+    !expectOutputTimestamp ||
+    !idempotencyKey ||
+    !traceId
+  ) {
+    return {};
   }
 
   const mediaUrls = record['mediaUrls'];
+  let normalizedMediaUrls: string[];
   if (Array.isArray(mediaUrls) && mediaUrls.every((value) => typeof value === 'string')) {
-    comparable['mediaUrls'] = mediaUrls;
+    normalizedMediaUrls = mediaUrls;
+  } else if (mediaUrls === undefined && messageType === 'text') {
+    normalizedMediaUrls = [];
+  } else {
+    return {};
   }
 
   const audioAsVoice = record['audioAsVoice'];
+  let normalizedAudioAsVoice: boolean;
   if (typeof audioAsVoice === 'boolean') {
-    comparable['audioAsVoice'] = audioAsVoice;
+    normalizedAudioAsVoice = audioAsVoice;
+  } else if (audioAsVoice === undefined && messageType === 'text') {
+    normalizedAudioAsVoice = false;
+  } else {
+    return {};
   }
 
-  for (const key of [
-    'delivery_mode',
-    'expect_output_timestamp',
-    'idempotency_key',
-    'trace_id',
-    'causal_inbound_event_id',
-  ]) {
-    const value = record[key];
-    if (typeof value === 'string' && value.length > 0) {
-      comparable[key] = value;
-    }
+  if (!text.trim() && normalizedMediaUrls.length === 0) {
+    return {};
   }
 
-  return comparable as Prisma.InputJsonObject;
+  if ((messageType === 'image' || messageType === 'voice') && normalizedMediaUrls.length === 0) {
+    return {};
+  }
+
+  if (messageType === 'voice' && normalizedAudioAsVoice !== true) {
+    return {};
+  }
+
+  if (messageType !== 'voice' && normalizedAudioAsVoice !== false) {
+    return {};
+  }
+
+  return {
+    output_id: outputId,
+    customer_id: customerId,
+    business_conversation_key: businessConversationKey,
+    message_type: messageType,
+    text,
+    mediaUrls: normalizedMediaUrls,
+    audioAsVoice: normalizedAudioAsVoice,
+    delivery_mode: deliveryMode,
+    expect_output_timestamp: expectOutputTimestamp,
+    idempotency_key: idempotencyKey,
+    trace_id: traceId,
+    ...(typeof record['causal_inbound_event_id'] === 'string' && record['causal_inbound_event_id'].length > 0
+      ? { causal_inbound_event_id: record['causal_inbound_event_id'] }
+      : {}),
+  } as Prisma.InputJsonObject;
 }
 
 function readStoredTarget(

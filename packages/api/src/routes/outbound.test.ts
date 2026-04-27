@@ -775,4 +775,124 @@ describe('outbound router', () => {
     });
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
+
+  it('returns duplicate for succeeded media-only voice payload with same idempotency key', async () => {
+    const body = makeBody({
+      message_type: 'voice',
+      text: undefined,
+      mediaUrls: ['https://cdn.example.com/voice.mp3'],
+    });
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: normalizePayload(body),
+    } as never);
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'duplicate_request',
+      idempotency_key: 'idem_1',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('reclaims failed media-only voice payload with same idempotency key', async () => {
+    const body = makeBody({
+      message_type: 'voice',
+      text: undefined,
+      mediaUrls: ['https://cdn.example.com/voice.mp3'],
+    });
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: {
+        ...normalizePayload(body),
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(200);
+    expect(db.outboundDelivery.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'outbound_1',
+        status: 'failed',
+      },
+      data: {
+        status: 'pending',
+        error: null,
+      },
+    });
+    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', {
+      text: '',
+      messageType: 'voice',
+      mediaUrls: ['https://cdn.example.com/voice.mp3'],
+      audioAsVoice: true,
+    });
+  });
+
+  it('returns duplicate for legacy text-only succeeded payload without media fields', async () => {
+    const body = makeBody();
+    const { mediaUrls: _mediaUrls, audioAsVoice: _audioAsVoice, ...legacyPayload } = normalizePayload(body);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'succeeded',
+      payload: legacyPayload,
+    } as never);
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'duplicate_request',
+      idempotency_key: 'idem_1',
+    });
+    expect(deliverOutboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('reclaims legacy text-only failed payload without media fields', async () => {
+    const body = makeBody();
+    const { mediaUrls: _mediaUrls, audioAsVoice: _audioAsVoice, ...legacyPayload } = normalizePayload(body);
+    vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+      id: 'outbound_1',
+      status: 'failed',
+      payload: {
+        ...legacyPayload,
+        channel_id: 'ch_1',
+        external_end_user_id: 'wxid_1',
+      },
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      idempotencyKey: 'idem_1',
+    } as never);
+
+    const res = await postOutbound(body);
+
+    expect(res.status).toBe(200);
+    expect(db.outboundDelivery.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'outbound_1',
+        status: 'failed',
+      },
+      data: {
+        status: 'pending',
+        error: null,
+      },
+    });
+    expect(deliverOutboundMessage).toHaveBeenCalledWith(channel, 'wxid_1', {
+      text: 'hello',
+      messageType: 'text',
+      mediaUrls: [],
+      audioAsVoice: false,
+    });
+  });
 });
