@@ -1,5 +1,7 @@
 import { sendWeixinText } from '../adapters/wechat.js';
 import { EvolutionApiClient } from './evolution-api.js';
+import { LinqApiClient } from './linq-api.js';
+import { normalizeLinqPhoneNumber, parseStoredLinqConfig } from './linq-config.js';
 import { parseStoredWhatsAppEvolutionConfig } from './whatsapp-evolution-config.js';
 
 function assertConnectedChannel(channel: { id: string; status?: string }) {
@@ -35,6 +37,15 @@ export async function deliverOutboundMessage(
         normalizeWhatsAppTarget(externalEndUserId),
         text,
       );
+      return;
+    }
+    case 'linq': {
+      const config = parseStoredLinqConfig(channel.config);
+      await new LinqApiClient().createChat({
+        from: config.fromNumber,
+        to: [normalizeLinqPhoneNumber(externalEndUserId)],
+        text,
+      });
       return;
     }
     default:

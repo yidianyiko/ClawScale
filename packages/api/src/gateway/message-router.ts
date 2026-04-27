@@ -11,12 +11,17 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import * as lineSdk from '@line/bot-sdk';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 import { EvolutionApiClient } from '../lib/evolution-api.js';
+import { LinqApiClient } from '../lib/linq-api.js';
+import { normalizeLinqPhoneNumber, parseStoredLinqConfig } from '../lib/linq-config.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
+
+const LINQ_REPLAY_WINDOW_SECONDS = 300;
 
 const inboundSchema = z.object({
   externalId: z.string().min(1),
@@ -44,6 +49,13 @@ interface EvolutionWebhookData {
 interface EvolutionWebhookConfigSnapshot {
   webhookToken: string | null;
   instanceName: string | null;
+}
+
+interface LinqWebhookConfigSnapshot {
+  fromNumber: string;
+  webhookToken: string;
+  webhookSubscriptionId: string;
+  signingSecret: string;
 }
 
 function readEvolutionWebhookData(payload: unknown): EvolutionWebhookData | null {
@@ -105,6 +117,127 @@ function readEvolutionText(data: EvolutionWebhookData): string | null {
 
   const extendedText = data.message?.extendedTextMessage?.text?.trim();
   return extendedText || null;
+}
+
+function readConnectedLinqWebhookConfig(config: unknown): LinqWebhookConfigSnapshot | null {
+  try {
+    const parsed = parseStoredLinqConfig(config);
+    if (!parsed.webhookToken || !parsed.webhookSubscriptionId || !parsed.signingSecret) {
+      return null;
+    }
+
+    return {
+      fromNumber: parsed.fromNumber,
+      webhookToken: parsed.webhookToken,
+      webhookSubscriptionId: parsed.webhookSubscriptionId,
+      signingSecret: parsed.signingSecret,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function verifyLinqSignature(params: {
+  rawBody: string;
+  timestamp: string | undefined;
+  signature: string | undefined;
+  signingSecret: string;
+}): boolean {
+  const timestamp = params.timestamp?.trim() ?? '';
+  const signature = params.signature?.trim() ?? '';
+  if (!timestamp || !signature || !/^[a-f0-9]{64}$/i.test(signature)) {
+    return false;
+  }
+
+  const timestampNumber = Number(timestamp);
+  if (!Number.isFinite(timestampNumber)) {
+    return false;
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSeconds - timestampNumber) > LINQ_REPLAY_WINDOW_SECONDS) {
+    return false;
+  }
+
+  const expected = createHmac('sha256', params.signingSecret)
+    .update(`${timestamp}.${params.rawBody}`)
+    .digest('hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  const actualBuffer = Buffer.from(signature, 'hex');
+  return expectedBuffer.length === actualBuffer.length && timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readNestedRecord(record: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  return readRecord(record[key]);
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readNestedString(record: Record<string, unknown>, path: string[]): string | null {
+  let current: unknown = record;
+  for (const key of path) {
+    const currentRecord = readRecord(current);
+    if (!currentRecord) {
+      return null;
+    }
+    current = currentRecord[key];
+  }
+
+  return readString(current);
+}
+
+function readLinqSenderHandle(data: Record<string, unknown>): string | null {
+  return (
+    readNestedString(data, ['sender_handle', 'handle']) ??
+    readNestedString(data, ['from_handle', 'handle']) ??
+    readString(data['from'])
+  );
+}
+
+function readLinqText(data: Record<string, unknown>): string | null {
+  const message = readNestedRecord(data, 'message');
+  const parts = Array.isArray(data['parts'])
+    ? data['parts']
+    : message && Array.isArray(message['parts'])
+      ? message['parts']
+      : [];
+  const textParts = parts
+    .map((part) => {
+      const record = readRecord(part);
+      if (!record || record['type'] !== 'text') {
+        return null;
+      }
+
+      return readString(record['value']) ?? readString(record['text']);
+    })
+    .filter((text): text is string => Boolean(text));
+  const text = textParts.join('\n').trim();
+  return text || null;
+}
+
+function readLinqStringMeta(payload: Record<string, unknown>, data: Record<string, unknown>) {
+  const message = readNestedRecord(data, 'message');
+  const chat = readNestedRecord(data, 'chat');
+  return {
+    eventId: readString(payload['event_id']) ?? readString(payload['id']),
+    chatId: (chat && readString(chat['id'])) ?? readString(data['chat_id']),
+    messageId:
+      (message && readString(message['id'])) ??
+      readString(data['message_id']) ??
+      readString(data['id']),
+    service: readString(data['service']),
+    ownerHandle: readNestedString(data, ['chat', 'owner_handle', 'handle']),
+  };
 }
 
 export const gatewayRouter = new Hono()
@@ -201,6 +334,114 @@ export const gatewayRouter = new Hono()
       }
     } catch (err) {
       console.error(`[evolution:${channelId}] Webhook handling error:`, err);
+    }
+
+    return c.json({ ok: true });
+  })
+
+  // ── POST /gateway/linq/:channelId/:token ───────────────────────────────────
+  // Linq shared-channel webhook — verifies HMAC before parsing JSON payloads.
+  .post('/linq/:channelId/:token', async (c) => {
+    const channelId = c.req.param('channelId');
+    const token = c.req.param('token');
+
+    const channel = await db.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        config: true,
+      },
+    });
+
+    if (!channel || channel.type !== 'linq' || channel.status !== 'connected') {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const channelConfig = readConnectedLinqWebhookConfig(channel.config);
+    if (!channelConfig || token !== channelConfig.webhookToken) {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const subscriptionId = c.req.header('X-Webhook-Subscription-ID')?.trim();
+    if (!subscriptionId || subscriptionId !== channelConfig.webhookSubscriptionId) {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const rawBody = await c.req.text();
+    if (
+      !verifyLinqSignature({
+        rawBody,
+        timestamp: c.req.header('X-Webhook-Timestamp'),
+        signature: c.req.header('X-Webhook-Signature'),
+        signingSecret: channelConfig.signingSecret,
+      })
+    ) {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(rawBody) as unknown;
+    } catch {
+      return c.json({ ok: true });
+    }
+
+    const payload = readRecord(parsedPayload);
+    if (!payload || payload['event_type'] !== 'message.received') {
+      return c.json({ ok: true });
+    }
+
+    const data = readRecord(payload['data']);
+    if (!data || data['direction'] === 'outbound' || data['is_from_me'] === true) {
+      return c.json({ ok: true });
+    }
+
+    const senderHandle = readLinqSenderHandle(data);
+    if (!senderHandle) {
+      return c.json({ ok: true });
+    }
+
+    let normalizedSender: string;
+    try {
+      normalizedSender = normalizeLinqPhoneNumber(senderHandle);
+    } catch {
+      return c.json({ ok: true });
+    }
+
+    const text = readLinqText(data);
+    if (!text) {
+      return c.json({ ok: true });
+    }
+
+    try {
+      const meta = readLinqStringMeta(payload, data);
+      const result = await routeInboundMessage({
+        channelId,
+        externalId: normalizedSender,
+        displayName: senderHandle,
+        text,
+        meta: {
+          platform: 'linq',
+          eventId: meta.eventId,
+          chatId: meta.chatId,
+          messageId: meta.messageId,
+          service: meta.service,
+          ownerHandle: meta.ownerHandle,
+          webhookSubscriptionId: channelConfig.webhookSubscriptionId,
+        },
+      });
+
+      if (result?.reply) {
+        await new LinqApiClient().createChat({
+          from: channelConfig.fromNumber,
+          to: [normalizedSender],
+          text: result.reply,
+        });
+      }
+    } catch (err) {
+      console.error(`[linq:${channelId}] Webhook handling error:`, err);
     }
 
     return c.json({ ok: true });
