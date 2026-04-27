@@ -533,6 +533,31 @@ describe('outbound router', () => {
     expect(deliverOutboundMessage).not.toHaveBeenCalled();
   });
 
+  it.each([123, ''])(
+    'returns 409 for stored malformed causal_inbound_event_id %s with reused idempotency key',
+    async (storedCausalInboundEventId) => {
+      const body = makeBody();
+      vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({
+        id: 'outbound_1',
+        status: 'succeeded',
+        payload: {
+          ...normalizePayload(body),
+          causal_inbound_event_id: storedCausalInboundEventId,
+        },
+      } as never);
+
+      const res = await postOutbound(body);
+
+      expect(res.status).toBe(409);
+      await expect(res.json()).resolves.toEqual({
+        ok: false,
+        error: 'idempotency_key_conflict',
+        idempotency_key: 'idem_1',
+      });
+      expect(deliverOutboundMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it('returns 409 for in-progress duplicate with same payload', async () => {
     const body = makeBody();
     vi.mocked(db.outboundDelivery.findUnique).mockResolvedValue({

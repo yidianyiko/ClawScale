@@ -205,6 +205,15 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
     return {};
   }
 
+  const hasCausalInboundEventId = Object.prototype.hasOwnProperty.call(record, 'causal_inbound_event_id');
+  const causalInboundEventId = record['causal_inbound_event_id'];
+  if (
+    hasCausalInboundEventId &&
+    (typeof causalInboundEventId !== 'string' || causalInboundEventId.length === 0)
+  ) {
+    return {};
+  }
+
   return {
     output_id: outputId,
     customer_id: customerId,
@@ -217,8 +226,8 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
     expect_output_timestamp: expectOutputTimestamp,
     idempotency_key: idempotencyKey,
     trace_id: traceId,
-    ...(typeof record['causal_inbound_event_id'] === 'string' && record['causal_inbound_event_id'].length > 0
-      ? { causal_inbound_event_id: record['causal_inbound_event_id'] }
+    ...(hasCausalInboundEventId
+      ? { causal_inbound_event_id: causalInboundEventId }
       : {}),
   } as Prisma.InputJsonObject;
 }
