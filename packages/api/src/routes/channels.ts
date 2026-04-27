@@ -19,6 +19,13 @@ import { startLineBot, stopLineBot } from '../adapters/line.js';
 import { startSignalBot, stopSignalBot } from '../adapters/signal.js';
 import { startTeamsBot, stopTeamsBot } from '../adapters/teams.js';
 import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-config.js';
+import {
+  buildPublicLinqConfig,
+  ensureStoredLinqConfig,
+  hasLinqSigningSecret,
+  hasLinqWebhookToken,
+  normalizeLinqPhoneNumber,
+} from '../lib/linq-config.js';
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
@@ -40,6 +47,10 @@ const evolutionConfigInputSchema = z.object({
   instanceName: z.string().trim().min(1),
 }).strict();
 
+const linqConfigInputSchema = z.object({
+  fromNumber: z.string().trim().min(1).optional(),
+}).strict();
+
 const channelListSelect = {
   id: true,
   tenantId: true,
@@ -56,6 +67,49 @@ function validationError(issues: z.ZodIssue[]) {
     ok: false as const,
     error: 'validation_error',
     issues,
+  };
+}
+
+function readDefaultLinqFromNumber(): string | null {
+  const value = process.env['LINQ_FROM_NUMBER']?.trim() ?? '';
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return normalizeLinqPhoneNumber(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseLinqConfigInput(config: Record<string, unknown>) {
+  const parsed = linqConfigInputSchema.safeParse(config);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError(parsed.error.issues),
+    };
+  }
+
+  const rawFromNumber = parsed.data.fromNumber;
+  let fromNumber: string | null = null;
+  try {
+    fromNumber = rawFromNumber ? normalizeLinqPhoneNumber(rawFromNumber) : readDefaultLinqFromNumber();
+  } catch {
+    fromNumber = null;
+  }
+
+  if (!fromNumber) {
+    return {
+      ok: false as const,
+      response: { ok: false as const, error: 'linq_config_invalid' },
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: { fromNumber },
   };
 }
 
@@ -94,6 +148,16 @@ export const channelsRouter = new Hono()
         instanceName: parsedConfig.data.instanceName,
         webhookToken: randomUUID(),
       };
+    } else if (body.type === 'linq') {
+      const parsedConfig = parseLinqConfigInput(body.config);
+      if (!parsedConfig.ok) {
+        return c.json(parsedConfig.response, 400);
+      }
+
+      config = {
+        fromNumber: parsedConfig.data.fromNumber,
+        webhookToken: randomUUID(),
+      };
     }
 
     const id = generateId('ch');
@@ -127,6 +191,17 @@ export const channelsRouter = new Hono()
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type === 'linq') {
+      return c.json({
+        ok: true,
+        data: {
+          ...channel,
+          config: buildPublicLinqConfig(channel.config),
+          hasWebhookToken: hasLinqWebhookToken(channel.config),
+          hasSigningSecret: hasLinqSigningSecret(channel.config),
+        },
+      });
+    }
     return c.json({ ok: true, data: channel });
   })
 
@@ -166,6 +241,27 @@ export const channelsRouter = new Hono()
         data.config = {
           instanceName: parsedConfig.data.instanceName,
           webhookToken: storedConfig.webhookToken,
+        };
+      } else if (existing.type === 'linq') {
+        if ('webhookToken' in body.config || 'signingSecret' in body.config) {
+          return c.json({ ok: false, error: 'linq_secret_not_mutable' }, 400);
+        }
+
+        const parsedConfig = parseLinqConfigInput(body.config);
+        if (!parsedConfig.ok) {
+          return c.json(parsedConfig.response, 400);
+        }
+
+        const storedConfig = ensureStoredLinqConfig(existing.config, randomUUID);
+        if (existing.status === 'connected' && parsedConfig.data.fromNumber !== storedConfig.fromNumber) {
+          return c.json({ ok: false, error: 'linq_from_number_not_mutable_while_connected' }, 409);
+        }
+
+        data.config = {
+          fromNumber: parsedConfig.data.fromNumber,
+          webhookToken: storedConfig.webhookToken,
+          ...(storedConfig.webhookSubscriptionId ? { webhookSubscriptionId: storedConfig.webhookSubscriptionId } : {}),
+          ...(storedConfig.signingSecret ? { signingSecret: storedConfig.signingSecret } : {}),
         };
       } else {
         data.config = body.config;

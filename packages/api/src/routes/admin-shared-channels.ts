@@ -5,6 +5,16 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { EvolutionApiClient } from '../lib/evolution-api.js';
 import { generateId } from '../lib/id.js';
+import { LinqApiClient } from '../lib/linq-api.js';
+import {
+  buildPublicLinqConfig,
+  ensureStoredLinqConfig,
+  hasLinqSigningSecret,
+  hasLinqWebhookToken,
+  normalizeLinqPhoneNumber,
+  parseStoredLinqConfig,
+  type StoredLinqConfig,
+} from '../lib/linq-config.js';
 import {
   buildPublicWhatsAppEvolutionConfig,
   ensureStoredWhatsAppEvolutionConfig,
@@ -96,6 +106,12 @@ const evolutionConfigInputSchema = z
   })
   .strict();
 
+const linqConfigInputSchema = z
+  .object({
+    fromNumber: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
 function getPlatformTenantId(): string {
   return process.env['COKE_PLATFORM_TENANT_ID'] ?? 'ten_1';
 }
@@ -111,6 +127,10 @@ function getGatewayPublicBaseUrl(): string {
 
 function buildEvolutionWebhookUrl(channelId: string, webhookToken: string): string {
   return `${getGatewayPublicBaseUrl()}/gateway/evolution/whatsapp/${channelId}/${webhookToken}`;
+}
+
+function buildLinqWebhookUrl(channelId: string, webhookToken: string): string {
+  return `${getGatewayPublicBaseUrl()}/gateway/linq/${channelId}/${webhookToken}`;
 }
 
 function validationError(issues: z.ZodIssue[]) {
@@ -136,6 +156,49 @@ function parseEvolutionConfigInput(config: Record<string, unknown>) {
   };
 }
 
+function readDefaultLinqFromNumber(): string | null {
+  const value = process.env['LINQ_FROM_NUMBER']?.trim() ?? '';
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return normalizeLinqPhoneNumber(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseLinqConfigInput(config: Record<string, unknown>) {
+  const parsed = linqConfigInputSchema.safeParse(config);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError(parsed.error.issues),
+    };
+  }
+
+  const rawFromNumber = parsed.data.fromNumber;
+  let fromNumber: string | null = null;
+  try {
+    fromNumber = rawFromNumber ? normalizeLinqPhoneNumber(rawFromNumber) : readDefaultLinqFromNumber();
+  } catch {
+    fromNumber = null;
+  }
+
+  if (!fromNumber) {
+    return {
+      ok: false as const,
+      response: { ok: false as const, error: 'linq_config_invalid' },
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: { fromNumber },
+  };
+}
+
 function buildStoredEvolutionConfig(
   instanceName: string,
   webhookToken: string,
@@ -143,6 +206,20 @@ function buildStoredEvolutionConfig(
   return {
     instanceName,
     webhookToken,
+  };
+}
+
+function buildStoredLinqConfig(input: {
+  fromNumber: string;
+  webhookToken: string;
+  webhookSubscriptionId?: string;
+  signingSecret?: string;
+}): Prisma.InputJsonObject & StoredLinqConfig {
+  return {
+    fromNumber: input.fromNumber,
+    webhookToken: input.webhookToken,
+    ...(input.webhookSubscriptionId ? { webhookSubscriptionId: input.webhookSubscriptionId } : {}),
+    ...(input.signingSecret ? { signingSecret: input.signingSecret } : {}),
   };
 }
 
@@ -192,6 +269,25 @@ async function rollbackEvolutionDisconnect(
   }
 }
 
+async function rollbackLinqDisconnect(
+  client: LinqApiClient,
+  channelId: string,
+  config: StoredLinqConfig,
+) {
+  if (!config.webhookToken) {
+    return;
+  }
+
+  try {
+    await client.createWebhookSubscription({
+      targetUrl: buildLinqWebhookUrl(channelId, config.webhookToken),
+      phoneNumbers: [config.fromNumber],
+    });
+  } catch (error) {
+    console.error('[shared-channel:linq] Failed to restore webhook after DB failure:', error);
+  }
+}
+
 const activeSharedChannelWhere = {
   ownershipKind: 'shared' as const,
   status: {
@@ -233,6 +329,15 @@ function serializeSharedChannel(
       ...base,
       ...(options?.includeConfig ? { config: buildPublicWhatsAppEvolutionConfig(row.config) } : {}),
       hasWebhookToken: hasWhatsAppEvolutionWebhookToken(row.config),
+    };
+  }
+
+  if (row.type === 'linq') {
+    return {
+      ...base,
+      ...(options?.includeConfig ? { config: buildPublicLinqConfig(row.config) } : {}),
+      hasWebhookToken: hasLinqWebhookToken(row.config),
+      hasSigningSecret: hasLinqSigningSecret(row.config),
     };
   }
 
@@ -316,6 +421,16 @@ export const adminSharedChannelsRouter = new Hono()
       }
 
       config = buildStoredEvolutionConfig(parsedConfig.data.instanceName, randomUUID());
+    } else if (parsedBody.data.kind === 'linq') {
+      const parsedConfig = parseLinqConfigInput(parsedBody.data.config);
+      if (!parsedConfig.ok) {
+        return c.json(parsedConfig.response, 400);
+      }
+
+      config = buildStoredLinqConfig({
+        fromNumber: parsedConfig.data.fromNumber,
+        webhookToken: randomUUID(),
+      });
     }
 
     const created = await db.channel.create({
@@ -375,6 +490,27 @@ export const adminSharedChannelsRouter = new Hono()
           parsedConfig.data.instanceName,
           storedConfig.webhookToken,
         );
+      } else if (existing.type === 'linq') {
+        if ('webhookToken' in parsedBody.data.config || 'signingSecret' in parsedBody.data.config) {
+          return c.json({ ok: false, error: 'linq_secret_not_mutable' }, 400);
+        }
+
+        const parsedConfig = parseLinqConfigInput(parsedBody.data.config);
+        if (!parsedConfig.ok) {
+          return c.json(parsedConfig.response, 400);
+        }
+
+        const storedConfig = ensureStoredLinqConfig(existing.config, randomUUID);
+        if (existing.status === 'connected' && parsedConfig.data.fromNumber !== storedConfig.fromNumber) {
+          return c.json({ ok: false, error: 'linq_from_number_not_mutable_while_connected' }, 409);
+        }
+
+        config = buildStoredLinqConfig({
+          fromNumber: parsedConfig.data.fromNumber,
+          webhookToken: storedConfig.webhookToken!,
+          webhookSubscriptionId: storedConfig.webhookSubscriptionId,
+          signingSecret: storedConfig.signingSecret,
+        });
       } else {
         config = parsedBody.data.config as Prisma.InputJsonValue;
       }
@@ -402,11 +538,53 @@ export const adminSharedChannelsRouter = new Hono()
     if (!existing) {
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
-    if (existing.type !== 'whatsapp_evolution') {
+    if (existing.type !== 'whatsapp_evolution' && existing.type !== 'linq') {
       return c.json({ ok: false, error: 'unsupported_shared_channel_kind' }, 409);
     }
     if (existing.status === 'connected') {
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
+    }
+
+    if (existing.type === 'linq') {
+      const config = ensureStoredLinqConfig(existing.config, randomUUID);
+      const client = new LinqApiClient();
+      let subscription;
+
+      try {
+        subscription = await client.createWebhookSubscription({
+          targetUrl: buildLinqWebhookUrl(existing.id, config.webhookToken!),
+          phoneNumbers: [config.fromNumber],
+        });
+      } catch {
+        return c.json({ ok: false, error: 'linq_webhook_register_failed' }, 502);
+      }
+
+      let updated: SharedChannelRow;
+      try {
+        updated = (await db.channel.update({
+          where: { id: existing.id },
+          data: {
+            status: 'connected',
+            config: buildStoredLinqConfig({
+              fromNumber: config.fromNumber,
+              webhookToken: config.webhookToken!,
+              webhookSubscriptionId: subscription.id,
+              signingSecret: subscription.signingSecret,
+            }),
+          },
+          select: sharedChannelSelect,
+        })) as SharedChannelRow;
+      } catch (error) {
+        await client.deleteWebhookSubscription(subscription.id).catch((rollbackError) => {
+          console.error('[shared-channel:linq] Failed to roll back webhook subscription:', rollbackError);
+        });
+        throw error;
+      }
+
+      return c.json({
+        ok: true,
+        data: serializeSharedChannel(updated as never, { includeConfig: true }),
+      });
     }
 
     const client = new EvolutionApiClient();
@@ -441,11 +619,46 @@ export const adminSharedChannelsRouter = new Hono()
     if (!existing) {
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
-    if (existing.type !== 'whatsapp_evolution') {
+    if (existing.type !== 'whatsapp_evolution' && existing.type !== 'linq') {
       return c.json({ ok: false, error: 'unsupported_shared_channel_kind' }, 409);
     }
     if (existing.status === 'disconnected') {
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
+    }
+
+    if (existing.type === 'linq') {
+      const client = new LinqApiClient();
+      const config = parseStoredLinqConfig(existing.config);
+      if (config.webhookSubscriptionId) {
+        try {
+          await client.deleteWebhookSubscription(config.webhookSubscriptionId);
+        } catch {
+          return c.json({ ok: false, error: 'linq_webhook_delete_failed' }, 502);
+        }
+      }
+
+      let updated: SharedChannelRow;
+      try {
+        updated = (await db.channel.update({
+          where: { id: existing.id },
+          data: {
+            status: 'disconnected',
+            config: buildStoredLinqConfig({
+              fromNumber: config.fromNumber,
+              webhookToken: config.webhookToken ?? randomUUID(),
+            }),
+          },
+          select: sharedChannelSelect,
+        })) as SharedChannelRow;
+      } catch (error) {
+        await rollbackLinqDisconnect(client, existing.id, config);
+        throw error;
+      }
+
+      return c.json({
+        ok: true,
+        data: serializeSharedChannel(updated as never, { includeConfig: true }),
+      });
     }
 
     const client = new EvolutionApiClient();
@@ -481,6 +694,8 @@ export const adminSharedChannelsRouter = new Hono()
 
     let rollbackConfig: WhatsAppEvolutionConfig | null = null;
     let client: EvolutionApiClient | null = null;
+    let linqRollbackConfig: StoredLinqConfig | null = null;
+    let linqClient: LinqApiClient | null = null;
     if (existing.type === 'whatsapp_evolution' && existing.status === 'connected') {
       rollbackConfig = parseWhatsAppEvolutionConfig(existing.config);
       client = new EvolutionApiClient();
@@ -489,6 +704,25 @@ export const adminSharedChannelsRouter = new Hono()
       } catch {
         return c.json({ ok: false, error: 'evolution_webhook_clear_failed' }, 502);
       }
+    } else if (existing.type === 'linq' && existing.status === 'connected') {
+      linqRollbackConfig = parseStoredLinqConfig(existing.config);
+      linqClient = new LinqApiClient();
+      if (linqRollbackConfig.webhookSubscriptionId) {
+        try {
+          await linqClient.deleteWebhookSubscription(linqRollbackConfig.webhookSubscriptionId);
+        } catch {
+          return c.json({ ok: false, error: 'linq_webhook_delete_failed' }, 502);
+        }
+      }
+    }
+
+    let archivedConfig: Prisma.InputJsonValue = {};
+    if (existing.type === 'linq') {
+      const config = parseStoredLinqConfig(existing.config);
+      archivedConfig = buildStoredLinqConfig({
+        fromNumber: config.fromNumber,
+        webhookToken: config.webhookToken ?? randomUUID(),
+      });
     }
 
     try {
@@ -496,12 +730,15 @@ export const adminSharedChannelsRouter = new Hono()
         where: { id: existing.id },
         data: {
           status: 'archived',
-          config: {},
+          config: archivedConfig,
         },
       });
     } catch (error) {
       if (client && rollbackConfig) {
         await rollbackEvolutionDisconnect(client, existing.id, rollbackConfig);
+      }
+      if (linqClient && linqRollbackConfig) {
+        await rollbackLinqDisconnect(linqClient, existing.id, linqRollbackConfig);
       }
       throw error;
     }
