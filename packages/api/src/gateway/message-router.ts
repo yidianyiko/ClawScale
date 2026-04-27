@@ -11,9 +11,16 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import * as lineSdk from '@line/bot-sdk';
+import type { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 import { EvolutionApiClient } from '../lib/evolution-api.js';
+import { WechatEcloudApiClient } from '../lib/wechat-ecloud-api.js';
+import { parseStoredWechatEcloudConfig } from '../lib/wechat-ecloud-config.js';
+import {
+  normalizeWechatEcloudWebhook,
+  timingSafeEqualString,
+} from '../lib/wechat-ecloud-webhook.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
@@ -105,6 +112,10 @@ function readEvolutionText(data: EvolutionWebhookData): string | null {
 
   const extendedText = data.message?.extendedTextMessage?.text?.trim();
   return extendedText || null;
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'P2002');
 }
 
 export const gatewayRouter = new Hono()
@@ -201,6 +212,99 @@ export const gatewayRouter = new Hono()
       }
     } catch (err) {
       console.error(`[evolution:${channelId}] Webhook handling error:`, err);
+    }
+
+    return c.json({ ok: true });
+  })
+
+  // ── POST /gateway/ecloud/wechat/:channelId/:token ──────────────────────────
+  // Ecloud sends shared-channel private WeChat callbacks here.
+  .post('/ecloud/wechat/:channelId/:token', async (c) => {
+    const channelId = c.req.param('channelId');
+    const token = c.req.param('token');
+
+    const channel = await db.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        config: true,
+      },
+    });
+
+    if (!channel || channel.type !== 'wechat_ecloud' || channel.status !== 'connected') {
+      return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
+    }
+
+    let config: ReturnType<typeof parseStoredWechatEcloudConfig>;
+    try {
+      config = parseStoredWechatEcloudConfig(channel.config);
+    } catch (error) {
+      console.error(`[ecloud:${channelId}] Invalid stored config:`, error);
+      return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
+    }
+
+    if (!timingSafeEqualString(token, config.webhookToken)) {
+      return c.json({ ok: false, error: 'Forbidden' }, 403);
+    }
+
+    const body = await c.req.json().catch(() => null);
+    if (body == null) {
+      return c.json({ ok: true });
+    }
+
+    const decision = normalizeWechatEcloudWebhook(body, config.appId);
+    if (decision.kind === 'ignore') {
+      return c.json({ ok: true });
+    }
+
+    try {
+      await db.inboundWebhookReceipt.create({
+        data: {
+          channelId,
+          provider: 'wechat_ecloud',
+          idempotencyKey: `${channelId}:${decision.receiptKey}`,
+          payload: body as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        return c.json({ ok: true });
+      }
+
+      console.error(`[ecloud:${channelId}] Receipt handling error:`, {
+        error,
+        receiptKey: decision.receiptKey,
+        msgId: decision.meta['msgId'],
+        newMsgId: decision.meta['newMsgId'],
+      });
+      return c.json({ ok: true });
+    }
+
+    try {
+      const result = await routeInboundMessage({
+        channelId,
+        externalId: decision.externalId,
+        displayName: decision.displayName,
+        text: decision.text,
+        meta: decision.meta,
+      });
+
+      if (result?.reply) {
+        await new WechatEcloudApiClient(config.baseUrl, config.token).sendText(
+          config.appId,
+          decision.externalId,
+          result.reply,
+        );
+      }
+    } catch (error) {
+      console.error(`[ecloud:${channelId}] Webhook handling error:`, {
+        error,
+        receiptKey: decision.receiptKey,
+        msgId: decision.meta['msgId'],
+        newMsgId: decision.meta['newMsgId'],
+      });
     }
 
     return c.json({ ok: true });
