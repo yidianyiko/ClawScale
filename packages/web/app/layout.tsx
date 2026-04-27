@@ -28,8 +28,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'kap | An AI Partner That Grows With You',
-  description: 'Kap AI public homepage, user sign-in, registration, and personal channel setup.',
+  title: 'kap | An AI Supervisor That Follows Up',
+  description: 'Kap AI turns goals into reminders, check-ins, and follow-up across personal WeChat and WhatsApp.',
   icons: { icon: '/kap-koala-badge.png' },
 };
 

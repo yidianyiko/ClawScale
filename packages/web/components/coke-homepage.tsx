@@ -33,18 +33,18 @@ const visuallyHiddenStyle: CSSProperties = {
 
 const HERO_DECOR = {
   en: {
-    availability: 'Live now · WeChat · Telegram · WhatsApp',
-    stickerLeft: 'You can close the tab.',
-    stickerRight: 'Kap keeps moving.',
-    chipA: 'Draft ready',
-    chipB: '3 flows running',
+    availability: 'Live now · Personal WeChat · WhatsApp · Google Calendar',
+    stickerLeft: 'Set the goal once.',
+    stickerRight: 'Kap follows up.',
+    chipA: 'Reminder set',
+    chipB: 'Follow-up active',
   },
   zh: {
-    availability: '已上线 · 微信 · Telegram · WhatsApp',
-    stickerLeft: '你可以先去忙别的。',
-    stickerRight: 'Kap 会继续推进。',
-    chipA: '草稿已就绪',
-    chipB: '3 条流程在跑',
+    availability: '已上线 · 个人微信 · WhatsApp · Google Calendar',
+    stickerLeft: '先把目标说清楚。',
+    stickerRight: 'Kap 会继续跟进。',
+    chipA: '提醒已创建',
+    chipB: '跟进已启用',
   },
 } satisfies Record<
   Locale,
@@ -60,87 +60,87 @@ const HERO_DECOR = {
 const HERO_STAGE_COPY = {
   en: {
     label: 'Kap AI',
-    body: 'One ongoing conversation for planning, reminders, and follow-through.',
+    body: 'One supervision thread for reminders, check-ins, and follow-up.',
   },
   zh: {
     label: 'Kap AI',
-    body: '用一个持续的对话，把规划、提醒和推进都接起来。',
+    body: '用一个监督线程，把提醒、检查和跟进接起来。',
   },
 } satisfies Record<Locale, { label: string; body: string }>;
 
 const TICKER_ITEMS = {
   en: [
-    'Keep momentum after the first message',
-    'Close the tab, Kap keeps working',
-    'Return to a clearer next move',
-    'One thread, multiple outcomes',
+    'Turn goals into reminders',
+    'Personal WeChat setup is live',
+    'Google Calendar imports become reminders',
+    'WhatsApp global entry is live',
   ],
-  zh: ['先发一条，后续继续推进', '关掉页面，Kap 继续做事', '回来就有更清晰的下一步', '一个线程，多个结果'],
+  zh: ['把目标变成提醒', '个人微信设置已上线', 'Google Calendar 可导入成提醒', 'WhatsApp 全球入口已上线'],
 } satisfies Record<Locale, readonly string[]>;
 
 const CAPABILITY_CARDS = {
   en: [
     {
       tone: 'c1',
-      eyebrow: 'Plan',
-      title: 'Plan meetings, reminders, and the next move in one thread.',
-      body: 'Use Kap to line up tomorrow, a busy afternoon, or the first handoff before the context cools down.',
+      eyebrow: 'Supervise',
+      title: 'Turn goals into reminders, check-ins, and follow-up.',
+      body: 'Kap is built around supervision: clarify the goal, set the timing, and keep the next action visible after the first message.',
     },
     {
       tone: 'c2',
-      eyebrow: 'Draft',
-      title: 'Turn the loose thought into a sendable message.',
-      body: 'Ask Kap to draft replies, summaries, handoff notes, and check-in messages before you lose the thread.',
+      eyebrow: 'Remind',
+      title: 'Create and manage visible reminders in chat.',
+      body: 'Set, list, update, complete, or delete reminders without leaving the conversation. The runtime schedules them as durable deferred actions.',
     },
     {
       tone: 'c3',
-      eyebrow: 'Remind',
-      title: 'Do not stop at the answer. Keep the task moving.',
-      body: 'Carry reminders, follow-through, and open loops in the same conversation instead of restarting from zero.',
+      eyebrow: 'Calendar',
+      title: 'Import Google Calendar into Kap reminders.',
+      body: 'Connect Google Calendar from the account page and turn scheduled events into reminders attached to the active Kap conversation.',
     },
     {
       tone: 'c4',
       eyebrow: 'Connect',
-      title: 'Start on the web, then continue in the channel you actually use.',
-      body: 'Sign in, register, personal WeChat setup, and WhatsApp entry points should feel like one product.',
+      title: 'Continue through personal WeChat or WhatsApp.',
+      body: 'Domestic users can manage a personal WeChat channel. Global users can start from the focused WhatsApp entry.',
     },
     {
       tone: 'c5',
-      eyebrow: 'Recover',
-      title: 'When access breaks, the next required action should still be obvious.',
-      body: 'Email verification, renewal, and reconnect steps stay readable instead of sending you into a detached flow.',
+      eyebrow: 'Access',
+      title: 'Keep account access, renewal, and reconnect steps visible.',
+      body: 'Email verification, subscription renewal, channel reconnect, and suspended access states are handled in the customer pages.',
     },
   ],
   zh: [
     {
       tone: 'c1',
-      eyebrow: '规划',
-      title: '把会议、提醒和下一步放进同一个线程里。',
-      body: '让 Kap 先帮你排顺明天、一个忙乱的下午，或第一个 handoff 之前该做的事。',
+      eyebrow: '监督',
+      title: '把目标变成提醒、检查和后续跟进。',
+      body: 'Kap 的核心是监督：先确认目标和时间，再把下一步持续留在对话里，而不是只回答一次。',
     },
     {
       tone: 'c2',
-      eyebrow: '起草',
-      title: '把要发出去的那条消息先起草出来。',
-      body: '在上下文还热的时候，让 Kap 先起草回复、总结、handoff 说明和跟进消息。',
+      eyebrow: '提醒',
+      title: '在聊天里创建和管理可见提醒。',
+      body: '用户可以直接设置、查看、更新、完成或删除提醒；底层会把它们作为持久的延迟动作调度。',
     },
     {
       tone: 'c3',
-      eyebrow: '提醒',
-      title: '不要只拿到答案，还要把事情继续推进。',
-      body: '把提醒、跟进和待办都留在同一个线程里，不用每次重新讲一遍背景。',
+      eyebrow: '日历',
+      title: '把 Google Calendar 导入成 Kap 提醒。',
+      body: '从账号页授权 Google Calendar，把日程事件转成当前 Kap 对话里的提醒。',
     },
     {
       tone: 'c4',
       eyebrow: '连接',
-      title: '先从网页开始，再继续到你真正使用的渠道里。',
-      body: '登录、注册、个人微信设置和 WhatsApp 入口应该像同一个产品，而不是分开的几段流程。',
+      title: '通过个人微信或 WhatsApp 继续使用。',
+      body: '国内用户可以管理个人微信通道；海外用户可以从专门的 WhatsApp 入口直接开始。',
     },
     {
       tone: 'c5',
-      eyebrow: '恢复',
-      title: '访问受阻时，下一步该做什么也要一眼看懂。',
-      body: '邮箱验证、续费和重连动作保持清楚，不把你甩进割裂的恢复流程里。',
+      eyebrow: '访问',
+      title: '账号访问、续费和重连步骤保持可见。',
+      body: '邮箱验证、订阅续费、通道重连和账号停用状态都已经放进客户页面里处理。',
     },
   ],
 } satisfies Record<
@@ -151,31 +151,31 @@ const CAPABILITY_CARDS = {
 const SCENARIOS = {
   en: [
     {
-      tag: 'Planning',
-      title: 'Line up tomorrow before the first meeting.',
-      body: 'Give Kap the rough plan first, then come back to a cleaner order, a draft follow-up, and a useful reminder.',
+      tag: 'Supervision',
+      title: 'Tell Kap what you need to finish today.',
+      body: 'Kap asks for timing, turns the goal into a reminder, and keeps checking whether the task actually moved.',
       previewClass: 'o',
       preview: [
-        { type: 'me', text: 'Before 10am, sort the day and tell me what lands first.' },
-        { type: 'ai', text: 'I will line up the order, draft the first follow-up, and remind you before the handoff.' },
-        { type: 'file', text: 'Tomorrow-plan.md', meta: 'Agenda, follow-up draft, and reminder timing' },
+        { type: 'me', text: 'I need to finish one IELTS practice set this afternoon.' },
+        { type: 'ai', text: 'What time should it be done? I can remind you before you start and check after.' },
+        { type: 'file', text: 'visible-reminder', meta: 'Created, scheduled, and ready to follow up' },
       ],
     },
     {
-      tag: 'Draft',
-      title: 'Turn the loose thought into a message you can send.',
-      body: 'When you already know the intent, let Kap draft the follow-up, summary, or handoff note before it fades.',
+      tag: 'Calendar',
+      title: 'Bring Google Calendar into the supervision loop.',
+      body: 'If your tasks already live on the calendar, import them once and let Kap convert future events into reminders.',
       previewClass: 'g',
       preview: [
-        { type: 'me', text: 'Need a calm follow-up after today’s meeting.' },
-        { type: 'ai', text: 'I will draft the note and keep a cleaner version ready for you.' },
-        { type: 'file', text: 'follow-up-draft', meta: 'Reply draft, summary, and handoff note' },
+        { type: 'me', text: 'Can I import my Google Calendar?' },
+        { type: 'ai', text: 'Open the import page, authorize Google, and I will attach events to this Kap conversation.' },
+        { type: 'file', text: 'calendar-import', meta: 'Google events become Kap reminders' },
       ],
     },
     {
       tag: 'WeChat',
-      title: 'Reconnect your personal channel without guessing the state.',
-      body: 'If you need your own WeChat channel back online, Kap should keep the setup state and next action clear.',
+      title: 'Connect or recover your personal WeChat channel.',
+      body: 'Kap keeps the channel state readable: create, connect, disconnect, archive, renew access, or scan again.',
       previewClass: 'b',
       preview: [
         { type: 'me', text: 'What do I need before I reconnect my WeChat?' },
@@ -185,8 +185,8 @@ const SCENARIOS = {
     },
     {
       tag: 'WhatsApp',
-      title: 'Start globally with one message and stay in the same thread.',
-      body: 'The global entry stays focused on WhatsApp, but it should still feel like the same Kap product.',
+      title: 'Start globally with one WhatsApp message.',
+      body: 'The global page has one job: open the WhatsApp thread fast so the next action can keep moving there.',
       previewClass: '',
       preview: [
         { type: 'me', text: 'I want to start from WhatsApp only.' },
@@ -197,31 +197,31 @@ const SCENARIOS = {
   ],
   zh: [
     {
-      tag: '规划',
-      title: '在第一场会开始前，把明天先排顺。',
-      body: '先把粗略计划交给 Kap，回来时你会拿到更顺的顺序、第一条草稿和有用的提醒。',
+      tag: '监督',
+      title: '告诉 Kap 今天必须完成什么。',
+      body: 'Kap 会追问完成时间，把目标变成提醒，并在之后检查这件事有没有真的推进。',
       previewClass: 'o',
       preview: [
-        { type: 'me', text: '10 点前，先帮我排顺明天的顺序。' },
-        { type: 'ai', text: '我来整理顺序、起草第一条跟进，并在 handoff 前提醒你。' },
-        { type: 'file', text: '明日计划.md', meta: '议程、跟进草稿和提醒时间' },
+        { type: 'me', text: '我今天下午要做完一套雅思练习。' },
+        { type: 'ai', text: '你打算几点完成？我可以开始前提醒你，结束后再来检查。' },
+        { type: 'file', text: '可见提醒', meta: '已创建、已调度、会继续跟进' },
       ],
     },
     {
-      tag: '起草',
-      title: '把脑子里那句模糊的话，先变成能发出去的消息。',
-      body: '当你的意图已经明确时，让 Kap 先把跟进、总结或 handoff 说明起草出来。',
+      tag: '日历',
+      title: '把 Google Calendar 接进监督流程。',
+      body: '如果任务已经在日历里，导入一次后，Kap 会把未来日程转成提醒。',
       previewClass: 'g',
       preview: [
-        { type: 'me', text: '帮我起草今天会后的跟进。' },
-        { type: 'ai', text: '我会先写出一版稳妥的消息，再给你留一版更精简的。' },
-        { type: 'file', text: '跟进草稿', meta: '回复草稿、总结和 handoff 说明' },
+        { type: 'me', text: '我可以导入 Google Calendar 吗？' },
+        { type: 'ai', text: '打开导入页，授权 Google 后，我会把事件接到这个 Kap 对话里。' },
+        { type: 'file', text: '日历导入', meta: 'Google 事件会变成 Kap 提醒' },
       ],
     },
     {
       tag: '微信',
-      title: '重连个人微信时，不要靠猜来判断状态。',
-      body: '如果你要把自己的微信重新连上，Kap 应该把连接状态和下一步动作说清楚。',
+      title: '连接或恢复你的个人微信通道。',
+      body: 'Kap 会把通道状态说清楚：创建、连接、断开、归档、续费访问或重新扫码。',
       previewClass: 'b',
       preview: [
         { type: 'me', text: '重新连微信之前，我还差哪一步？' },
@@ -231,8 +231,8 @@ const SCENARIOS = {
     },
     {
       tag: 'WhatsApp',
-      title: '从一条 WhatsApp 消息开始，然后留在同一个线程里继续。',
-      body: '全球入口只服务 WhatsApp，但它也应该像同一个 Kap 产品，而不是另一套落地页。',
+      title: '从一条 WhatsApp 消息开始全球入口。',
+      body: '全球页只做一件事：快速打开 WhatsApp 线程，让下一步继续在那里推进。',
       previewClass: '',
       preview: [
         { type: 'me', text: '我就想从 WhatsApp 直接开始。' },
@@ -254,13 +254,13 @@ const SCENARIOS = {
 
 const QUOTE_BAND = {
   en: {
-    quote: 'Give Kap the task once.',
-    accent: 'Come back to a clearer next move.',
+    quote: 'Kap is not another place to chat.',
+    accent: 'It is the thread that keeps the promise visible.',
     cite: 'Kap',
   },
   zh: {
-    quote: '把任务交给 Kap 一次。',
-    accent: '回来时拿到更清楚的下一步。',
+    quote: 'Kap 不是另一个聊天入口。',
+    accent: '它是一条把承诺继续摆在眼前的监督线程。',
     cite: 'Kap',
   },
 } satisfies Record<Locale, { quote: string; accent: string; cite: string }>;
@@ -268,36 +268,36 @@ const QUOTE_BAND = {
 const VOICES = {
   en: [
     {
-      avatar: 'OP',
-      role: 'Founder',
-      quote: 'When I open Kap in the morning, the order, the reminder, and the first follow-up are already clearer.',
+      avatar: 'RM',
+      role: 'Reminder runtime',
+      quote: 'Visible reminders can be created, listed, updated, completed, and deleted from the conversation.',
     },
     {
-      avatar: 'CS',
-      role: 'Support',
-      quote: 'When WeChat drops, I can see whether the next move is verification, renewal, or a fresh scan.',
+      avatar: 'WX',
+      role: 'Personal WeChat',
+      quote: 'Users can create, connect, disconnect, archive, and recover their personal WeChat channel.',
     },
     {
-      avatar: 'GL',
-      role: 'Global',
-      quote: 'Switching between the web entry and WhatsApp no longer feels like learning two different products.',
+      avatar: 'GC',
+      role: 'Google Calendar',
+      quote: 'Calendar import turns future events into Kap-owned reminders in the active conversation.',
     },
   ],
   zh: [
     {
-      avatar: '产',
-      role: '创始人',
-      quote: '早上打开时，Kap 已经把会议顺序、提醒和第一条跟进整理得更清楚了。',
+      avatar: '提',
+      role: '提醒运行时',
+      quote: '用户可以在对话里创建、查看、更新、完成和删除可见提醒。',
     },
     {
-      avatar: '运',
-      role: '支持',
-      quote: '微信掉线后，我能直接看见下一步是该验证邮箱、续费，还是重新扫码。',
+      avatar: '微',
+      role: '个人微信',
+      quote: '用户可以创建、连接、断开、归档和恢复自己的个人微信通道。',
     },
     {
-      avatar: '设',
-      role: '全球',
-      quote: '我在网页和 WhatsApp 之间切换时，不需要重新理解另一套产品。',
+      avatar: '历',
+      role: 'Google Calendar',
+      quote: '日历导入会把未来事件变成当前 Kap 对话里的提醒。',
     },
   ],
 } satisfies Record<Locale, ReadonlyArray<{ avatar: string; role: string; quote: string }>>;
@@ -407,13 +407,15 @@ function Hero({ locale }: { locale: Locale }) {
                   </div>
                 </div>
                 <div className="hero-stage-card__thread">
-                  <div className="bubble bubble--user">Plan the next move and keep the thread warm.</div>
+                  <div className="bubble bubble--user">
+                    {locale === 'zh' ? '下午提醒我开始，并检查我有没有完成。' : 'Remind me to start this afternoon and check whether I finish.'}
+                  </div>
                   <div className="bubble bubble--coke">
                     <span className="bubble__tag">Kap</span>
                     <span className="bubble__text">
                       {locale === 'zh'
-                        ? '我会继续推进这件事，并在你回来时给你更清楚的下一步。'
-                        : "I'll keep this moving and bring you back to a clearer next step."}
+                        ? '我会创建提醒，到点叫你，并在结束后回来确认完成情况。'
+                        : "I'll create the reminder, nudge you at the time, and check back after."}
                     </span>
                     <span className="bubble__status">
                       <CheckCheck size={11} />
@@ -455,14 +457,14 @@ function Capabilities({ locale }: { locale: Locale }) {
       <div className="wrap">
         <span className="eyebrow">{locale === 'zh' ? '核心能力' : 'Capabilities'}</span>
         <h2>
-          {locale === 'zh' ? 'Kap 应该像一条持续推进的工作线程，' : 'Kap should feel like one steady operating thread,'}
+          {locale === 'zh' ? 'Kap 已经是一条监督线程，' : 'Kap is already a supervision thread,'}
           <br />
-          <em>{locale === 'zh' ? '从第一屏一直到下一步。' : 'from the first page to the next action.'}</em>
+          <em>{locale === 'zh' ? '从提醒到跟进都接起来。' : 'from reminders to follow-up.'}</em>
         </h2>
         <p className="lead">
           {locale === 'zh'
-            ? '把计划、草稿、提醒、重连和继续推进放进同一套产品体验里，用户才不会在关键动作前掉出上下文。'
-            : 'Planning, drafting, reminders, reconnect flows, and the next action should all live inside the same product experience.'}
+            ? '官网应该展示现在已经能体验到的东西：个人微信、WhatsApp、提醒、日历导入、订阅访问和重连恢复。'
+            : 'The homepage should show what users can experience today: personal WeChat, WhatsApp, reminders, calendar import, subscription access, and channel recovery.'}
         </p>
 
         <div className="caps">
@@ -495,14 +497,14 @@ function Scenarios({ locale }: { locale: Locale }) {
       <div className="wrap">
         <span className="eyebrow">{locale === 'zh' ? '真实任务' : 'Real tasks'}</span>
         <h2>
-          {locale === 'zh' ? '从一个真实任务开始，' : 'Start from a real task,'}
+          {locale === 'zh' ? '从一个需要监督的任务开始，' : 'Start from a task that needs supervision,'}
           <br />
-          <span className="accent">{locale === 'zh' ? '然后把它继续推进。' : 'then keep it moving.'}</span>
+          <span className="accent">{locale === 'zh' ? '然后让 Kap 持续跟进。' : 'then let Kap follow up.'}</span>
         </h2>
         <p className="lead">
           {locale === 'zh'
-            ? 'Kap 的价值不在于一段漂亮文案，而在于你把事情交给它之后，它会继续把下一步往前带。'
-            : 'Kap matters when it helps carry a real task forward after the first message, not when it only sounds good in a headline.'}
+            ? '现在的产品重点不是泛泛地帮你写东西，而是把任务、提醒、通道和账号访问串成可以实际使用的监督闭环。'
+            : 'The product is not positioned around generic drafting. It connects tasks, reminders, channels, and account access into a usable supervision loop.'}
         </p>
 
         <div className="scen-grid">
@@ -550,8 +552,8 @@ function Voices({ locale }: { locale: Locale }) {
   return (
     <section className="block" id="voices">
       <div className="wrap">
-        <span className="eyebrow">{locale === 'zh' ? '真实反馈' : 'Proof'}</span>
-        <h2>{locale === 'zh' ? '人们回来，不是为了看界面，' : 'People return for the next move,'} <span className="accent">{locale === 'zh' ? '而是为了让事情继续往前。' : 'not to admire the interface.'}</span></h2>
+        <span className="eyebrow">{locale === 'zh' ? '已实现能力' : 'Live capabilities'}</span>
+        <h2>{locale === 'zh' ? '官网应该讲已经上线的能力，' : 'The homepage should sell what is live,'} <span className="accent">{locale === 'zh' ? '不是未来想象。' : 'not the future roadmap.'}</span></h2>
         <div className="voices">
           {voices.map((voice) => (
             <div key={`${voice.avatar}-${voice.role}`} className="voice">
@@ -593,7 +595,7 @@ function DownloadPanel({ locale }: { locale: Locale }) {
         <div className="dl-card">
           <div>
             <span className="eyebrow">{locale === 'zh' ? '开始使用 Kap' : 'Start with Kap'}</span>
-            <h2>{locale === 'zh' ? '先用一个真实动作，\n把产品打开。' : 'Start with one real action,\nthen keep the thread alive.'}</h2>
+            <h2>{locale === 'zh' ? '先创建账号，\n再接入你的监督通道。' : 'Create the account,\nthen connect your supervision channel.'}</h2>
             <p className="lead">
               {homepage.contact.body}
             </p>

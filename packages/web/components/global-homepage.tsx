@@ -12,7 +12,7 @@ const PROMISE_CARDS = [
   },
   {
     title: 'Carry the next action in the same thread',
-    body: 'Plan the day, draft the follow-up, set the reminder, and keep the next move visible without resetting context.',
+    body: 'Set the goal, choose the time, create the reminder, and keep the check-in visible without resetting context.',
   },
   {
     title: 'Keep the entry simple',
@@ -24,17 +24,17 @@ const WORKFLOW_STEPS = [
   {
     label: 'Start with the task',
     title: 'Say what needs to happen next',
-    body: 'A follow-up to send. A day to line up. A reminder to keep. Start with the real thing that needs moving.',
+    body: 'A goal to finish. A time to start. A reminder to keep. Start with the real thing that needs supervision.',
   },
   {
     label: 'Keep it in one thread',
-    title: 'Refine the next move without starting over',
-    body: 'Adjust tone, timing, or priorities in the same chat instead of rebuilding the context from scratch.',
+    title: 'Set the goal and the time',
+    body: 'Tell Kap what needs doing and when to check back, then keep the reminder context in the same chat.',
   },
   {
     label: 'Keep momentum',
     title: 'Let Kap carry the open loop forward',
-    body: 'Use the same thread for drafts, reminders, and the next action that still needs to happen after the first reply.',
+    body: 'Use the same thread for reminders, check-ins, and the next action that still needs attention after the first reply.',
   },
 ] as const;
 
@@ -45,14 +45,14 @@ type ChatThreadMessage = {
 };
 
 const CHAT_THREAD: ReadonlyArray<ChatThreadMessage> = [
-  { who: 'user', text: 'Need the follow-up sent after the call.' },
+  { who: 'user', text: 'I need to finish one focused work block today.' },
   {
     who: 'kap',
-    text: 'I will draft it, keep the tone calm, and remind you before it goes out.',
-    status: 'Ready to send',
+    text: 'What time should I remind you to start, and when should I check whether it is done?',
+    status: 'Reminder pending',
   },
-  { who: 'user', text: 'Also line up tomorrow morning.' },
-  { who: 'kap', text: 'On it. I will keep both in this same thread.', status: 'Thread active' },
+  { who: 'user', text: 'Remind me at 3pm and check at 4pm.' },
+  { who: 'kap', text: 'Set. I will nudge you at 3pm and check back at 4pm.', status: 'Follow-up active' },
 ] as const;
 
 const GLOBAL_TICKER_ITEMS = [
@@ -111,10 +111,9 @@ export function GlobalHomepage() {
               </div>
 
               <h1 className="global-hero__title">Start with one WhatsApp message.</h1>
-              <p className="global-hero__lede">Tell Kap what needs doing, then keep the same thread moving.</p>
+              <p className="global-hero__lede">Tell Kap what needs doing and when to check back.</p>
               <p className="global-hero__body">
-                Plan the day, draft the follow-up, set the reminder, or hand off the next step without leaving the
-                chat you already opened.
+                Turn one real goal into a reminder and follow-up thread without leaving the chat you already opened.
               </p>
 
               <div className="global-hero__actions">
@@ -186,8 +185,8 @@ export function GlobalHomepage() {
             <span className="global-section__eyebrow">Why Kap</span>
             <h2 className="global-section__title">One focused entry into the same Kap product</h2>
             <p className="global-section__body">
-              The global page only has one job: get you into the WhatsApp thread fast, then keep the next action
-              moving there.
+              The global page only has one job: get you into the WhatsApp thread fast, then keep the reminder,
+              check-in, and follow-up there.
             </p>
           </div>
 
@@ -232,7 +231,7 @@ export function GlobalHomepage() {
               <span className="global-section__eyebrow global-section__eyebrow--light">Open the thread</span>
               <h2 className="global-close__title">Start on WhatsApp, then keep everything in the same thread.</h2>
               <p className="global-close__body">
-                Open the chat, send the task once, and let Kap carry the draft, reminder, and next action forward
+                Open the chat, send the goal once, and let Kap carry the reminder, check-in, and next action forward
                 from there.
               </p>
             </div>

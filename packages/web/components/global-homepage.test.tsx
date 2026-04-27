@@ -42,11 +42,16 @@ describe('GlobalHomepage', () => {
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('img[alt="Kap koala mascot"]')).toBeTruthy();
     expect(container.textContent).toContain('Start with one WhatsApp message.');
+    expect(container.textContent).toContain('Turn one real goal into a reminder and follow-up thread without leaving');
+    expect(container.textContent).toContain('Set the goal and the time');
+    expect(container.textContent).toContain('Use the same thread for reminders, check-ins');
     expect(container.textContent).toContain('WhatsApp');
     expect(container.textContent).toContain('Kap');
     expect(container.textContent).not.toContain('Coke');
     expect(container.textContent).not.toContain('Sign in');
     expect(container.textContent).not.toContain('Register');
+    expect(container.textContent).not.toContain('draft the follow-up');
+    expect(container.textContent).not.toContain('drafts');
 
     const primaryCtas = Array.from(
       container.querySelectorAll<HTMLAnchorElement>('a.global-cta--primary'),
@@ -61,7 +66,7 @@ describe('GlobalHomepage', () => {
       root.render(<GlobalHomepage />);
     });
 
-    expect(container.textContent).toContain('Tell Kap what needs doing, then keep the same thread moving.');
+    expect(container.textContent).toContain('Tell Kap what needs doing and when to check back.');
     expect(container.textContent).toContain('Message Kap on WhatsApp');
     expect(container.textContent).not.toContain('WeChat');
     expect(container.textContent).not.toContain('Telegram');
