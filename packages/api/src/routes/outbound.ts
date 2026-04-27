@@ -8,22 +8,74 @@ import {
 } from '../lib/business-conversation.js';
 import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
 
+const messageTypeSchema = z.enum(['text', 'image', 'voice']);
+const mediaUrlSchema = z.string().trim().url().refine((value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'media URL must be absolute http(s)');
+
 const bodySchema = z.object({
   output_id: z.string().min(1),
   account_id: z.string().min(1).optional(),
   customer_id: z.string().min(1).optional(),
   business_conversation_key: z.string().min(1),
-  message_type: z.enum(['text']),
-  text: z.string().min(1),
+  message_type: messageTypeSchema,
+  text: z.string().optional(),
+  mediaUrls: z.array(mediaUrlSchema).optional(),
+  audioAsVoice: z.boolean().optional(),
   delivery_mode: z.enum(['push', 'request_response']),
   expect_output_timestamp: z.string().min(1),
   idempotency_key: z.string().min(1),
   trace_id: z.string().min(1),
   causal_inbound_event_id: z.string().min(1).optional(),
+}).superRefine((body, ctx) => {
+  const text = body.text?.trim() ?? '';
+  const mediaUrls = body.mediaUrls ?? [];
+
+  if (!text && mediaUrls.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['text'],
+      message: 'text or mediaUrls is required',
+    });
+  }
+
+  if ((body.message_type === 'image' || body.message_type === 'voice') && mediaUrls.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['mediaUrls'],
+      message: `${body.message_type} requires mediaUrls`,
+    });
+  }
+
+  if (body.message_type === 'voice' && body.audioAsVoice === false) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['audioAsVoice'],
+      message: 'voice requires audioAsVoice',
+    });
+  }
+
+  if (body.message_type !== 'voice' && body.audioAsVoice === true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['audioAsVoice'],
+      message: 'audioAsVoice is only valid for voice',
+    });
+  }
 });
 
 type RawOutboundBody = z.infer<typeof bodySchema>;
-type NormalizedOutboundBody = RawOutboundBody & { customer_id: string };
+type NormalizedOutboundBody = RawOutboundBody & {
+  customer_id: string;
+  text: string;
+  mediaUrls: string[];
+  audioAsVoice: boolean;
+};
 type DeliveryRouteTarget = { channelId: string; externalEndUserId: string; tenantId: string };
 
 export const outboundRouter = new Hono();
@@ -44,6 +96,9 @@ function normalizeBody(body: RawOutboundBody): NormalizedOutboundBody | null {
   return {
     ...body,
     customer_id: customerId,
+    text: body.text ?? '',
+    mediaUrls: body.mediaUrls ?? [],
+    audioAsVoice: body.message_type === 'voice' ? true : (body.audioAsVoice ?? false),
   };
 }
 
@@ -54,6 +109,8 @@ function normalizeComparablePayload(body: NormalizedOutboundBody): Prisma.InputJ
     business_conversation_key: body.business_conversation_key,
     message_type: body.message_type,
     text: body.text,
+    mediaUrls: body.mediaUrls,
+    audioAsVoice: body.audioAsVoice,
     delivery_mode: body.delivery_mode,
     expect_output_timestamp: body.expect_output_timestamp,
     idempotency_key: body.idempotency_key,
@@ -81,13 +138,31 @@ function readComparablePayload(payload: unknown): Prisma.InputJsonObject {
   }
 
   const record = payload as Record<string, unknown>;
-  const comparable: Record<string, string> = {};
+  const comparable: Record<string, string | boolean | string[]> = {};
   for (const key of [
     'output_id',
     'customer_id',
     'business_conversation_key',
     'message_type',
     'text',
+  ]) {
+    const value = record[key];
+    if (typeof value === 'string' && value.length > 0) {
+      comparable[key] = value;
+    }
+  }
+
+  const mediaUrls = record['mediaUrls'];
+  if (Array.isArray(mediaUrls) && mediaUrls.every((value) => typeof value === 'string')) {
+    comparable['mediaUrls'] = mediaUrls;
+  }
+
+  const audioAsVoice = record['audioAsVoice'];
+  if (typeof audioAsVoice === 'boolean') {
+    comparable['audioAsVoice'] = audioAsVoice;
+  }
+
+  for (const key of [
     'delivery_mode',
     'expect_output_timestamp',
     'idempotency_key',
@@ -359,7 +434,16 @@ outboundRouter.post('/', async (c) => {
   }
 
   try {
-    await deliverOutboundMessage(channel, deliveryTarget?.externalEndUserId ?? deliveryRoute!.externalEndUserId, body.text);
+    await deliverOutboundMessage(
+      channel,
+      deliveryTarget?.externalEndUserId ?? deliveryRoute!.externalEndUserId,
+      {
+        text: body.text,
+        messageType: body.message_type,
+        mediaUrls: body.mediaUrls,
+        audioAsVoice: body.audioAsVoice,
+      },
+    );
   } catch (error) {
     await db.outboundDelivery.update({
       where: { id: outboundDelivery.id },
