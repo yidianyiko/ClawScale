@@ -44,6 +44,7 @@ enum ChannelType {
   whatsapp_business
   whatsapp_evolution
   wechat_personal
+  wechat_ecloud
 }
 
 enum MessageRole {
@@ -202,6 +203,7 @@ model Channel {
   ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
   externalIdentities ExternalIdentity[]
   parkedInbounds    ParkedInbound[]
+  inboundWebhookReceipts InboundWebhookReceipt[]
   conversations     Conversation[]
   endUsers          EndUser[]
   deliveryRoutes    DeliveryRoute[]
@@ -394,6 +396,21 @@ model ParkedInbound {
   @@index([status, createdAt])
   @@index([provider, identityType, identityValue])
   @@map("parked_inbounds")
+}
+
+model InboundWebhookReceipt {
+  id             String   @id @default(cuid())
+  channelId      String   @map("channel_id")
+  provider       String
+  idempotencyKey String   @map("idempotency_key")
+  payload        Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, idempotencyKey])
+  @@index([channelId, createdAt])
+  @@map("inbound_webhook_receipts")
 }
 
 model Subscription {
