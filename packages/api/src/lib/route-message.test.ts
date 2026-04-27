@@ -398,6 +398,19 @@ describe('routeInboundMessage', () => {
       clawscaleUser: null,
       activeBackends: [{ backendId: 'ab_1' }],
     });
+    db.membership.findFirst.mockResolvedValueOnce({
+      customer: { id: 'ck_shared_1', displayName: 'Alice' },
+      identity: { claimStatus: 'unclaimed' },
+    });
+    resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'normal',
+      emailVerified: false,
+      subscriptionActive: true,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: true,
+      accountAccessDeniedReason: null,
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
 
     await routeInboundMessage({
       channelId: 'ch_1',
@@ -420,7 +433,7 @@ describe('routeInboundMessage', () => {
       account: {
         id: 'ck_shared_1',
         displayName: 'Alice',
-        emailVerified: true,
+        emailVerified: false,
         status: 'normal',
       },
       requireEmailVerified: false,
@@ -432,6 +445,7 @@ describe('routeInboundMessage', () => {
       expect.objectContaining({
         customerId: 'ck_shared_1',
         customer_id: 'ck_shared_1',
+        emailVerified: false,
         accountAccessAllowed: true,
       }),
     );
