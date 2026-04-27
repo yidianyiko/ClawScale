@@ -57,6 +57,52 @@ describe('normalizeWechatEcloudWebhook', () => {
     );
   });
 
+  it('omits newMsgId from meta when only msgId is present', () => {
+    const { newMsgId, ...data } = textPayload.data;
+    const decision = normalizeWechatEcloudWebhook(
+      {
+        ...textPayload,
+        data,
+      },
+      'app_1',
+    );
+
+    expect(decision.kind).toBe('route');
+    if (decision.kind === 'route') {
+      expect(decision.receiptKey).toBe('123');
+      expect(decision.meta).toEqual(
+        expect.objectContaining({
+          msgId: 123,
+        }),
+      );
+      expect(decision.meta).not.toHaveProperty('newMsgId');
+    }
+    expect(newMsgId).toBe('456');
+  });
+
+  it('omits msgId from meta when only newMsgId is present', () => {
+    const { msgId, ...data } = textPayload.data;
+    const decision = normalizeWechatEcloudWebhook(
+      {
+        ...textPayload,
+        data,
+      },
+      'app_1',
+    );
+
+    expect(decision.kind).toBe('route');
+    if (decision.kind === 'route') {
+      expect(decision.receiptKey).toBe('456');
+      expect(decision.meta).toEqual(
+        expect.objectContaining({
+          newMsgId: '456',
+        }),
+      );
+      expect(decision.meta).not.toHaveProperty('msgId');
+    }
+    expect(msgId).toBe(123);
+  });
+
   it('extracts visible reference title/content and bounded XML fields', () => {
     const decision = normalizeWechatEcloudWebhook(
       {

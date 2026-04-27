@@ -287,6 +287,7 @@ describe('gatewayRouter evolution whatsapp route', () => {
   });
 
   it('swallows downstream routing errors and still returns 200', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     routeInboundMessage.mockRejectedValueOnce(new Error('backend down'));
 
     const app = new Hono();
@@ -315,6 +316,8 @@ describe('gatewayRouter evolution whatsapp route', () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
 
@@ -489,6 +492,35 @@ describe('gatewayRouter ecloud wechat route', () => {
     expect(routeInboundMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('returns a retryable error when receipt persistence fails before routing', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    db.inboundWebhookReceipt.create.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/ecloud/wechat/ch_ecloud/webhook_token_1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messageType: '60001',
+        data: {
+          self: false,
+          fromUser: 'wxid_user',
+          toUser: 'wxid_bot',
+          content: 'hello',
+          msgId: 'msg_receipt_error',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'receipt_persist_failed' });
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it('rejects invalid webhook tokens', async () => {
     const app = new Hono();
     app.route('/gateway', gatewayRouter);
@@ -590,6 +622,7 @@ describe('gatewayRouter ecloud wechat route', () => {
   });
 
   it('swallows downstream routing errors and still returns 200', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     routeInboundMessage.mockRejectedValueOnce(new Error('backend down'));
     const app = new Hono();
     app.route('/gateway', gatewayRouter);
@@ -611,6 +644,8 @@ describe('gatewayRouter ecloud wechat route', () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('sends immediate replies through Ecloud client', async () => {

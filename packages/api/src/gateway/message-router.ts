@@ -279,7 +279,7 @@ export const gatewayRouter = new Hono()
         msgId: decision.meta['msgId'],
         newMsgId: decision.meta['newMsgId'],
       });
-      return c.json({ ok: true });
+      return c.json({ ok: false, error: 'receipt_persist_failed' }, 503);
     }
 
     try {

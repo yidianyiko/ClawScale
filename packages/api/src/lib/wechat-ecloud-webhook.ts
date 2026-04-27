@@ -23,6 +23,14 @@ function readTrimmedString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function isJsonSafePresent(value: unknown): boolean {
+  return (
+    value !== undefined &&
+    value !== null &&
+    (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+  );
+}
+
 function readReceiptKey(data: Record<string, unknown>): string | undefined {
   const newMsgId = data['newMsgId'];
   if (typeof newMsgId === 'string' && newMsgId.trim()) {
@@ -70,13 +78,17 @@ function buildBaseMeta(
     platform: 'wechat_ecloud',
     appId,
     messageType,
-    msgId: data['msgId'],
-    newMsgId: data['newMsgId'],
     toUser,
     fromUser,
   };
 
-  if (data['timestamp'] != null) {
+  if (isJsonSafePresent(data['msgId'])) {
+    meta['msgId'] = data['msgId'];
+  }
+  if (isJsonSafePresent(data['newMsgId'])) {
+    meta['newMsgId'] = data['newMsgId'];
+  }
+  if (isJsonSafePresent(data['timestamp'])) {
     meta['timestamp'] = data['timestamp'];
   }
 
