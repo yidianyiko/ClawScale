@@ -1291,7 +1291,11 @@ describe('admin shared channels route', () => {
     });
   });
 
-  it('recreates linq webhook subscription when local disconnect state write fails', async () => {
+  it('recreates linq webhook subscription and persists fresh rollback secrets when local disconnect state write fails', async () => {
+    createWebhookSubscription.mockResolvedValueOnce({
+      id: 'sub_rollback',
+      signingSecret: 'rollback-signing-secret',
+    });
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_linq',
       name: 'Linq Shared',
@@ -1310,7 +1314,7 @@ describe('admin shared channels route', () => {
       updatedAt: new Date('2026-04-28T11:40:00.000Z'),
       agent: { id: 'agent_coke', slug: 'coke', name: 'Coke' },
     });
-    db.channel.update.mockRejectedValueOnce(new Error('db down'));
+    db.channel.update.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce({});
 
     const app = new Hono();
     app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
@@ -1322,6 +1326,19 @@ describe('admin shared channels route', () => {
     expect(createWebhookSubscription).toHaveBeenCalledWith({
       targetUrl: 'https://coke.keep4oforever.com/gateway/linq/ch_linq/secret-token',
       phoneNumbers: ['+13213108456'],
+    });
+    expect(db.channel.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'ch_linq' },
+      data: {
+        status: 'connected',
+        config: {
+          fromNumber: '+13213108456',
+          webhookToken: 'secret-token',
+          webhookSubscriptionId: 'sub_rollback',
+          signingSecret: 'rollback-signing-secret',
+        },
+      },
+      select: expect.any(Object),
     });
   });
 
@@ -1479,6 +1496,58 @@ describe('admin shared channels route', () => {
         status: 'archived',
         config: { fromNumber: '+13213108456', webhookToken: 'secret-token' },
       },
+    });
+  });
+
+  it('recreates linq webhook subscription and persists fresh rollback secrets when archive state write fails', async () => {
+    db.channel.update.mockReset();
+    createWebhookSubscription.mockResolvedValueOnce({
+      id: 'sub_rollback',
+      signingSecret: 'rollback-signing-secret',
+    });
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_linq',
+      name: 'Linq Shared',
+      type: 'linq',
+      status: 'connected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        fromNumber: '+13213108456',
+        webhookToken: 'secret-token',
+        webhookSubscriptionId: 'sub_1',
+        signingSecret: 'signing-secret',
+      },
+      createdAt: new Date('2026-04-28T11:30:00.000Z'),
+      updatedAt: new Date('2026-04-28T11:40:00.000Z'),
+      agent: { id: 'agent_coke', slug: 'coke', name: 'Coke' },
+    });
+    db.channel.update.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce({});
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_linq', { method: 'DELETE' });
+
+    expect(res.status).toBe(500);
+    expect(deleteWebhookSubscription).toHaveBeenCalledWith('sub_1');
+    expect(createWebhookSubscription).toHaveBeenCalledWith({
+      targetUrl: 'https://coke.keep4oforever.com/gateway/linq/ch_linq/secret-token',
+      phoneNumbers: ['+13213108456'],
+    });
+    expect(db.channel.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'ch_linq' },
+      data: {
+        status: 'connected',
+        config: {
+          fromNumber: '+13213108456',
+          webhookToken: 'secret-token',
+          webhookSubscriptionId: 'sub_rollback',
+          signingSecret: 'rollback-signing-secret',
+        },
+      },
+      select: expect.any(Object),
     });
   });
 

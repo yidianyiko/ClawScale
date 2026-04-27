@@ -279,12 +279,26 @@ async function rollbackLinqDisconnect(
   }
 
   try {
-    await client.createWebhookSubscription({
+    const subscription = await client.createWebhookSubscription({
       targetUrl: buildLinqWebhookUrl(channelId, config.webhookToken),
       phoneNumbers: [config.fromNumber],
     });
+
+    await db.channel.update({
+      where: { id: channelId },
+      data: {
+        status: 'connected',
+        config: buildStoredLinqConfig({
+          fromNumber: config.fromNumber,
+          webhookToken: config.webhookToken,
+          webhookSubscriptionId: subscription.id,
+          signingSecret: subscription.signingSecret,
+        }),
+      },
+      select: sharedChannelSelect,
+    });
   } catch (error) {
-    console.error('[shared-channel:linq] Failed to restore webhook after DB failure:', error);
+    console.error('[shared-channel:linq] Failed to restore webhook and local subscription state after DB failure:', error);
   }
 }
 
