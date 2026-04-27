@@ -65,6 +65,19 @@ function formatCombinedReplies(replies: ReplyEntry[]): string {
   ).join('\n\n---\n\n');
 }
 
+function isSharedAutoProvisionedChannelType(type: string | null): boolean {
+  return (
+    type === 'whatsapp' ||
+    type === 'whatsapp_business' ||
+    type === 'whatsapp_evolution' ||
+    type === 'linq'
+  );
+}
+
+function getSharedChannelIdentityType(provider: string): string {
+  return provider === 'linq' ? 'phone_number' : 'wa_id';
+}
+
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
 
@@ -95,13 +108,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const platform = metadataPlatform ?? channel.type ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
   const { tenantId } = channel;
-  const isSharedWhatsAppChannel =
+  const isSharedAutoProvisionedChannel =
     channel.ownershipKind === 'shared' &&
-    (
-      channel.type === 'whatsapp' ||
-      channel.type === 'whatsapp_business' ||
-      channel.type === 'whatsapp_evolution'
-    );
+    isSharedAutoProvisionedChannelType(channel.type);
   const personalChannelOwnership =
     channel.scope === 'personal' &&
     channel.ownerClawscaleUserId &&
@@ -115,14 +124,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   let resolvedChannelCustomerId = channel.customerId ?? null;
 
-  if (channel.ownershipKind === 'shared' && channel.agentId) {
+  if (isSharedAutoProvisionedChannel && channel.agentId) {
     const sharedChannelProvider = channel.type ?? 'unknown';
-    const identityType =
-      sharedChannelProvider === 'whatsapp' ||
-      sharedChannelProvider === 'whatsapp_business' ||
-      sharedChannelProvider === 'whatsapp_evolution'
-        ? 'wa_id'
-        : 'external_id';
     const sharedChannelPayload = {
       externalId,
       ...(displayName ? { displayName } : {}),
@@ -136,7 +139,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       agentId: channel.agentId,
       displayName,
       provider: sharedChannelProvider,
-      identityType,
+      identityType: getSharedChannelIdentityType(sharedChannelProvider),
       rawIdentityValue: externalId,
       payload: sharedChannelPayload,
     });
@@ -191,9 +194,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
   const routeCokeAccountId =
     resolvedCokeAccountId ??
-    (isSharedWhatsAppChannel ? resolvedChannelCustomerId : null);
+    (isSharedAutoProvisionedChannel ? resolvedChannelCustomerId : null);
   const accessCustomerId =
-    isSharedWhatsAppChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
+    isSharedAutoProvisionedChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
   const resolvedAccessAccountOwner = accessCustomerId
     ? await db.membership.findFirst({
         where: {
@@ -231,11 +234,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           displayName: resolvedAccessAccount.displayName,
           status: resolvedAccessAccount.status,
         },
-        ...(isSharedWhatsAppChannel ? { requireEmailVerified: false } : {}),
+        ...(isSharedAutoProvisionedChannel ? { requireEmailVerified: false } : {}),
       })
     : null;
   const resolvedAccessAccountMetadata =
-    isSharedWhatsAppChannel &&
+    isSharedAutoProvisionedChannel &&
     resolvedAccessAccountDecision?.accountAccessDeniedReason === 'subscription_required' &&
     resolvedChannelCustomerId
       ? {

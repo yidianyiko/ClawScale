@@ -5,6 +5,7 @@ export type ChannelType =
   | 'whatsapp'
   | 'whatsapp_business'
   | 'whatsapp_evolution'
+  | 'linq'
   | 'telegram'
   | 'slack'
   | 'discord'
@@ -60,6 +61,12 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   whatsapp_evolution: {
     label: 'WhatsApp Evolution',
     fields: [],
+  },
+  linq: {
+    label: 'Linq',
+    fields: [
+      { key: 'fromNumber', label: 'From Number', type: 'text', required: false, placeholder: '+13213108456' },
+    ],
   },
   telegram: {
     label: 'Telegram Bot',

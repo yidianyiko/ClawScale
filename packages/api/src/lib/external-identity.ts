@@ -15,6 +15,7 @@ export interface ExternalIdentityUniqueWhere {
 }
 
 const WHATSAPP_PROVIDERS = new Set(['whatsapp', 'whatsapp_business', 'whatsapp_evolution']);
+const LINQ_PROVIDERS = new Set(['linq']);
 
 function requireNonBlank(value: string, fieldName: string): string {
   const trimmed = value.trim();
@@ -40,6 +41,11 @@ function normalizeWhatsAppWaId(rawValue: string): string {
   return digitsOnly.length > 0 ? digitsOnly : rawValue.trim();
 }
 
+function normalizePhoneNumber(rawValue: string): string {
+  const digitsOnly = rawValue.replace(/\D+/g, '');
+  return digitsOnly.length > 0 ? `+${digitsOnly}` : rawValue.trim();
+}
+
 export function normalizeExternalIdentity(
   input: NormalizeExternalIdentityInput,
 ): NormalizedExternalIdentity {
@@ -53,6 +59,8 @@ export function normalizeExternalIdentity(
     identityValue:
       WHATSAPP_PROVIDERS.has(provider) && identityType === 'wa_id'
         ? normalizeWhatsAppWaId(trimmedValue)
+        : LINQ_PROVIDERS.has(provider) && identityType === 'phone_number'
+          ? normalizePhoneNumber(trimmedValue)
         : trimmedValue,
   };
 }

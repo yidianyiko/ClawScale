@@ -373,6 +373,60 @@ describe('routeInboundMessage', () => {
     expect(buildPublicCheckoutUrl).not.toHaveBeenCalled();
   });
 
+  it('provisions linq shared channels with phone_number identity and shared access semantics', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_linq',
+      tenantId: 'ten_1',
+      type: 'linq',
+      customerId: null,
+      ownershipKind: 'shared',
+      agentId: 'agent_shared',
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_linq',
+      externalId: '+86 152 017 80593',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_linq',
+      externalId: '+86 152 017 80593',
+      displayName: 'Alice',
+      text: 'hello from linq',
+      meta: { platform: 'linq' },
+    });
+
+    expect(provisionSharedChannelCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: 'ch_linq',
+        agentId: 'agent_shared',
+        provider: 'linq',
+        identityType: 'phone_number',
+        rawIdentityValue: '+86 152 017 80593',
+      }),
+    );
+    expect(resolveCokeAccountAccess).toHaveBeenCalledWith({
+      account: {
+        id: 'ck_shared_1',
+        displayName: 'Alice',
+        emailVerified: true,
+        status: 'normal',
+      },
+      requireEmailVerified: false,
+    });
+  });
+
   it('injects a signed public renewal link for shared subscription_required access', async () => {
     resolveCokeAccountAccess.mockResolvedValueOnce({
       accountStatus: 'normal',
