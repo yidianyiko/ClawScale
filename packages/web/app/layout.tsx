@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
 import { Fraunces, Inter, JetBrains_Mono } from 'next/font/google';
-import Script from 'next/script';
 
 import { KapKoalaBadge } from '../components/kap-brand';
 import { LocaleProvider } from '../components/locale-provider';
-import { getLocaleBootstrapScript } from '../lib/i18n';
 import './globals.css';
 import './public-site.css';
 
@@ -39,11 +37,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
-        <Script
-          id="locale-bootstrap"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: getLocaleBootstrapScript() }}
-        />
         <div id="locale-splash" className="coke-site-splash">
           <div className="coke-site-splash__card">
             <KapKoalaBadge className="coke-site-splash__icon" />
@@ -51,7 +44,9 @@ export default function RootLayout({
             <p className="coke-site-splash__body">Preparing your workspace...</p>
           </div>
         </div>
-        <LocaleProvider>{children}</LocaleProvider>
+        <LocaleProvider initialLocale="en" reconcileClientLocale>
+          {children}
+        </LocaleProvider>
       </body>
     </html>
   );

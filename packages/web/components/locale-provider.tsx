@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -51,19 +52,32 @@ function applyLocaleEffects(locale: Locale) {
 export function LocaleProvider({
   children,
   initialLocale,
+  reconcileClientLocale,
 }: {
   children: ReactNode;
   initialLocale?: Locale | string;
+  reconcileClientLocale?: boolean;
 }) {
   const providedLocale = initialLocale !== undefined ? normalizeLocale(initialLocale) : null;
-  const [locale, setLocaleState] = useState<Locale>(
-    () => providedLocale ?? getBootstrappedLocale() ?? detectClientLocale(),
-  );
+  const [locale, setLocaleState] = useState<Locale>(() => providedLocale ?? getBootstrappedLocale() ?? 'en');
+  const reconciledClientLocaleRef = useRef(false);
+  const shouldReconcileClientLocale = reconcileClientLocale ?? initialLocale === undefined;
 
   useEffect(() => {
+    if (shouldReconcileClientLocale && !reconciledClientLocaleRef.current) {
+      reconciledClientLocaleRef.current = true;
+      const clientLocale = getBootstrappedLocale() ?? detectClientLocale();
+      if (clientLocale !== locale) {
+        setLocaleState(clientLocale);
+        applyLocaleEffects(clientLocale);
+        document.getElementById('locale-splash')?.remove();
+        return;
+      }
+    }
+
     applyLocaleEffects(locale);
     document.getElementById('locale-splash')?.remove();
-  }, [locale]);
+  }, [locale, shouldReconcileClientLocale]);
 
   const setLocale = useCallback((next: Locale) => {
     const normalized = normalizeLocale(next);

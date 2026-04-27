@@ -1274,37 +1274,3 @@ export function getBootstrappedLocale(): Locale | null {
 
   return readSupportedLocale(window[LOCALE_BOOTSTRAP_KEY]);
 }
-
-export function getLocaleBootstrapScript(): string {
-  return `(() => {
-    try {
-      const storageKey = ${JSON.stringify(LOCALE_STORAGE_KEY)};
-      const cookieName = ${JSON.stringify(LOCALE_COOKIE_NAME)};
-      const bootstrapKey = ${JSON.stringify(LOCALE_BOOTSTRAP_KEY)};
-      const normalize = (value) => {
-        const raw = String(value ?? '').trim().toLowerCase();
-        if (raw === 'zh' || raw.startsWith('zh-')) return 'zh';
-        if (raw === 'en' || raw.startsWith('en-')) return 'en';
-        return null;
-      };
-      const readCookie = () => document.cookie
-        .split(';')
-        .map((entry) => entry.trim())
-        .find((entry) => entry.startsWith(cookieName + '='))
-        ?.split('=')[1];
-      let locale = null;
-      try {
-        locale = normalize(localStorage.getItem(storageKey));
-      } catch (error) {}
-      if (!locale) {
-        locale = normalize(readCookie());
-      }
-      if (!locale) {
-        locale = normalize(navigator.language);
-      }
-      const resolvedLocale = locale || 'en';
-      document.documentElement.lang = resolvedLocale;
-      window[bootstrapKey] = resolvedLocale;
-    } catch (error) {}
-  })();`;
-}

@@ -30,7 +30,6 @@ describe('LocaleProvider', () => {
     localStorage.clear();
     document.cookie = 'coke-locale=; path=/; Max-Age=0';
     document.documentElement.lang = 'en';
-    delete window.__COKE_LOCALE__;
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -54,25 +53,26 @@ describe('LocaleProvider', () => {
     expect(container.querySelector('[data-testid="label"]')?.textContent).toBe('语言');
   });
 
-  it('uses the bootstrapped locale before hydration', async () => {
-    window.__COKE_LOCALE__ = 'zh';
+  it('keeps the server locale for the first render, then reconciles persisted client locale', async () => {
+    localStorage.setItem('coke-locale', 'zh');
     const splash = document.createElement('div');
     splash.id = 'locale-splash';
     document.body.appendChild(splash);
 
     flushSync(() => {
       root.render(
-        <LocaleProvider>
+        <LocaleProvider initialLocale="en" reconcileClientLocale>
           <Probe />
         </LocaleProvider>,
       );
     });
 
-    expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('zh');
-    expect(document.documentElement.lang).toBe('zh');
+    expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('en');
 
     await flushEffects();
 
+    expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('zh');
+    expect(document.documentElement.lang).toBe('zh');
     expect(document.getElementById('locale-splash')).toBeNull();
   });
 

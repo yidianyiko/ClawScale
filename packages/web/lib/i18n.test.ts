@@ -7,7 +7,6 @@ import {
   detectClientLocale,
   detectLocaleFromAcceptLanguage,
   detectLocaleFromNavigator,
-  getLocaleBootstrapScript,
   messages,
   normalizeLocale,
   resolveInitialLocale,
@@ -95,16 +94,6 @@ describe('i18n helpers', () => {
         acceptLanguage: 'fr-FR,fr;q=0.9',
       }),
     ).toBe('en');
-  });
-
-  it('builds a beforeInteractive locale bootstrap script', () => {
-    const script = getLocaleBootstrapScript();
-
-    expect(script).toContain(LOCALE_STORAGE_KEY);
-    expect(script).toContain(LOCALE_COOKIE_NAME);
-    expect(script).toContain('document.documentElement.lang');
-    expect(script).toContain('window[bootstrapKey]');
-    expect(script).toContain('navigator.language');
   });
 
   it('exposes matching locale branches in the message catalog', () => {
