@@ -280,6 +280,17 @@ function serializeSharedChannel(
   }
 
   if (row.type === 'wechat_ecloud') {
+    try {
+      parseStoredWechatEcloudConfig(row.config);
+    } catch {
+      return {
+        ...base,
+        ...(options?.includeConfig ? { config: {} } : {}),
+        hasWebhookToken: false,
+        configError: 'invalid_wechat_ecloud_config',
+      };
+    }
+
     return {
       ...base,
       ...(options?.includeConfig ? { config: buildPublicWechatEcloudConfig(row.config) } : {}),
