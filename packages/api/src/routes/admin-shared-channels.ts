@@ -446,7 +446,19 @@ export const adminSharedChannelsRouter = new Hono()
           return c.json({ ok: false, error: 'disconnect_before_config_change' }, 409);
         }
 
-        const storedConfig = parseStoredWechatEcloudConfig(existing.config);
+        let storedConfig: StoredWechatEcloudConfig;
+        try {
+          storedConfig = parseStoredWechatEcloudConfig(existing.config);
+        } catch (error) {
+          return c.json(
+            {
+              ok: false,
+              error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+            },
+            409,
+          );
+        }
+
         const mergedConfig = {
           appId:
             typeof parsedBody.data.config.appId === 'string'

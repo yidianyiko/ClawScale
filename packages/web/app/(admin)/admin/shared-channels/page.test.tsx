@@ -254,6 +254,8 @@ describe('AdminSharedChannelsPage', () => {
     const appIdInput = container.querySelector('#shared-channel-ecloud-app-id') as HTMLInputElement;
     const tokenInput = container.querySelector('#shared-channel-ecloud-token') as HTMLInputElement;
     const baseUrlInput = container.querySelector('#shared-channel-ecloud-base-url') as HTMLInputElement;
+    expect(tokenInput.type).toBe('password');
+    expect(tokenInput.autocomplete).toBe('new-password');
     nameInput.value = 'Ecloud WeChat';
     nameInput.dispatchEvent(new Event('input', { bubbles: true }));
     agentInput.value = 'agent_coke';

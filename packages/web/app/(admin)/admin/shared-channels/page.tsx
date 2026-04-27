@@ -251,6 +251,8 @@ export default function AdminSharedChannelsPage() {
                   <input
                     id="shared-channel-ecloud-token"
                     name="ecloudToken"
+                    type="password"
+                    autoComplete="new-password"
                     className="input"
                     value={ecloudToken}
                     onInput={(event) => setEcloudToken(event.currentTarget.value)}
