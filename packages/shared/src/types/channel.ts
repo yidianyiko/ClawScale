@@ -69,6 +69,8 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
       { key: 'appId', label: 'App ID', type: 'text', required: true, placeholder: '' },
       { key: 'token', label: 'Token', type: 'password', required: true, placeholder: '' },
       { key: 'baseUrl', label: 'Base URL', type: 'text', required: false, placeholder: 'https://api.geweapi.com' },
+    ],
+  },
   linq: {
     label: 'Linq',
     fields: [
