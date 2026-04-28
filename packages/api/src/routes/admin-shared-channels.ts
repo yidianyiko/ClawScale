@@ -34,22 +34,8 @@ import {
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
 const CHANNEL_KIND_VALUES = [
-  'whatsapp',
-  'telegram',
-  'slack',
-  'discord',
-  'instagram',
-  'facebook',
-  'line',
-  'signal',
-  'teams',
-  'matrix',
-  'web',
-  'wechat_work',
-  'whatsapp_business',
   'whatsapp_evolution',
   'linq',
-  'wechat_personal',
   'wechat_ecloud',
 ] as const;
 

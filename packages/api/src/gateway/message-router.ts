@@ -1,14 +1,11 @@
 /**
  * Message Router (HTTP gateway)
  *
- * Thin HTTP layer over routeInboundMessage(). All channel adapters call
- * routeInboundMessage() directly — these routes exist for webhook-based
- * platforms (LINE, Teams) that need HTTP signature verification before
- * the message can be handed off.
+ * Thin HTTP layer over routeInboundMessage() for shared-channel webhooks
+ * owned by the gateway.
  */
 
 import { Hono } from 'hono';
-import * as lineSdk from '@line/bot-sdk';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
@@ -23,9 +20,6 @@ import {
   timingSafeEqualString,
 } from '../lib/wechat-ecloud-webhook.js';
 import { normalizeInboundAttachments } from '../lib/inbound-attachments.js';
-import { getLineBot, handleLineEvents } from '../adapters/line.js';
-import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
-import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
 
 const LINQ_REPLAY_WINDOW_SECONDS = 300;
 
@@ -353,34 +347,6 @@ function readLinqStringMeta(payload: Record<string, unknown>, data: Record<strin
 }
 
 export const gatewayRouter = new Hono()
-
-  // ── GET /gateway/whatsapp/:channelId ────────────────────────────────────────
-  // Meta webhook verification — responds with hub.challenge.
-  .get('/whatsapp/:channelId', async (c) => {
-    const channelId = c.req.param('channelId');
-    const mode = c.req.query('hub.mode') ?? '';
-    const token = c.req.query('hub.verify_token') ?? '';
-    const challenge = c.req.query('hub.challenge') ?? '';
-
-    const result = await verifyWebhook(channelId, mode, token, challenge);
-    if (result) return c.text(result, 200);
-    return c.json({ ok: false, error: 'Verification failed' }, 403);
-  })
-
-  // ── POST /gateway/whatsapp/:channelId ───────────────────────────────────────
-  // Meta sends inbound WhatsApp Business messages here.
-  .post('/whatsapp/:channelId', async (c) => {
-    const channelId = c.req.param('channelId');
-
-    const body = await c.req.json();
-    handleWABusinessWebhook(channelId, body).catch((err) =>
-      console.error(`[wa-business:${channelId}] Webhook handling error:`, err),
-    );
-
-    // Always return 200 quickly so Meta doesn't retry
-    return c.json({ ok: true });
-  })
-
   // ── POST /gateway/evolution/whatsapp/:channelId/:token ─────────────────────
   // Evolution sends shared-channel WhatsApp events here.
   .post('/evolution/whatsapp/:channelId/:token', async (c) => {
@@ -665,43 +631,6 @@ export const gatewayRouter = new Hono()
     } catch (err) {
       console.error(`[linq:${channelId}] Webhook handling error:`, err);
     }
-
-    return c.json({ ok: true });
-  })
-
-  // ── POST /gateway/line/:channelId ────────────────────────────────────────────
-  // LINE webhook — verifies signature, then delegates to the LINE adapter.
-  .post('/line/:channelId', async (c) => {
-    const channelId = c.req.param('channelId');
-    const bot = getLineBot(channelId);
-    if (!bot) return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
-
-    const signature = c.req.header('x-line-signature') ?? '';
-    const body = await c.req.text();
-
-    if (!lineSdk.validateSignature(body, bot.channelSecret, signature)) {
-      return c.json({ ok: false, error: 'Invalid signature' }, 400);
-    }
-
-    const payload = JSON.parse(body) as { events: lineSdk.WebhookEvent[] };
-    handleLineEvents(channelId, payload.events).catch((err) =>
-      console.error(`[line:${channelId}] Event handling error:`, err),
-    );
-
-    return c.json({ ok: true });
-  })
-
-  // ── POST /gateway/teams/:channelId ───────────────────────────────────────────
-  // Teams webhook — delegates to the Teams adapter for JWT verification + reply.
-  .post('/teams/:channelId', async (c) => {
-    const channelId = c.req.param('channelId');
-    const bot = getTeamsBot(channelId);
-    if (!bot) return c.json({ ok: false, error: 'Channel not found or not connected' }, 404);
-
-    const activity = await c.req.json();
-    handleTeamsActivity(channelId, activity).catch((err) =>
-      console.error(`[teams:${channelId}] Activity handling error:`, err),
-    );
 
     return c.json({ ok: true });
   });

@@ -126,6 +126,10 @@ describe('AdminLayout', () => {
     });
 
     expect(container.textContent).toContain('Customers');
+    expect(container.textContent).toContain('Shared channels');
+    expect(container.textContent).toContain('Deliveries');
+    expect(container.textContent).not.toContain('Channels');
+    expect(container.textContent).not.toContain('Agents');
     expect(replaceMock).not.toHaveBeenCalled();
 
     window.dispatchEvent(new Event('clawscale:admin-session-cleared'));

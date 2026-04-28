@@ -449,27 +449,7 @@ describe('admin shared channels route', () => {
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'shared_channel_not_found' });
   });
 
-  it('creates a shared channel with dormant shared ownership metadata', async () => {
-    db.channel.create.mockResolvedValueOnce({
-      id: 'ch_new',
-      name: 'Primary WhatsApp',
-      type: 'whatsapp',
-      status: 'disconnected',
-      ownershipKind: 'shared',
-      customerId: null,
-      agentId: 'agent_coke',
-      config: {
-        accessToken: 'secret',
-      },
-      createdAt: new Date('2026-04-16T11:00:00.000Z'),
-      updatedAt: new Date('2026-04-16T11:00:00.000Z'),
-      agent: {
-        id: 'agent_coke',
-        slug: 'coke',
-        name: 'Coke',
-      },
-    });
-
+  it('rejects retired generic shared channel kinds', async () => {
     const app = new Hono();
     app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
 
@@ -489,28 +469,12 @@ describe('admin shared channels route', () => {
     });
     const body = await res.json();
 
-    expect(res.status).toBe(201);
-    expect(body).toEqual({
-      ok: true,
-      data: {
-        id: 'ch_new',
-        name: 'Primary WhatsApp',
-        kind: 'whatsapp',
-        status: 'disconnected',
-        ownershipKind: 'shared',
-        customerId: null,
-        agent: {
-          id: 'agent_coke',
-          slug: 'coke',
-          name: 'Coke',
-        },
-        config: {
-          accessToken: 'secret',
-        },
-        createdAt: '2026-04-16T11:00:00.000Z',
-        updatedAt: '2026-04-16T11:00:00.000Z',
-      },
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'validation_error',
     });
+    expect(db.channel.create).not.toHaveBeenCalled();
   });
 
   it('accepts whatsapp_evolution shared channels', async () => {

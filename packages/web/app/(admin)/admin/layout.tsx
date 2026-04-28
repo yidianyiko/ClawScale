@@ -4,7 +4,7 @@ import { useEffect, useReducer, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bot, LogOut, Radio, Send, ShieldCheck, Users } from 'lucide-react';
+import { LogOut, Radio, Send, ShieldCheck, Users } from 'lucide-react';
 import { LocaleSwitch } from '../../../components/locale-switch';
 import { useLocale } from '../../../components/locale-provider';
 import { adminApi } from '../../../lib/admin-api';
@@ -19,10 +19,8 @@ import { cn } from '../../../lib/utils';
 
 const navIcons = {
   '/admin/customers': Users,
-  '/admin/channels': Radio,
   '/admin/shared-channels': Radio,
   '/admin/deliveries': Send,
-  '/admin/agents': Bot,
   '/admin/admins': ShieldCheck,
 } as const;
 

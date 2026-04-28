@@ -33,7 +33,7 @@ describe('adminApi session invalidation', () => {
       })) as unknown as typeof fetch,
     );
 
-    await expect(adminApi.get('/api/admin/channels?limit=10&offset=0')).resolves.toEqual({
+    await expect(adminApi.get('/api/admin/customers?limit=10&offset=0')).resolves.toEqual({
       ok: false,
       error: 'account_not_found',
     });

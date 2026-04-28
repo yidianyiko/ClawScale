@@ -11,10 +11,8 @@ const adminMessages = {
       signOutTitle: 'Sign out',
       nav: [
         { href: '/admin/customers', label: 'Customers', exact: false },
-        { href: '/admin/channels', label: 'Channels', exact: false },
         { href: '/admin/shared-channels', label: 'Shared channels', exact: false },
         { href: '/admin/deliveries', label: 'Deliveries', exact: false },
-        { href: '/admin/agents', label: 'Agents', exact: false },
         { href: '/admin/admins', label: 'Admins', exact: false },
       ],
       roleLabel: 'Admin account',
@@ -181,10 +179,8 @@ const adminMessages = {
       signOutTitle: '退出登录',
       nav: [
         { href: '/admin/customers', label: '客户', exact: false },
-        { href: '/admin/channels', label: '渠道', exact: false },
         { href: '/admin/shared-channels', label: '共享渠道', exact: false },
         { href: '/admin/deliveries', label: '投递', exact: false },
-        { href: '/admin/agents', label: '代理', exact: false },
         { href: '/admin/admins', label: '管理员', exact: false },
       ],
       roleLabel: '管理员账号',

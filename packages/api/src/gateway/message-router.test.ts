@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { createHmac } from 'node:crypto';
@@ -12,12 +13,6 @@ const db = vi.hoisted(() => ({
 }));
 
 const routeInboundMessage = vi.hoisted(() => vi.fn());
-const getLineBot = vi.hoisted(() => vi.fn());
-const handleLineEvents = vi.hoisted(() => vi.fn());
-const getTeamsBot = vi.hoisted(() => vi.fn());
-const handleTeamsActivity = vi.hoisted(() => vi.fn());
-const verifyWebhook = vi.hoisted(() => vi.fn());
-const handleWABusinessWebhook = vi.hoisted(() => vi.fn());
 const evolutionSendText = vi.hoisted(() => vi.fn());
 const ecloudSendText = vi.hoisted(() => vi.fn());
 const linqCreateChat = vi.hoisted(() => vi.fn());
@@ -39,14 +34,10 @@ vi.mock('../lib/linq-api.js', () => ({
     createChat = linqCreateChat;
   },
 }));
-vi.mock('../adapters/line.js', () => ({ getLineBot, handleLineEvents }));
-vi.mock('../adapters/teams.js', () => ({ getTeamsBot, handleTeamsActivity }));
-vi.mock('../adapters/whatsapp-business.js', () => ({
-  verifyWebhook,
-  handleWABusinessWebhook,
-}));
 
 import { gatewayRouter } from './message-router.js';
+
+const messageRouterSource = readFileSync(new URL('./message-router.ts', import.meta.url), 'utf8');
 
 const linqConfig = {
   fromNumber: '+13213108456',
@@ -91,6 +82,23 @@ async function postLinqWebhook({
     body,
   });
 }
+
+describe('gatewayRouter active webhook topology', () => {
+  it('does not expose retired generic channel webhooks', () => {
+    expect(messageRouterSource).not.toContain("from '../adapters/line.js'");
+    expect(messageRouterSource).not.toContain("from '../adapters/teams.js'");
+    expect(messageRouterSource).not.toContain("from '../adapters/whatsapp-business.js'");
+    expect(messageRouterSource).not.toContain("'/whatsapp/:channelId'");
+    expect(messageRouterSource).not.toContain("'/line/:channelId'");
+    expect(messageRouterSource).not.toContain("'/teams/:channelId'");
+  });
+
+  it('keeps the active shared-channel webhooks', () => {
+    expect(messageRouterSource).toContain("'/evolution/whatsapp/:channelId/:token'");
+    expect(messageRouterSource).toContain("'/ecloud/wechat/:channelId/:token'");
+    expect(messageRouterSource).toContain("'/linq/:channelId/:token'");
+  });
+});
 
 describe('gatewayRouter evolution whatsapp route', () => {
   beforeEach(() => {
