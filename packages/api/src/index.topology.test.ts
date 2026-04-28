@@ -11,6 +11,7 @@ describe('gateway API topology', () => {
     expect(indexSource).not.toContain("app.route('/api/end-users'");
     expect(indexSource).not.toContain("app.route('/api/onboard'");
     expect(indexSource).not.toContain("app.route('/api/channels'");
+    expect(indexSource).not.toContain("app.route('/api/internal/user/wechat-channel'");
     expect(indexSource).not.toContain("app.route('/api/admin/channels'");
     expect(indexSource).not.toContain("app.route('/api/admin/agents'");
   });

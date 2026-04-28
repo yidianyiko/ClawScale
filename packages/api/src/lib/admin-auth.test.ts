@@ -13,7 +13,6 @@ describe('admin-auth helpers', () => {
   afterEach(() => {
     delete process.env.ADMIN_JWT_SECRET;
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
   });
 
   it('normalizes admin email deterministically', () => {

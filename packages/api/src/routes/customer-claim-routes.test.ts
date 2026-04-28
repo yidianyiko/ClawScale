@@ -55,7 +55,6 @@ describe('customer claim routes', () => {
 
   afterEach(() => {
     delete process.env.CUSTOMER_JWT_SECRET;
-    delete process.env.COKE_JWT_SECRET;
     vi.useRealTimers();
   });
 

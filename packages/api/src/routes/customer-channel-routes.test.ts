@@ -3,12 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   verifyCustomerToken: vi.fn(),
-  verifyCokeToken: vi.fn(),
   getCustomerSession: vi.fn(),
   membershipFindFirst: vi.fn(),
   resolveCokeAccountAccess: vi.fn(),
   ensureClawscaleUserForCustomer: vi.fn(),
-  ensureClawscaleUserForCokeAccount: vi.fn(),
   createOrReusePersonalWeChatChannel: vi.fn(),
   disconnectPersonalWeChatChannel: vi.fn(),
   archivePersonalWeChatChannel: vi.fn(),
@@ -45,24 +43,12 @@ vi.mock('../lib/customer-auth.js', async () => {
   };
 });
 
-vi.mock('../lib/coke-auth.js', async () => {
-  const actual = await vi.importActual<typeof import('../lib/coke-auth.js')>(
-    '../lib/coke-auth.js',
-  );
-
-  return {
-    ...actual,
-    verifyCokeToken: mocks.verifyCokeToken,
-  };
-});
-
 vi.mock('../lib/coke-account-access.js', () => ({
   resolveCokeAccountAccess: mocks.resolveCokeAccountAccess,
 }));
 
 vi.mock('../lib/clawscale-user.js', () => ({
   ensureClawscaleUserForCustomer: mocks.ensureClawscaleUserForCustomer,
-  ensureClawscaleUserForCokeAccount: mocks.ensureClawscaleUserForCokeAccount,
 }));
 
 vi.mock('../lib/personal-wechat-channel.js', () => ({
@@ -342,10 +328,6 @@ describe('customerChannelRouter', () => {
     mocks.verifyCustomerToken.mockImplementationOnce(() => {
       throw new Error('invalid_or_expired_token');
     });
-    mocks.verifyCokeToken.mockReturnValueOnce({
-      sub: 'acct_legacy_1',
-      email: 'legacy@example.com',
-    });
     mocks.membershipFindFirst.mockResolvedValueOnce(null);
     mocks.channelFindMany.mockResolvedValueOnce([]);
 
@@ -360,7 +342,6 @@ describe('customerChannelRouter', () => {
 
     expect(res.status).toBe(401);
     expect(mocks.resolveCokeAccountAccess).not.toHaveBeenCalled();
-    expect(mocks.ensureClawscaleUserForCokeAccount).not.toHaveBeenCalled();
     expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
     await expect(res.json()).resolves.toEqual({
       ok: false,

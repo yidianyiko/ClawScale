@@ -22,7 +22,6 @@ import { adminCustomersRouter } from './routes/admin-customers.js';
 import { adminSharedChannelsRouter } from './routes/admin-shared-channels.js';
 import { adminDeliveriesRouter } from './routes/admin-deliveries.js';
 import { adminAdminsRouter } from './routes/admin-admins.js';
-import { userWechatChannelRouter } from './routes/user-wechat-channel.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initWeixinAdapters } from './adapters/wechat.js';
 import { initBridgeWebSocket } from './gateway/bridge-ws.js';
@@ -51,7 +50,6 @@ app.get('/health', (c) => c.json({ ok: true, version: '0.1.0' }));
 app.route('/api/internal/coke-bindings', cokeBindingsRouter);
 app.route('/api/internal/coke-delivery', cokeDeliveryRoutesRouter);
 app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
-app.route('/api/internal/user/wechat-channel', userWechatChannelRouter);
 app.route('/api/internal/calendar-import-handoffs', internalCalendarImportHandoffRouter);
 
 // ─── Customer and admin routes ───────────────────────────────────────────────

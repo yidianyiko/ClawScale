@@ -1,12 +1,10 @@
-import { Hono, type Context, type MiddlewareHandler, type Next } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { db } from '../db/index.js';
-import { requireAuth } from '../middleware/auth.js';
 import {
   archivePersonalWeChatChannel,
   createOrReusePersonalWeChatChannel,
   disconnectPersonalWeChatChannel,
 } from '../lib/personal-wechat-channel.js';
-import { ensureClawscaleUserForCokeAccount } from '../lib/clawscale-user.js';
 import {
   getWeixinQR,
   getWeixinStatus,
@@ -67,72 +65,6 @@ function assertValidPersonalChannelRow(row: CurrentChannelRow): void {
   if (!row.ownerClawscaleUserId) {
     throw new Error('invalid_personal_channel_row');
   }
-}
-
-async function requireUserWechatChannelAuth(c: Context, next: Next): Promise<Response | void> {
-  const expected = process.env['CLAWSCALE_IDENTITY_API_KEY'] ?? '';
-  if (c.req.header('Authorization') === `Bearer ${expected}`) {
-    await next();
-    return;
-  }
-
-  return requireAuth(c, next);
-}
-
-async function readBridgeAuth(
-  c: Context,
-  _action: PersonalWechatLifecycleAction,
-): Promise<PersonalWechatLifecycleAuth> {
-  const auth = c.get('auth');
-  if (auth) {
-    return {
-      tenantId: auth.tenantId,
-      clawscaleUserId: auth.userId,
-    };
-  }
-
-  let accountId: string | undefined;
-  if (c.req.method === 'GET') {
-    accountId =
-      c.req.query('customer_id')?.trim() ||
-      c.req.query('account_id')?.trim() ||
-      c.req.query('coke_account_id')?.trim();
-  } else {
-    let rawBody: unknown;
-    try {
-      rawBody = await c.req.json();
-    } catch {
-      throw new Error('invalid_body');
-    }
-
-    if (typeof rawBody !== 'object' || rawBody === null) {
-      throw new Error('invalid_body');
-    }
-
-    const payload = rawBody as {
-      account_id?: unknown;
-      customer_id?: unknown;
-      coke_account_id?: unknown;
-    };
-    const candidate =
-      payload.customer_id ?? payload.account_id ?? payload.coke_account_id;
-    if (typeof candidate === 'string') {
-      accountId = candidate.trim();
-    }
-  }
-
-  if (!accountId) {
-    throw new Error('invalid_body');
-  }
-
-  const ensured = await ensureClawscaleUserForCokeAccount({
-    cokeAccountId: accountId,
-  });
-
-  return {
-    tenantId: ensured.tenantId,
-    clawscaleUserId: ensured.clawscaleUserId,
-  };
 }
 
 function readErrorCode(err: unknown): string | undefined {
@@ -501,8 +433,3 @@ export function createPersonalWechatChannelRouter(
       }
     });
 }
-
-export const userWechatChannelRouter = createPersonalWechatChannelRouter({
-  authMiddleware: requireUserWechatChannelAuth,
-  resolveAuth: readBridgeAuth,
-});
