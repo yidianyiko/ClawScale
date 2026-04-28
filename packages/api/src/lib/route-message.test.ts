@@ -23,6 +23,7 @@ const issuePublicCheckoutToken = vi.hoisted(() => vi.fn());
 const buildPublicCheckoutUrl = vi.hoisted(() => vi.fn());
 const provisionSharedChannelCustomer = vi.hoisted(() => vi.fn());
 const createRouteBindingSnapshot = vi.hoisted(() => vi.fn());
+const runClawscaleAgent = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
@@ -47,7 +48,7 @@ vi.mock('./route-binding.js', async () => {
 });
 vi.mock('./clawscale-agent.js', () => ({
   buildSelectionMenu: vi.fn(() => 'menu'),
-  runClawscaleAgent: vi.fn(),
+  runClawscaleAgent,
 }));
 
 import { routeInboundMessage } from './route-message.js';
@@ -121,6 +122,7 @@ describe('routeInboundMessage', () => {
     db.endUserBackend.deleteMany.mockResolvedValue({});
     db.conversation.update.mockResolvedValue({});
     generateReply.mockResolvedValue('bridge ok');
+    runClawscaleAgent.mockResolvedValue('agent ok');
     bindBusinessConversation.mockResolvedValue({
       tenantId: 'ten_1',
       cokeAccountId: 'acct_1',
@@ -395,7 +397,7 @@ describe('routeInboundMessage', () => {
     );
   });
 
-  it('drops all attachments at the route boundary when normalization hard rejects', async () => {
+  it('drops the inbound route without persistence or backend dispatch when normalization hard rejects', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
       tenantId: 'ten_1',
@@ -414,7 +416,7 @@ describe('routeInboundMessage', () => {
       contentType: 'image/jpeg',
     }));
 
-    await routeInboundMessage({
+    const result = await routeInboundMessage({
       channelId: 'ch_1',
       externalId: 'wxid_123',
       text: 'caption',
@@ -422,19 +424,177 @@ describe('routeInboundMessage', () => {
       meta: { platform: 'whatsapp_business' },
     });
 
-    expect(db.message.create).toHaveBeenNthCalledWith(
-      1,
+    expect(result).toBeNull();
+    expect(db.message.create).not.toHaveBeenCalled();
+    expect(generateReply).not.toHaveBeenCalled();
+    expect(runClawscaleAgent).not.toHaveBeenCalled();
+  });
+
+  it('scrubs unsafe legacy attachment metadata before backend history dispatch', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    const legacyDataUrl = `data:image/png;base64,${Buffer.from('legacy').toString('base64')}`;
+    db.message.findMany.mockResolvedValue([
+      {
+        role: 'user',
+        content: 'legacy mixed',
+        metadata: {
+          attachments: [
+            { url: legacyDataUrl, filename: 'legacy.png', contentType: 'image/png' },
+            { url: 'file:///tmp/secret.png', filename: 'secret.png', contentType: 'image/png' },
+            {
+              url: 'https://user:pass@cdn.example.com/photo.jpg?token=secret#frag',
+              filename: 'photo.jpg',
+              contentType: 'image/jpeg',
+            },
+          ],
+        },
+      },
+      {
+        role: 'user',
+        content: 'legacy over count',
+        metadata: {
+          attachments: Array.from({ length: 5 }, (_, index) => ({
+            url: `https://cdn.example.com/${index}.jpg`,
+            filename: `${index}.jpg`,
+            contentType: 'image/jpeg',
+          })),
+        },
+      },
+    ]);
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'new message',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    const history = vi.mocked(generateReply).mock.calls[0]?.[0]?.history;
+    expect(history).toEqual([
+      {
+        role: 'user',
+        content: 'legacy mixed',
+        attachments: [
+          {
+            url: 'https://cdn.example.com/photo.jpg',
+            filename: 'photo.jpg',
+            contentType: 'image/jpeg',
+            safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+          },
+        ],
+      },
+      {
+        role: 'user',
+        content: 'legacy over count',
+      },
+    ]);
+    expect(JSON.stringify(history)).not.toContain('data:image');
+    expect(JSON.stringify(history)).not.toContain('file:///');
+    expect(JSON.stringify(history)).not.toContain('user:pass');
+    expect(JSON.stringify(history)).not.toContain('token=secret');
+  });
+
+  it('does not copy inbound attachments onto commands executed by the ClawScale tool', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      type: 'whatsapp_business',
+      customerId: null,
+      ownershipKind: 'customer',
+      agentId: null,
+      status: 'connected',
+      scope: 'tenant_shared',
+      ownerClawscaleUserId: null,
+      ownerClawscaleUser: null,
+    });
+    db.tenant.findUnique.mockResolvedValue({
+      id: 'ten_1',
+      settings: { clawscale: { llm: { model: 'openai:gpt-test', apiKey: 'key', multimodal: true } } },
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [],
+    });
+    runClawscaleAgent.mockImplementationOnce(async ({ executeCommand }) => {
+      await executeCommand('/team');
+      return 'agent ok';
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'caption',
+      attachments: [{ url: 'https://cdn.example.com/photo.jpg', filename: 'photo.jpg', contentType: 'image/jpeg' }],
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    const userMessages = db.message.create.mock.calls
+      .map((call) => call[0]?.data)
+      .filter((data) => data?.role === 'user');
+    expect(userMessages).toHaveLength(2);
+    expect(userMessages[0]?.metadata?.attachments).toHaveLength(1);
+    expect(userMessages[1]).toEqual(
       expect.objectContaining({
-        data: expect.objectContaining({
-          metadata: expect.not.objectContaining({
-            attachments: expect.anything(),
-          }),
+        content: '/team',
+        metadata: expect.not.objectContaining({
+          attachments: expect.anything(),
         }),
       }),
     );
-    expect(generateReply).toHaveBeenCalledWith(
+  });
+
+  it('does not copy inbound attachments onto direct system command recursion', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'clawscale> /team',
+      attachments: [{ url: 'https://cdn.example.com/photo.jpg', filename: 'photo.jpg', contentType: 'image/jpeg' }],
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    const userMessages = db.message.create.mock.calls
+      .map((call) => call[0]?.data)
+      .filter((data) => data?.role === 'user');
+    expect(userMessages).toHaveLength(2);
+    expect(userMessages[0]?.metadata?.attachments).toHaveLength(1);
+    expect(userMessages[1]).toEqual(
       expect.objectContaining({
-        history: [],
+        content: '/team',
+        metadata: expect.not.objectContaining({
+          attachments: expect.anything(),
+        }),
       }),
     );
   });

@@ -71,6 +71,9 @@ function formatCombinedReplies(replies: ReplyEntry[]): string {
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
   const normalizedAttachmentResult = normalizeInboundAttachments(attachments, input.attachmentPolicy);
+  if (normalizedAttachmentResult.rejected) {
+    return null;
+  }
   const normalizedAttachments = normalizedAttachmentResult.attachments;
 
   const metadataPlatform = meta?.platform as string | undefined;
@@ -393,7 +396,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         if (!trimmed.startsWith('/')) {
           return `Error: "${trimmed}" is not a valid command. Commands must start with "/". Example: /team kick elie`;
         }
-        const result = await routeInboundMessage({ ...input, text: trimmed, attachments: normalizedAttachments });
+        const result = await routeInboundMessage({
+          ...input,
+          text: trimmed,
+          attachments: undefined,
+          attachmentPolicy: undefined,
+        });
         return result?.reply ?? '(no result)';
       },
     });
@@ -863,7 +871,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           return routeInboundMessage({
             ...input,
             text: cmd.message,
-            attachments: normalizedAttachments,
+            attachments: undefined,
+            attachmentPolicy: undefined,
             meta: { ...meta, __forceSystem: true },
           });
         }
@@ -930,9 +939,18 @@ async function loadHistory(conversationIds: string | string[], backendId: string
   });
   return msgs.map((m) => {
     const meta = m.metadata as Record<string, unknown> | null;
-    const attachments = (meta?.attachments as Attachment[] | undefined) ?? undefined;
-    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments?.length ? { attachments } : {}) };
+    const attachments = scrubHistoryAttachments(meta?.attachments);
+    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments.length ? { attachments } : {}) };
   });
+}
+
+function scrubHistoryAttachments(rawAttachments: unknown): Attachment[] {
+  const normalized = normalizeInboundAttachments(rawAttachments);
+  if (normalized.rejected) return [];
+  return normalized.attachments.map((attachment) => ({
+    ...attachment,
+    url: attachment.safeDisplayUrl,
+  }));
 }
 
 async function runBackend(

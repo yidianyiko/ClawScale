@@ -35,6 +35,7 @@ interface HistoryAttachment {
   filename: string;
   contentType: string;
   size?: number;
+  safeDisplayUrl?: string;
 }
 
 export interface AgentContext {
@@ -139,16 +140,21 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     const multimodal = ctx.llmConfig.multimodal === true;
 
     function buildContent(text: string, attachments?: HistoryAttachment[]): string | any[] {
-      const imageAttachments = attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
-      if (!multimodal || imageAttachments.length === 0) return text;
+      const safeAttachments = attachments ?? [];
+      if (!multimodal || safeAttachments.length === 0) return text;
       const parts: any[] = [];
       if (text) parts.push({ type: 'text', text });
-      for (const att of imageAttachments) {
-        parts.push({ type: 'image_url', image_url: { url: att.url } });
-      }
-      const nonImage = attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
-      if (nonImage.length > 0) {
-        parts.push({ type: 'text', text: nonImage.map((a) => `[Attached: ${a.filename} (${a.contentType})]`).join('\n') });
+      for (const att of safeAttachments) {
+        const isImage = att.contentType.startsWith('image/');
+        const isRemoteHttpImage =
+          isImage && (att.url.startsWith('http://') || att.url.startsWith('https://'));
+        if (isRemoteHttpImage) {
+          parts.push({ type: 'image_url', image_url: { url: att.url } });
+        } else if (isImage) {
+          parts.push({ type: 'text', text: `[Attached image: ${safeAttachmentDisplay(att)}]` });
+        } else {
+          parts.push({ type: 'text', text: `[Attached file: ${safeAttachmentDisplay(att)}]` });
+        }
       }
       return parts;
     }
@@ -175,6 +181,16 @@ export async function runClawscaleAgent(ctx: AgentContext): Promise<string> {
     console.error('[clawscale-agent] LLM error:', err);
     return 'Sorry, something went wrong. Please try again.';
   }
+}
+
+function safeAttachmentDisplay(att: HistoryAttachment): string {
+  if (att.safeDisplayUrl) return att.safeDisplayUrl;
+  if (att.url.startsWith('data:')) {
+    return att.contentType.startsWith('image/')
+      ? '[redacted inline image attachment]'
+      : `[redacted inline ${att.contentType || 'file'} attachment]`;
+  }
+  return att.url;
 }
 
 // ── Welcome menu ─────────────────────────────────────────────────────────────
