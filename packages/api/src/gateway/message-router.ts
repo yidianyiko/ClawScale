@@ -8,8 +8,6 @@
  */
 
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
 import * as lineSdk from '@line/bot-sdk';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
@@ -17,13 +15,6 @@ import { EvolutionApiClient } from '../lib/evolution-api.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
-
-const inboundSchema = z.object({
-  externalId: z.string().min(1),
-  displayName: z.string().optional(),
-  text: z.string().min(1),
-  meta: z.record(z.unknown()).default({}),
-});
 
 interface EvolutionWebhookData {
   key?: {
@@ -241,23 +232,4 @@ export const gatewayRouter = new Hono()
     );
 
     return c.json({ ok: true });
-  })
-
-  // ── POST /gateway/:channelId ─────────────────────────────────────────────────
-  // Generic inbound endpoint — used by adapters that do their own event handling
-  // but still want an HTTP interface (useful for testing / external integrations).
-  .post('/:channelId', zValidator('json', inboundSchema), async (c) => {
-    const channelId = c.req.param('channelId');
-    const body = c.req.valid('json');
-
-    const result = await routeInboundMessage({
-      channelId,
-      externalId: body.externalId,
-      displayName: body.displayName,
-      text: body.text,
-      meta: body.meta,
-    });
-
-    if (!result) return c.json({ ok: false, error: 'Message could not be routed' }, 400);
-    return c.json({ ok: true, data: result });
   });

@@ -308,3 +308,30 @@ describe('gatewayRouter evolution whatsapp route', () => {
     await expect(res.json()).resolves.toEqual({ ok: true });
   });
 });
+
+describe('gatewayRouter public generic route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not expose unauthenticated generic channel injection', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/ch_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        externalId: 'attacker',
+        displayName: 'Attacker',
+        text: 'hello',
+        meta: { platform: 'whatsapp_evolution' },
+      }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+});
