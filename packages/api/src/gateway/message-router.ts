@@ -154,6 +154,11 @@ function readEvolutionText(data: EvolutionWebhookData): string {
     return imageCaption.trim();
   }
 
+  const audioCaption = data.message?.audioMessage?.caption;
+  if (typeof audioCaption === 'string' && audioCaption.trim()) {
+    return audioCaption.trim();
+  }
+
   const videoCaption = data.message?.videoMessage?.caption;
   if (typeof videoCaption === 'string' && videoCaption.trim()) {
     return videoCaption.trim();
@@ -167,18 +172,27 @@ function readEvolutionText(data: EvolutionWebhookData): string {
   return '';
 }
 
-function readEvolutionAttachments(data: EvolutionWebhookData): unknown[] {
+function readEvolutionMediaMessages(data: EvolutionWebhookData): EvolutionMediaMessage[] {
   const message = data.message;
   if (!message) return [];
 
-  const mediaMessages = [
+  return [
     message.imageMessage,
     message.audioMessage,
     message.videoMessage,
     message.documentMessage,
-  ];
+  ].filter((media): media is EvolutionMediaMessage => Boolean(media));
+}
 
-  return mediaMessages.flatMap((media) => {
+function hasEvolutionDataUrlMedia(data: EvolutionWebhookData): boolean {
+  return readEvolutionMediaMessages(data).some((media) => {
+    const url = readNonEmptyString(media.url);
+    return url ? /^data:/i.test(url) : false;
+  });
+}
+
+function readEvolutionAttachments(data: EvolutionWebhookData): unknown[] {
+  return readEvolutionMediaMessages(data).flatMap((media) => {
     const url = readNonEmptyString(media?.url);
     if (!url) return [];
 
@@ -266,6 +280,10 @@ export const gatewayRouter = new Hono()
     }
 
     const text = readEvolutionText(data);
+    if (hasEvolutionDataUrlMedia(data)) {
+      return c.json({ ok: true });
+    }
+
     const attachmentResult = normalizeInboundAttachments(readEvolutionAttachments(data), {
       allowDataUrls: false,
     });

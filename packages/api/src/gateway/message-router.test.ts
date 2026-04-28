@@ -352,6 +352,55 @@ describe('gatewayRouter evolution whatsapp route', () => {
     );
   });
 
+  it('routes audioMessage caption as text with attachment', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/evolution/whatsapp/ch_1/token_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          key: {
+            remoteJid: '8619917902815@s.whatsapp.net',
+            fromMe: false,
+            id: 'msg_audio_caption',
+          },
+          pushName: 'Alice',
+          message: {
+            audioMessage: {
+              url: 'https://mmg.whatsapp.net/v/t62.7117-24/audio.ogg',
+              caption: 'voice note caption',
+              mimetype: 'audio/ogg',
+              fileLength: 6789,
+            },
+          },
+          messageType: 'audioMessage',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(routeInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalId: '8619917902815',
+        text: 'voice note caption',
+        attachments: [
+          expect.objectContaining({
+            url: 'https://mmg.whatsapp.net/v/t62.7117-24/audio.ogg',
+            filename: 'attachment',
+            contentType: 'audio/ogg',
+            size: 6789,
+          }),
+        ],
+        attachmentPolicy: { allowDataUrls: false },
+      }),
+    );
+  });
+
   it('routes videoMessage without text as attachment-only input', async () => {
     const app = new Hono();
     app.route('/gateway', gatewayRouter);
@@ -469,6 +518,40 @@ describe('gatewayRouter evolution whatsapp route', () => {
           message: {
             imageMessage: {
               url: 'data:image/png;base64,cG5n',
+              mimetype: 'image/png',
+            },
+          },
+          messageType: 'imageMessage',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not route Evolution data URL media attachments with captions as text-only input', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/evolution/whatsapp/ch_1/token_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          key: {
+            remoteJid: '8619917902815@s.whatsapp.net',
+            fromMe: false,
+            id: 'msg_data_url_caption',
+          },
+          pushName: 'Alice',
+          message: {
+            imageMessage: {
+              url: 'data:image/png;base64,cG5n',
+              caption: 'unsafe inline image',
               mimetype: 'image/png',
             },
           },
