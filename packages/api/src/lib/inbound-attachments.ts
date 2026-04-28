@@ -150,11 +150,13 @@ function boundedJsonFootprintBytes(value: unknown, seen = new WeakSet<object>())
 
   total = addBytes(total, 1);
   let propertyCount = 0;
-  for (const [key, nestedValue] of Object.entries(value)) {
+  const record = value as Record<string, unknown>;
+  for (const key in record) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
     if (propertyCount > 0) total = addBytes(total, 1);
     total = addBytes(total, jsonStringFootprintBytes(key));
     total = addBytes(total, 1);
-    total = addBytes(total, boundedJsonFootprintBytes(nestedValue, seen));
+    total = addBytes(total, boundedJsonFootprintBytes(record[key], seen));
     if (!Number.isFinite(total)) return total;
     propertyCount += 1;
   }
