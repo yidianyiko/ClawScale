@@ -313,6 +313,150 @@ describe('channels router', () => {
     expect(JSON.stringify(body)).not.toContain('secret-token');
   });
 
+  it('accepts linq channels through the generic admin route', async () => {
+    mocks.create.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      name: 'Linq Shared',
+      status: 'disconnected',
+    });
+    mocks.findUnique.mockResolvedValueOnce({
+      id: 'ch_new',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      name: 'Linq Shared',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'linq',
+        name: 'Linq Shared',
+        config: { fromNumber: '+13213108456' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_new',
+        type: 'linq',
+        name: 'Linq Shared',
+        status: 'disconnected',
+      },
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'ch_new',
+        tenantId: 'tnt_1',
+        type: 'linq',
+        name: 'Linq Shared',
+        config: { fromNumber: '+13213108456', webhookToken: 'token_uuid_1' },
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        agentId: DEFAULT_COKE_AGENT_ID,
+        customerId: null,
+      }),
+    });
+  });
+
+  it('scrubs linq secrets from generic channel detail responses', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_linq',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      name: 'Linq Shared',
+      status: 'connected',
+      config: {
+        fromNumber: '+13213108456',
+        webhookToken: 'secret-token',
+        webhookSubscriptionId: 'sub_1',
+        signingSecret: 'signing-secret',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_linq', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        id: 'ch_linq',
+        tenantId: 'tnt_1',
+        type: 'linq',
+        name: 'Linq Shared',
+        status: 'connected',
+        config: {
+          fromNumber: '+13213108456',
+          webhookSubscriptionId: 'sub_1',
+        },
+        hasWebhookToken: true,
+        hasSigningSecret: true,
+      },
+    });
+  });
+
+  it('rejects linq secret patch attempts and connected fromNumber changes in the generic route', async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_linq',
+      tenantId: 'tnt_1',
+      type: 'linq',
+      status: 'connected',
+      config: {
+        fromNumber: '+13213108456',
+        webhookToken: 'secret-token',
+        webhookSubscriptionId: 'sub_1',
+        signingSecret: 'signing-secret',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const secretRes = await app.request('/api/channels/ch_linq', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ config: { fromNumber: '+13213108456', webhookToken: 'new-token' } }),
+    });
+    expect(secretRes.status).toBe(400);
+    await expect(secretRes.json()).resolves.toEqual({ ok: false, error: 'linq_secret_not_mutable' });
+
+    const numberRes = await app.request('/api/channels/ch_linq', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ config: { fromNumber: '+14155550100' } }),
+    });
+    expect(numberRes.status).toBe(409);
+    await expect(numberRes.json()).resolves.toEqual({
+      ok: false,
+      error: 'linq_from_number_not_mutable_while_connected',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
     mocks.findFirst.mockResolvedValueOnce({
       id: 'ch_1',

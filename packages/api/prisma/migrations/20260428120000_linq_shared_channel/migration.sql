@@ -1,0 +1,1 @@
+ALTER TYPE "ChannelType" ADD VALUE IF NOT EXISTS 'linq';

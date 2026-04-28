@@ -218,6 +218,7 @@ describe('AdminSharedChannelsPage', () => {
           name: 'Coke',
         },
         hasWebhookToken: true,
+        hasSigningSecret: false,
         createdAt: '2026-04-16T11:00:00.000Z',
         updatedAt: '2026-04-16T11:00:00.000Z',
       },
@@ -281,5 +282,74 @@ describe('AdminSharedChannelsPage', () => {
       },
     });
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_ecloud');
+  });
+
+  it('creates linq shared channels with blank fromNumber omitted from config', async () => {
+    vi.mocked(adminApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_linq',
+        name: 'Linq SMS',
+        kind: 'linq',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        hasWebhookToken: true,
+        hasSigningSecret: false,
+        createdAt: '2026-04-16T11:00:00.000Z',
+        updatedAt: '2026-04-16T11:00:00.000Z',
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelsPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Shared channels');
+    });
+
+    (container.querySelector('button[data-testid="open-create-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    const kindInput = container.querySelector('#shared-channel-kind') as HTMLSelectElement;
+    kindInput.value = 'linq';
+    kindInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('#shared-channel-from-number')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-config')).toBeNull();
+      expect(container.textContent).toContain('Defaults to LINQ_FROM_NUMBER when left blank.');
+    });
+
+    const nameInput = container.querySelector('#shared-channel-name') as HTMLInputElement;
+    const fromNumberInput = container.querySelector('#shared-channel-from-number') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-agent-id') as HTMLInputElement;
+    nameInput.value = 'Linq SMS';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    fromNumberInput.value = '';
+    fromNumberInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_coke';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels', {
+      name: 'Linq SMS',
+      kind: 'linq',
+      agentId: 'agent_coke',
+      config: {},
+    });
+    expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_linq');
   });
 });

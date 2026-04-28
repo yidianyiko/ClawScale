@@ -143,7 +143,10 @@ const adminMessages = {
         agentId: 'Agent ID',
         config: 'Config JSON',
         instanceName: 'Instance name',
+        fromNumber: 'From number',
         webhookToken: 'Webhook token',
+        signingSecret: 'Signing secret',
+        webhookSubscriptionId: 'Webhook subscription',
       },
       actions: {
         save: 'Save changes',
@@ -155,7 +158,10 @@ const adminMessages = {
       confirmRetire: 'Retire this shared channel?',
       instanceNameHelp: 'Used for Evolution webhook registration and message delivery.',
       instanceNameLocked: 'Disconnect the channel before changing the instance name.',
+      fromNumberHelp: 'Defaults to LINQ_FROM_NUMBER when left blank.',
+      fromNumberLocked: 'Disconnect before changing the Linq sender number.',
       webhookTokenHidden: 'Hidden and managed server-side.',
+      signingSecretHidden: 'Hidden and managed server-side.',
       columns: {
         name: 'Channel',
         kind: 'Kind',
@@ -307,7 +313,10 @@ const adminMessages = {
         agentId: '代理 ID',
         config: '配置 JSON',
         instanceName: '实例名',
+        fromNumber: '发送号码',
         webhookToken: 'Webhook 令牌',
+        signingSecret: '签名密钥',
+        webhookSubscriptionId: 'Webhook 订阅',
       },
       actions: {
         save: '保存修改',
@@ -319,7 +328,10 @@ const adminMessages = {
       confirmRetire: '确认退役这个共享渠道？',
       instanceNameHelp: '用于 Evolution webhook 注册和消息发送。',
       instanceNameLocked: '先断开通道，再修改实例名。',
+      fromNumberHelp: '留空时使用 LINQ_FROM_NUMBER。',
+      fromNumberLocked: '断开 Linq 通道后才能修改发送号码。',
       webhookTokenHidden: '已隐藏，由后端代管。',
+      signingSecretHidden: '已隐藏，由服务器端管理。',
       columns: {
         name: '渠道',
         kind: '类型',

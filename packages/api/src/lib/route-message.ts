@@ -65,6 +65,28 @@ function formatCombinedReplies(replies: ReplyEntry[]): string {
   ).join('\n\n---\n\n');
 }
 
+function isSharedAutoProvisionedChannelType(type: string | null): boolean {
+  return (
+    type === 'whatsapp' ||
+    type === 'whatsapp_business' ||
+    type === 'whatsapp_evolution' ||
+    type === 'wechat_ecloud' ||
+    type === 'linq'
+  );
+}
+
+function getSharedChannelIdentityType(provider: string): string {
+  if (provider === 'linq') return 'phone_number';
+  if (
+    provider === 'whatsapp' ||
+    provider === 'whatsapp_business' ||
+    provider === 'whatsapp_evolution'
+  ) {
+    return 'wa_id';
+  }
+  return 'external_id';
+}
+
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
 
@@ -95,14 +117,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
   const platform = metadataPlatform ?? channel.type ?? 'unknown';
   console.log(`[inbound] ${platform} | user=${displayName ?? externalId} (${externalId}) | channel=${channelId}`);
   const { tenantId } = channel;
-  const isSharedProvisionedAccessChannel =
+  const isSharedAutoProvisionedChannel =
     channel.ownershipKind === 'shared' &&
-    (
-      channel.type === 'whatsapp' ||
-      channel.type === 'whatsapp_business' ||
-      channel.type === 'whatsapp_evolution' ||
-      channel.type === 'wechat_ecloud'
-    );
+    isSharedAutoProvisionedChannelType(channel.type);
   const personalChannelOwnership =
     channel.scope === 'personal' &&
     channel.ownerClawscaleUserId &&
@@ -116,14 +133,8 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
   let resolvedChannelCustomerId = channel.customerId ?? null;
 
-  if (channel.ownershipKind === 'shared' && channel.agentId) {
+  if (isSharedAutoProvisionedChannel && channel.agentId) {
     const sharedChannelProvider = channel.type ?? 'unknown';
-    const identityType =
-      sharedChannelProvider === 'whatsapp' ||
-      sharedChannelProvider === 'whatsapp_business' ||
-      sharedChannelProvider === 'whatsapp_evolution'
-        ? 'wa_id'
-        : 'external_id';
     const sharedChannelPayload = {
       externalId,
       ...(displayName ? { displayName } : {}),
@@ -137,7 +148,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       agentId: channel.agentId,
       displayName,
       provider: sharedChannelProvider,
-      identityType,
+      identityType: getSharedChannelIdentityType(sharedChannelProvider),
       rawIdentityValue: externalId,
       payload: sharedChannelPayload,
     });
@@ -192,9 +203,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personalChannelOwnership?.cokeAccountId ?? endUser.clawscaleUser?.cokeAccountId ?? null;
   const routeCokeAccountId =
     resolvedCokeAccountId ??
-    (isSharedProvisionedAccessChannel ? resolvedChannelCustomerId : null);
+    (isSharedAutoProvisionedChannel ? resolvedChannelCustomerId : null);
   const accessCustomerId =
-    isSharedProvisionedAccessChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
+    isSharedAutoProvisionedChannel ? resolvedChannelCustomerId : resolvedCokeAccountId;
   const resolvedAccessAccountOwner = accessCustomerId
     ? await db.membership.findFirst({
         where: {
@@ -232,11 +243,11 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           displayName: resolvedAccessAccount.displayName,
           status: resolvedAccessAccount.status,
         },
-        ...(isSharedProvisionedAccessChannel ? { requireEmailVerified: false } : {}),
+        ...(isSharedAutoProvisionedChannel ? { requireEmailVerified: false } : {}),
       })
     : null;
   const resolvedAccessAccountMetadata =
-    isSharedProvisionedAccessChannel &&
+    isSharedAutoProvisionedChannel &&
     resolvedAccessAccountDecision?.accountAccessDeniedReason === 'subscription_required' &&
     resolvedChannelCustomerId
       ? {

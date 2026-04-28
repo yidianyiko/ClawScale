@@ -57,6 +57,7 @@ export type AdminSharedChannelRow = {
   ownershipKind: string;
   customerId: string | null;
   hasWebhookToken?: boolean;
+  hasSigningSecret?: boolean;
   agent: {
     id: string;
     slug: string;
@@ -69,6 +70,7 @@ export type AdminSharedChannelRow = {
 export type AdminSharedChannelDetail = AdminSharedChannelRow & {
   config: Record<string, unknown>;
   hasWebhookToken?: boolean;
+  hasSigningSecret?: boolean;
 };
 
 export type AdminDeliveryRow = {

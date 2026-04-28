@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
+import { createHmac } from 'node:crypto';
 
 const db = vi.hoisted(() => ({
   channel: {
@@ -19,6 +20,7 @@ const verifyWebhook = vi.hoisted(() => vi.fn());
 const handleWABusinessWebhook = vi.hoisted(() => vi.fn());
 const evolutionSendText = vi.hoisted(() => vi.fn());
 const ecloudSendText = vi.hoisted(() => vi.fn());
+const linqCreateChat = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/route-message.js', () => ({ routeInboundMessage }));
@@ -32,6 +34,11 @@ vi.mock('../lib/wechat-ecloud-api.js', () => ({
     sendText = ecloudSendText;
   },
 }));
+vi.mock('../lib/linq-api.js', () => ({
+  LinqApiClient: class {
+    createChat = linqCreateChat;
+  },
+}));
 vi.mock('../adapters/line.js', () => ({ getLineBot, handleLineEvents }));
 vi.mock('../adapters/teams.js', () => ({ getTeamsBot, handleTeamsActivity }));
 vi.mock('../adapters/whatsapp-business.js', () => ({
@@ -40,6 +47,50 @@ vi.mock('../adapters/whatsapp-business.js', () => ({
 }));
 
 import { gatewayRouter } from './message-router.js';
+
+const linqConfig = {
+  fromNumber: '+13213108456',
+  webhookToken: 'token_1',
+  webhookSubscriptionId: 'sub_1',
+  signingSecret: 'secret_1',
+};
+
+function createApp() {
+  const app = new Hono();
+  app.route('/gateway', gatewayRouter);
+  return app;
+}
+
+function signLinqBody(body: string, timestamp: string, secret = linqConfig.signingSecret) {
+  return createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+}
+
+async function postLinqWebhook({
+  channelId = 'ch_linq',
+  token = linqConfig.webhookToken,
+  body,
+  timestamp = String(Math.floor(Date.now() / 1000)),
+  signature,
+  subscriptionId = linqConfig.webhookSubscriptionId,
+}: {
+  channelId?: string;
+  token?: string;
+  body: string;
+  timestamp?: string;
+  signature?: string;
+  subscriptionId?: string;
+}) {
+  return createApp().request(`/gateway/linq/${channelId}/${token}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Webhook-Timestamp': timestamp,
+      'X-Webhook-Signature': signature ?? signLinqBody(body, timestamp),
+      'X-Webhook-Subscription-ID': subscriptionId,
+    },
+    body,
+  });
+}
 
 describe('gatewayRouter evolution whatsapp route', () => {
   beforeEach(() => {
@@ -701,6 +752,197 @@ describe('gatewayRouter public generic route', () => {
     });
 
     expect(res.status).toBe(404);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('gatewayRouter linq route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_linq',
+      type: 'linq',
+      status: 'connected',
+      config: linqConfig,
+    });
+    routeInboundMessage.mockResolvedValue(null);
+    linqCreateChat.mockResolvedValue(undefined);
+  });
+
+  it('routes signed message.received webhooks into routeInboundMessage', async () => {
+    const body = JSON.stringify({
+      event_type: 'message.received',
+      event_id: 'evt_1',
+      data: {
+        direction: 'inbound',
+        sender_handle: { handle: '+86 152 017 80593' },
+        chat: {
+          id: 'chat_1',
+          owner_handle: { handle: '+1 (321) 310-8456' },
+        },
+        message: {
+          id: 'msg_1',
+          parts: [
+            { type: 'text', value: ' hello ' },
+            { type: 'image', value: 'ignored' },
+            { type: 'text', text: 'second line' },
+            { type: 'text', value: '   ' },
+          ],
+        },
+        service: 'sms',
+      },
+    });
+
+    const res = await postLinqWebhook({ body });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(routeInboundMessage).toHaveBeenCalledWith({
+      channelId: 'ch_linq',
+      externalId: '+8615201780593',
+      displayName: '+86 152 017 80593',
+      text: 'hello\nsecond line',
+      meta: {
+        platform: 'linq',
+        eventId: 'evt_1',
+        chatId: 'chat_1',
+        messageId: 'msg_1',
+        service: 'sms',
+        ownerHandle: '+1 (321) 310-8456',
+        webhookSubscriptionId: 'sub_1',
+      },
+    });
+  });
+
+  it('sends immediate replies to the inbound sender rather than the owner handle', async () => {
+    routeInboundMessage.mockResolvedValueOnce({
+      conversationId: 'conv_1',
+      replies: [{ backendId: null, backendName: 'ClawScale Assistant', reply: 'hello back' }],
+      reply: 'hello back',
+    });
+    const body = JSON.stringify({
+      event_type: 'message.received',
+      event_id: 'evt_reply',
+      data: {
+        sender_handle: { handle: '+86 152 017 80593' },
+        chat: {
+          id: 'chat_reply',
+          owner_handle: { handle: '+1 (321) 310-8456' },
+        },
+        parts: [{ type: 'text', value: 'hello' }],
+        message: { id: 'msg_reply' },
+      },
+    });
+
+    const res = await postLinqWebhook({ body });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(linqCreateChat).toHaveBeenCalledWith({
+      from: '+13213108456',
+      to: ['+8615201780593'],
+      text: 'hello back',
+    });
+    expect(linqCreateChat).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: ['+13213108456'] }),
+    );
+  });
+
+  it('rejects connected linq channels missing signingSecret', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_linq',
+      type: 'linq',
+      status: 'connected',
+      config: {
+        fromNumber: '+13213108456',
+        webhookToken: 'token_1',
+        webhookSubscriptionId: 'sub_1',
+      },
+    });
+    const body = JSON.stringify({
+      event_type: 'message.received',
+      data: {
+        sender_handle: { handle: '+86 152 017 80593' },
+        parts: [{ type: 'text', value: 'hello' }],
+      },
+    });
+
+    const res = await postLinqWebhook({ body });
+
+    expect(res.status).toBe(403);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores invalid JSON after a valid signature with 200', async () => {
+    const res = await postLinqWebhook({ body: '{' });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['stale timestamp', { timestamp: String(Math.floor(Date.now() / 1000) - 301) }],
+    ['malformed signature', { signature: 'not-hex' }],
+    ['bad signature', { signature: '0'.repeat(64) }],
+    ['missing subscription id', { subscriptionId: '' }],
+    ['mismatched subscription id', { subscriptionId: 'sub_wrong' }],
+  ])('rejects %s with 403', async (_name, override) => {
+    const body = JSON.stringify({
+      event_type: 'message.received',
+      data: {
+        sender_handle: { handle: '+86 152 017 80593' },
+        parts: [{ type: 'text', value: 'hello' }],
+      },
+    });
+
+    const timestamp =
+      'timestamp' in override && override.timestamp
+        ? override.timestamp
+        : String(Math.floor(Date.now() / 1000));
+    const res = await postLinqWebhook({
+      body,
+      timestamp,
+      signature:
+        'signature' in override && override.signature
+          ? override.signature
+          : signLinqBody(body, timestamp),
+      subscriptionId:
+        'subscriptionId' in override && override.subscriptionId !== undefined
+          ? override.subscriptionId
+          : linqConfig.webhookSubscriptionId,
+    });
+
+    expect(res.status).toBe(403);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-message events and outbound or self messages with 200', async () => {
+    const ignoredPayloads = [
+      { event_type: 'message.created', data: { parts: [{ type: 'text', value: 'hello' }] } },
+      {
+        event_type: 'message.received',
+        data: {
+          direction: 'outbound',
+          sender_handle: { handle: '+86 152 017 80593' },
+          parts: [{ type: 'text', value: 'hello' }],
+        },
+      },
+      {
+        event_type: 'message.received',
+        data: {
+          is_from_me: true,
+          sender_handle: { handle: '+86 152 017 80593' },
+          parts: [{ type: 'text', value: 'hello' }],
+        },
+      },
+    ];
+
+    for (const payload of ignoredPayloads) {
+      const res = await postLinqWebhook({ body: JSON.stringify(payload) });
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ ok: true });
+    }
     expect(routeInboundMessage).not.toHaveBeenCalled();
   });
 });

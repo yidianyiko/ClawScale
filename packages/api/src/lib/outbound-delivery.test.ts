@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const sendWeixinText = vi.hoisted(() => vi.fn());
 const sendText = vi.hoisted(() => vi.fn());
 const sendWechatEcloudText = vi.hoisted(() => vi.fn());
+const createChat = vi.hoisted(() => vi.fn());
 
 vi.mock('../adapters/wechat.js', () => ({
   sendWeixinText,
@@ -17,6 +18,11 @@ vi.mock('./wechat-ecloud-api.js', () => ({
     sendText: sendWechatEcloudText,
   })),
 }));
+vi.mock('./linq-api.js', () => ({
+  LinqApiClient: vi.fn().mockImplementation(() => ({
+    createChat,
+  })),
+}));
 
 import { deliverOutboundMessage } from './outbound-delivery.js';
 import { WechatEcloudApiClient } from './wechat-ecloud-api.js';
@@ -27,6 +33,7 @@ describe('deliverOutboundMessage', () => {
     sendWeixinText.mockResolvedValue(undefined as never);
     sendText.mockResolvedValue(undefined as never);
     sendWechatEcloudText.mockResolvedValue(undefined as never);
+    createChat.mockResolvedValue(undefined as never);
   });
 
   it('delivers personal wechat outbound messages', async () => {
@@ -65,6 +72,33 @@ describe('deliverOutboundMessage', () => {
       'hello from coke',
     );
     expect(sendWeixinText).not.toHaveBeenCalled();
+    expect(createChat).not.toHaveBeenCalled();
+  });
+
+  it('delivers linq messages through Linq createChat', async () => {
+    await deliverOutboundMessage(
+      {
+        id: 'ch_linq_1',
+        type: 'linq',
+        status: 'connected',
+        config: {
+          fromNumber: '+1 (321) 310-8456',
+          webhookToken: 'secret-token',
+          webhookSubscriptionId: 'sub_1',
+          signingSecret: 'signing_secret_1',
+        },
+      },
+      '+86 152 017 80593',
+      'hello from coke',
+    );
+
+    expect(createChat).toHaveBeenCalledWith({
+      from: '+13213108456',
+      to: ['+8615201780593'],
+      text: 'hello from coke',
+    });
+    expect(sendWeixinText).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it('delivers wechat_ecloud messages through Ecloud sendText', async () => {

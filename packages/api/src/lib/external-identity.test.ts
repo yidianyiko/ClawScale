@@ -34,6 +34,46 @@ describe('external identity helpers', () => {
     });
   });
 
+  it('normalizes linq phone_number identities to E.164-like values', () => {
+    expect(
+      normalizeExternalIdentity({
+        provider: 'linq',
+        identityType: 'phone_number',
+        rawValue: '+86 152 017 80593',
+      }),
+    ).toEqual({
+      provider: 'linq',
+      identityType: 'phone_number',
+      identityValue: '+8615201780593',
+    });
+
+    expect(
+      normalizeExternalIdentity({
+        provider: 'linq',
+        identityType: 'phone_number',
+        rawValue: '8615201780593',
+      }),
+    ).toEqual({
+      provider: 'linq',
+      identityType: 'phone_number',
+      identityValue: '+8615201780593',
+    });
+  });
+
+  it('keeps unexpected linq phone_number identities trimmed when no digits exist', () => {
+    expect(
+      normalizeExternalIdentity({
+        provider: 'linq',
+        identityType: 'phone_number',
+        rawValue: ' user@example.com ',
+      }),
+    ).toEqual({
+      provider: 'linq',
+      identityType: 'phone_number',
+      identityValue: 'user@example.com',
+    });
+  });
+
   it('keeps non-WhatsApp identities trimmed without phone-number rewriting', () => {
     expect(
       normalizeExternalIdentity({

@@ -17,6 +17,7 @@ const DEFAULT_KIND = 'whatsapp';
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
 const WECHAT_ECLOUD_KIND = 'wechat_ecloud';
 const DEFAULT_WECHAT_ECLOUD_BASE_URL = 'https://api.geweapi.com';
+const LINQ_KIND = 'linq';
 
 function buildSharedChannelDetailHref(id: string): string {
   return '/admin/shared-channels/detail?id=' + encodeURIComponent(id);
@@ -28,6 +29,15 @@ function isWhatsAppEvolutionKind(kind: string): boolean {
 
 function isWechatEcloudKind(kind: string): boolean {
   return kind === WECHAT_ECLOUD_KIND;
+}
+
+function isLinqKind(kind: string): boolean {
+  return kind === LINQ_KIND;
+}
+
+function buildLinqConfig(fromNumber: string): Record<string, unknown> {
+  const trimmed = fromNumber.trim();
+  return trimmed ? { fromNumber: trimmed } : {};
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -60,6 +70,7 @@ export default function AdminSharedChannelsPage() {
   const [ecloudAppId, setEcloudAppId] = useState('');
   const [ecloudToken, setEcloudToken] = useState('');
   const [ecloudBaseUrl, setEcloudBaseUrl] = useState(DEFAULT_WECHAT_ECLOUD_BASE_URL);
+  const [fromNumber, setFromNumber] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -107,6 +118,7 @@ export default function AdminSharedChannelsPage() {
     const nextEcloudToken = String(form.get('ecloudToken') ?? '').trim();
     const nextEcloudBaseUrl =
       String(form.get('ecloudBaseUrl') ?? '').trim() || DEFAULT_WECHAT_ECLOUD_BASE_URL;
+    const nextFromNumber = String(form.get('fromNumber') ?? '');
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
@@ -121,6 +133,8 @@ export default function AdminSharedChannelsPage() {
           token: nextEcloudToken,
           baseUrl: nextEcloudBaseUrl,
         };
+      } else if (isLinqKind(nextKind)) {
+        config = buildLinqConfig(nextFromNumber);
       } else {
         config = parseConfig(nextConfigText);
       }
@@ -147,6 +161,7 @@ export default function AdminSharedChannelsPage() {
 
   const evolutionCreateMode = isWhatsAppEvolutionKind(kind);
   const ecloudCreateMode = isWechatEcloudKind(kind);
+  const linqCreateMode = isLinqKind(kind);
 
   return (
     <div className="p-8">
@@ -197,6 +212,7 @@ export default function AdminSharedChannelsPage() {
                 <option value="whatsapp_business">whatsapp_business</option>
                 <option value="whatsapp_evolution">whatsapp_evolution</option>
                 <option value="wechat_ecloud">wechat_ecloud</option>
+                <option value="linq">linq</option>
                 <option value="telegram">telegram</option>
                 <option value="wechat_personal">wechat_personal</option>
               </select>
@@ -269,8 +285,23 @@ export default function AdminSharedChannelsPage() {
                     className="input"
                     value={ecloudBaseUrl}
                     onInput={(event) => setEcloudBaseUrl(event.currentTarget.value)}
-                  />
-                </div>
+	                  />
+	                </div>
+	              </div>
+	            ) : linqCreateMode ? (
+	              <div>
+                <label htmlFor="shared-channel-from-number" className="label">
+                  {copy.sharedChannels.fields.fromNumber}
+                </label>
+                <input
+                  id="shared-channel-from-number"
+                  name="fromNumber"
+                  className="input"
+                  value={fromNumber}
+                  placeholder="+13213108456"
+                  onInput={(event) => setFromNumber(event.currentTarget.value)}
+                />
+                <p className="mt-2 text-xs text-gray-500">{copy.sharedChannels.fromNumberHelp}</p>
               </div>
             ) : (
               <div>

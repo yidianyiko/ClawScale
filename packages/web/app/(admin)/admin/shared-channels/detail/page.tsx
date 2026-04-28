@@ -13,6 +13,7 @@ import { formatDateTime } from '../../../../../lib/utils';
 
 const WHATSAPP_EVOLUTION_KIND = 'whatsapp_evolution';
 const WECHAT_ECLOUD_KIND = 'wechat_ecloud';
+const LINQ_KIND = 'linq';
 
 function titleCase(value: string): string {
   return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : value;
@@ -24,6 +25,19 @@ function isWhatsAppEvolutionKind(kind: string): boolean {
 
 function isWechatEcloudKind(kind: string): boolean {
   return kind === WECHAT_ECLOUD_KIND;
+}
+
+function isLinqKind(kind: string): boolean {
+  return kind === LINQ_KIND;
+}
+
+function supportsSharedChannelLifecycle(kind: string): boolean {
+  return isWhatsAppEvolutionKind(kind) || isWechatEcloudKind(kind) || isLinqKind(kind);
+}
+
+function buildLinqConfig(fromNumber: string): Record<string, unknown> {
+  const trimmed = fromNumber.trim();
+  return trimmed ? { fromNumber: trimmed } : {};
 }
 
 function parseConfig(value: string): Record<string, unknown> {
@@ -55,6 +69,14 @@ function hasEcloudConfigChanged(
   return getStringConfig(config, 'appId') !== appId || getStringConfig(config, 'baseUrl') !== baseUrl;
 }
 
+function getLinqFromNumber(config: Record<string, unknown>): string {
+  return typeof config.fromNumber === 'string' ? config.fromNumber : '';
+}
+
+function getLinqWebhookSubscriptionId(config: Record<string, unknown>): string {
+  return typeof config.webhookSubscriptionId === 'string' ? config.webhookSubscriptionId : '';
+}
+
 function AdminSharedChannelDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,6 +95,7 @@ function AdminSharedChannelDetailPageContent() {
   const [instanceName, setInstanceName] = useState('');
   const [ecloudAppId, setEcloudAppId] = useState('');
   const [ecloudBaseUrl, setEcloudBaseUrl] = useState('');
+  const [fromNumber, setFromNumber] = useState('');
   const [configText, setConfigText] = useState('{}');
 
   useEffect(() => {
@@ -110,6 +133,8 @@ function AdminSharedChannelDetailPageContent() {
       } else if (isWechatEcloudKind(nextRecord.kind)) {
         setEcloudAppId(getStringConfig(nextRecord.config, 'appId'));
         setEcloudBaseUrl(getStringConfig(nextRecord.config, 'baseUrl'));
+      } else if (isLinqKind(nextRecord.kind)) {
+        setFromNumber(getLinqFromNumber(nextRecord.config));
       } else {
         setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
       }
@@ -131,6 +156,8 @@ function AdminSharedChannelDetailPageContent() {
     } else if (isWechatEcloudKind(nextRecord.kind)) {
       setEcloudAppId(getStringConfig(nextRecord.config, 'appId'));
       setEcloudBaseUrl(getStringConfig(nextRecord.config, 'baseUrl'));
+    } else if (isLinqKind(nextRecord.kind)) {
+      setFromNumber(getLinqFromNumber(nextRecord.config));
     } else {
       setConfigText(JSON.stringify(nextRecord.config ?? {}, null, 2));
     }
@@ -151,9 +178,14 @@ function AdminSharedChannelDetailPageContent() {
     const formInstanceName = String(form.get('instanceName') ?? '').trim();
     const formEcloudAppId = String(form.get('ecloudAppId') ?? '').trim();
     const formEcloudBaseUrl = String(form.get('ecloudBaseUrl') ?? '').trim();
+    const formFromNumber = String(form.get('fromNumber') ?? '');
     const nextInstanceName = isWhatsAppEvolutionKind(record.kind)
       ? formInstanceName || instanceName.trim() || getEvolutionInstanceName(record.config)
       : formInstanceName;
+    const nextFromNumber =
+      isLinqKind(record.kind) && record.status === 'connected'
+        ? fromNumber.trim() || getLinqFromNumber(record.config)
+        : formFromNumber;
     const nextConfigText = String(form.get('config') ?? '{}');
 
     try {
@@ -184,6 +216,8 @@ function AdminSharedChannelDetailPageContent() {
             baseUrl: nextEcloudBaseUrl,
           };
         }
+      } else if (isLinqKind(record.kind)) {
+        payload.config = buildLinqConfig(nextFromNumber);
       } else {
         payload.config = parseConfig(nextConfigText);
       }
@@ -207,7 +241,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleConnect() {
-    if (!record || (!isWhatsAppEvolutionKind(record.kind) && !isWechatEcloudKind(record.kind))) {
+    if (!record || !supportsSharedChannelLifecycle(record.kind)) {
       return;
     }
 
@@ -226,7 +260,7 @@ function AdminSharedChannelDetailPageContent() {
   }
 
   async function handleDisconnect() {
-    if (!record || (!isWhatsAppEvolutionKind(record.kind) && !isWechatEcloudKind(record.kind))) {
+    if (!record || !supportsSharedChannelLifecycle(record.kind)) {
       return;
     }
 
@@ -265,7 +299,11 @@ function AdminSharedChannelDetailPageContent() {
   const evolutionChannel = record ? isWhatsAppEvolutionKind(record.kind) : false;
   const ecloudChannel = record ? isWechatEcloudKind(record.kind) : false;
   const connectableChannel = evolutionChannel || ecloudChannel;
+  const linqChannel = record ? isLinqKind(record.kind) : false;
   const instanceNameLocked = evolutionChannel && record?.status === 'connected';
+  const fromNumberLocked = linqChannel && record?.status === 'connected';
+  const webhookSubscriptionId =
+    linqChannel && record ? getLinqWebhookSubscriptionId(record.config) : '';
 
   return (
     <div className="p-8">
@@ -304,6 +342,26 @@ function AdminSharedChannelDetailPageContent() {
                     {record.hasWebhookToken ? copy.sharedChannels.webhookTokenHidden : '—'}
                   </p>
                 </div>
+              ) : null}
+              {linqChannel ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookSubscriptionId}</p>
+                    <p className="mt-1 text-base text-gray-900">{webhookSubscriptionId || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.webhookToken}</p>
+                    <p className="mt-1 text-base text-gray-900">
+                      {record.hasWebhookToken ? copy.sharedChannels.webhookTokenHidden : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">{copy.sharedChannels.fields.signingSecret}</p>
+                    <p className="mt-1 text-base text-gray-900">
+                      {record.hasSigningSecret ? copy.sharedChannels.signingSecretHidden : '—'}
+                    </p>
+                  </div>
+                </>
               ) : null}
             </div>
 
@@ -384,9 +442,52 @@ function AdminSharedChannelDetailPageContent() {
                   <div className="md:col-span-2">
                     <p className="text-sm font-medium text-gray-500">Callback path</p>
                     <p className="mt-1 break-all text-base text-gray-900">
-                      {getStringConfig(record.config, 'callbackPath') || '—'}
-                    </p>
-                  </div>
+	                      {getStringConfig(record.config, 'callbackPath') || '—'}
+	                    </p>
+	                  </div>
+	                </div>
+	                <div className="flex gap-3">
+	                  {record.status === 'connected' ? (
+	                    <button
+	                      type="button"
+	                      className="btn-secondary"
+	                      data-testid="disconnect-shared-channel"
+	                      disabled={disconnecting}
+	                      onClick={() => void handleDisconnect()}
+	                    >
+	                      {disconnecting ? copy.common.loading : copy.sharedChannels.actions.disconnect}
+	                    </button>
+	                  ) : (
+	                    <button
+	                      type="button"
+	                      className="btn-secondary"
+	                      data-testid="connect-shared-channel"
+	                      disabled={connecting}
+	                      onClick={() => void handleConnect()}
+	                    >
+	                      {connecting ? copy.common.loading : copy.sharedChannels.actions.connect}
+	                    </button>
+	                  )}
+	                </div>
+	              </>
+	            ) : linqChannel ? (
+	              <>
+                <div>
+                  <label htmlFor="shared-channel-detail-from-number" className="label">
+                    {copy.sharedChannels.fields.fromNumber}
+                  </label>
+                  <input
+                    id="shared-channel-detail-from-number"
+                    name="fromNumber"
+                    className="input"
+                    value={fromNumber}
+                    placeholder="+13213108456"
+                    onInput={(event) => setFromNumber(event.currentTarget.value)}
+                    disabled={fromNumberLocked}
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    {fromNumberLocked ? copy.sharedChannels.fromNumberLocked : copy.sharedChannels.fromNumberHelp}
+                  </p>
                 </div>
                 <div className="flex gap-3">
                   {record.status === 'connected' ? (
