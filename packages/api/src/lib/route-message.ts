@@ -23,6 +23,7 @@ import { buildPublicCheckoutUrl, issuePublicCheckoutToken } from './coke-public-
 import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
 import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
+import { normalizeInboundAttachments } from './inbound-attachments.js';
 import type { Prisma } from '@prisma/client';
 import type { AiBackendType, AiBackendProviderConfig } from './ai-backend-runtime.js';
 
@@ -31,6 +32,7 @@ export interface Attachment {
   filename: string;
   contentType: string;
   size?: number;
+  safeDisplayUrl?: string;
 }
 
 export interface InboundMessage {
@@ -39,6 +41,7 @@ export interface InboundMessage {
   displayName?: string;
   text: string;
   attachments?: Attachment[];
+  attachmentPolicy?: { allowDataUrls?: boolean };
   meta?: Record<string, unknown>;
 }
 
@@ -89,6 +92,11 @@ function getSharedChannelIdentityType(provider: string): string {
 
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
   const { channelId, externalId, displayName, text, attachments, meta } = input;
+  const normalizedAttachmentResult = normalizeInboundAttachments(attachments, input.attachmentPolicy);
+  if (normalizedAttachmentResult.rejected) {
+    return null;
+  }
+  const normalizedAttachments = normalizedAttachmentResult.attachments;
 
   const metadataPlatform = meta?.platform as string | undefined;
 
@@ -139,7 +147,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       externalId,
       ...(displayName ? { displayName } : {}),
       text,
-      ...(attachments ? { attachments: attachments as unknown as Prisma.InputJsonValue } : {}),
+      ...(normalizedAttachments.length
+        ? { attachments: normalizedAttachments as unknown as Prisma.InputJsonValue }
+        : {}),
       ...(meta ? { meta: meta as Prisma.InputJsonValue } : {}),
     } satisfies Prisma.InputJsonObject;
 
@@ -326,7 +336,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
           : {}),
         gatewayConversationId: routeBinding.gatewayConversationId,
         inboundEventId,
-        ...(attachments?.length ? { attachments } : {}),
+        ...(normalizedAttachments.length ? { attachments: normalizedAttachments } : {}),
       } as any,
     },
   });
@@ -372,9 +382,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
    */
   async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
     // If attachments are present but multimodal is not enabled, nudge the admin
-    if (attachments?.length && !clawscaleLlm?.multimodal) {
+    if (normalizedAttachments.length && !clawscaleLlm?.multimodal) {
       return reply(
-        `I received your ${attachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
+        `I received your ${normalizedAttachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
         'Ask your admin to enable **multimodal input** in the ClawScale dashboard:\n' +
         '**Settings → ClawScale Assistant → Enable multimodal input**',
       );
@@ -388,7 +398,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       personaName: clawscaleName,
       mode,
       history: agentHistory,
-      attachments,
+      attachments: normalizedAttachments,
       ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
       ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
       executeCommand: async (command) => {
@@ -398,7 +408,12 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         if (!trimmed.startsWith('/')) {
           return `Error: "${trimmed}" is not a valid command. Commands must start with "/". Example: /team kick elie`;
         }
-        const result = await routeInboundMessage({ ...input, text: trimmed });
+        const result = await routeInboundMessage({
+          ...input,
+          text: trimmed,
+          attachments: undefined,
+          attachmentPolicy: undefined,
+        });
         return result?.reply ?? '(no result)';
       },
     });
@@ -865,7 +880,13 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
         const innerCmd = parseCommand(cmd.message);
         if (innerCmd?.kind === 'system') {
           // Execute as system command by re-routing with __forceSystem flag
-          return routeInboundMessage({ ...input, text: cmd.message, meta: { ...meta, __forceSystem: true } });
+          return routeInboundMessage({
+            ...input,
+            text: cmd.message,
+            attachments: undefined,
+            attachmentPolicy: undefined,
+            meta: { ...meta, __forceSystem: true },
+          });
         }
         // Direct mode — run agent loop (may execute commands)
         return runAgent(cmd.message, 'direct');
@@ -924,15 +945,24 @@ async function loadHistory(conversationIds: string | string[], backendId: string
         { role: 'assistant', backendId },
       ],
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: 50,
     select: { role: true, content: true, metadata: true },
   });
-  return msgs.map((m) => {
+  return [...msgs].reverse().map((m) => {
     const meta = m.metadata as Record<string, unknown> | null;
-    const attachments = (meta?.attachments as Attachment[] | undefined) ?? undefined;
-    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments?.length ? { attachments } : {}) };
+    const attachments = scrubHistoryAttachments(meta?.attachments);
+    return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments.length ? { attachments } : {}) };
   });
+}
+
+function scrubHistoryAttachments(rawAttachments: unknown): Attachment[] {
+  const normalized = normalizeInboundAttachments(rawAttachments);
+  if (normalized.rejected) return [];
+  return normalized.attachments.map((attachment) => ({
+    ...attachment,
+    url: attachment.safeDisplayUrl,
+  }));
 }
 
 async function runBackend(

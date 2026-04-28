@@ -38,6 +38,7 @@ interface HistoryAttachment {
   filename: string;
   contentType: string;
   size?: number;
+  safeDisplayUrl?: string;
 }
 
 type HistoryMessage = {
@@ -340,22 +341,47 @@ async function runPalmosRegister(
  */
 /** Convert a history message to an OpenAI-compatible message with multimodal content. */
 function toOpenAiMessage(m: HistoryMessage): { role: 'user' | 'assistant'; content: any } {
-  const imageAttachments = m.attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
-  if (m.role === 'user' && imageAttachments.length > 0) {
+  const attachments = m.attachments ?? [];
+  if (m.role === 'user' && attachments.length > 0) {
     const parts: any[] = [];
     if (m.content) parts.push({ type: 'text', text: m.content });
-    for (const att of imageAttachments) {
-      parts.push({ type: 'image_url', image_url: { url: att.url } });
-    }
-    // Include non-image attachments as text references
-    const nonImage = m.attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
-    if (nonImage.length > 0) {
-      const refs = nonImage.map((a) => `[Attached file: ${a.filename} (${a.contentType})]`).join('\n');
-      parts.push({ type: 'text', text: refs });
+    for (const att of attachments) {
+      const isImage = att.contentType.startsWith('image/');
+      if (isImage && isSafeRemoteImageUrl(att)) {
+        parts.push({ type: 'image_url', image_url: { url: att.url } });
+      } else if (isImage) {
+        parts.push({ type: 'text', text: `[Attached image: ${safeAttachmentDisplay(att)}]` });
+      } else {
+        parts.push({ type: 'text', text: `[Attached file: ${safeAttachmentDisplay(att)}]` });
+      }
     }
     return { role: m.role, content: parts };
   }
   return { role: m.role, content: m.content };
+}
+
+function isSafeRemoteImageUrl(att: HistoryAttachment): boolean {
+  try {
+    const parsed = new URL(att.url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return false;
+    return att.safeDisplayUrl === undefined || att.safeDisplayUrl === att.url;
+  } catch {
+    return false;
+  }
+}
+
+function safeAttachmentDisplay(att: HistoryAttachment): string {
+  if (att.safeDisplayUrl) return att.safeDisplayUrl;
+  if (att.url.startsWith('data:')) {
+    return att.contentType.startsWith('image/')
+      ? '[redacted inline image attachment]'
+      : `[redacted inline ${att.contentType || 'file'} attachment]`;
+  }
+  if (att.url.startsWith('http://') || att.url.startsWith('https://')) {
+    return isSafeRemoteImageUrl(att) ? att.url : `[redacted ${att.contentType || 'file'} attachment]`;
+  }
+  return att.url;
 }
 
 async function handleOpenAiSdk(

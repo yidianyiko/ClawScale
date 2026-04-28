@@ -44,7 +44,12 @@ describe('deliverOutboundMessage', () => {
         status: 'connected',
       },
       'wxid_1',
-      'hello',
+      {
+        text: 'hello',
+        messageType: 'text',
+        mediaUrls: [],
+        audioAsVoice: false,
+      },
     );
 
     expect(sendWeixinText).toHaveBeenCalledWith('ch_wechat_1', 'wxid_1', 'hello');
@@ -63,7 +68,12 @@ describe('deliverOutboundMessage', () => {
         },
       },
       '8619917902815@s.whatsapp.net',
-      'hello from coke',
+      {
+        text: 'hello from coke',
+        messageType: 'text',
+        mediaUrls: [],
+        audioAsVoice: false,
+      },
     );
 
     expect(sendText).toHaveBeenCalledWith(
@@ -141,7 +151,12 @@ describe('deliverOutboundMessage', () => {
           },
         },
         '8619917902815',
-        'hello',
+        {
+          text: 'hello',
+          messageType: 'text',
+          mediaUrls: [],
+          audioAsVoice: false,
+        },
       ),
     ).rejects.toThrow('Outbound channel ch_wa_1 is not connected');
 
@@ -161,7 +176,12 @@ describe('deliverOutboundMessage', () => {
           },
         },
         'not-a-number',
-        'hello',
+        {
+          text: 'hello',
+          messageType: 'text',
+          mediaUrls: [],
+          audioAsVoice: false,
+        },
       ),
     ).rejects.toThrow('Invalid WhatsApp target: not-a-number');
 
@@ -177,8 +197,88 @@ describe('deliverOutboundMessage', () => {
           status: 'connected',
         },
         'target_1',
-        'hello',
+        {
+          text: 'hello',
+          messageType: 'text',
+          mediaUrls: [],
+          audioAsVoice: false,
+        },
       ),
     ).rejects.toThrow('Unsupported outbound channel type: whatsapp_business');
+  });
+
+  it('delivers wechat media as visible attachment links', async () => {
+    await deliverOutboundMessage(
+      {
+        id: 'ch_wechat_1',
+        type: 'wechat_personal',
+        status: 'connected',
+      },
+      'wxid_1',
+      {
+        text: 'caption',
+        messageType: 'image',
+        mediaUrls: ['https://cdn.example.com/photo.jpg'],
+        audioAsVoice: false,
+      },
+    );
+
+    expect(sendWeixinText).toHaveBeenCalledWith(
+      'ch_wechat_1',
+      'wxid_1',
+      'caption\n\nAttachment: https://cdn.example.com/photo.jpg',
+    );
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it('delivers media-only fallback without a leading blank caption', async () => {
+    await deliverOutboundMessage(
+      {
+        id: 'ch_wechat_1',
+        type: 'wechat_personal',
+        status: 'connected',
+      },
+      'wxid_1',
+      {
+        text: '',
+        messageType: 'voice',
+        mediaUrls: ['https://cdn.example.com/voice.mp3'],
+        audioAsVoice: true,
+      },
+    );
+
+    expect(sendWeixinText).toHaveBeenCalledWith(
+      'ch_wechat_1',
+      'wxid_1',
+      'Attachment: https://cdn.example.com/voice.mp3',
+    );
+  });
+
+  it('delivers whatsapp_evolution media as visible attachment links', async () => {
+    await deliverOutboundMessage(
+      {
+        id: 'ch_wa_1',
+        type: 'whatsapp_evolution',
+        status: 'connected',
+        config: {
+          instanceName: 'coke-whatsapp-personal',
+          webhookToken: 'secret-token',
+        },
+      },
+      '8619917902815@s.whatsapp.net',
+      {
+        text: 'caption',
+        messageType: 'image',
+        mediaUrls: ['https://cdn.example.com/photo.jpg'],
+        audioAsVoice: false,
+      },
+    );
+
+    expect(sendText).toHaveBeenCalledWith(
+      'coke-whatsapp-personal',
+      '8619917902815',
+      'caption\n\nAttachment: https://cdn.example.com/photo.jpg',
+    );
+    expect(sendWeixinText).not.toHaveBeenCalled();
   });
 });

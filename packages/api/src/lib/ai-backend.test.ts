@@ -1,7 +1,24 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
+
+const openAiCreate = vi.hoisted(() => vi.fn());
+
+vi.mock('openai', () => ({
+  default: vi.fn(() => ({
+    chat: {
+      completions: {
+        create: openAiCreate,
+      },
+    },
+  })),
+}));
+
 import { generateReply } from './ai-backend.js';
 
 describe('custom backend metadata envelope', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -76,5 +93,197 @@ describe('custom backend metadata envelope', () => {
       outputId: 'out_1',
       causalInboundEventId: 'in_evt_1',
     });
+  });
+});
+
+describe('OpenAI backend attachment conversion', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    openAiCreate.mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+    });
+  });
+
+  it('sends http image attachments as image_url parts', async () => {
+    await generateReply({
+      backend: {
+        type: 'llm',
+        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'caption',
+          attachments: [
+            {
+              url: 'https://cdn.example.com/photo.jpg',
+              filename: 'photo.jpg',
+              contentType: 'image/jpeg',
+              safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    expect(request.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'caption' },
+          { type: 'image_url', image_url: { url: 'https://cdn.example.com/photo.jpg' } },
+        ],
+      },
+    ]);
+  });
+
+  it('redacts credentialed or query-bearing http image attachments into safe text', async () => {
+    const secretUrl = 'https://user:pass@cdn.example.com/photo.jpg?token=secret#frag';
+
+    await generateReply({
+      backend: {
+        type: 'llm',
+        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'caption',
+          attachments: [
+            {
+              url: secretUrl,
+              filename: 'photo.jpg',
+              contentType: 'image/jpeg',
+              safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    const parts = request.messages[0].content;
+    expect(parts).toEqual([
+      { type: 'text', text: 'caption' },
+      { type: 'text', text: '[Attached image: https://cdn.example.com/photo.jpg]' },
+    ]);
+    expect(JSON.stringify(parts)).not.toContain(secretUrl);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({
+        type: 'image_url',
+        image_url: expect.objectContaining({ url: secretUrl }),
+      }),
+    );
+  });
+
+  it('redacts data image attachments into text parts instead of image_url parts', async () => {
+    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
+
+    await generateReply({
+      backend: {
+        type: 'llm',
+        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'caption',
+          attachments: [
+            {
+              url: dataUrl,
+              filename: 'photo.png',
+              contentType: 'image/png',
+              safeDisplayUrl: '[inline image/png attachment: photo.png]',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    const parts = request.messages[0].content;
+    expect(parts).toEqual([
+      { type: 'text', text: 'caption' },
+      { type: 'text', text: '[Attached image: [inline image/png attachment: photo.png]]' },
+    ]);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({
+        type: 'image_url',
+        image_url: expect.objectContaining({ url: expect.stringContaining('data:') }),
+      }),
+    );
+  });
+
+  it('redacts data image attachments for openclaw backends too', async () => {
+    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
+
+    await generateReply({
+      backend: {
+        type: 'openclaw',
+        config: { baseUrl: 'https://openclaw.local', apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'caption',
+          attachments: [
+            {
+              url: dataUrl,
+              filename: 'photo.png',
+              contentType: 'image/png',
+              safeDisplayUrl: '[inline image/png attachment: photo.png]',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    const parts = request.messages[0].content;
+    expect(parts).toEqual([
+      { type: 'text', text: 'caption' },
+      { type: 'text', text: '[Attached image: [inline image/png attachment: photo.png]]' },
+    ]);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({
+        type: 'image_url',
+        image_url: expect.objectContaining({ url: expect.stringContaining('data:') }),
+      }),
+    );
+  });
+
+  it('represents non-image attachments as safe display text only', async () => {
+    await generateReply({
+      backend: {
+        type: 'llm',
+        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'see attached',
+          attachments: [
+            {
+              url: 'https://cdn.example.com/file.pdf?token=secret',
+              filename: 'file.pdf',
+              contentType: 'application/pdf',
+              safeDisplayUrl: 'https://cdn.example.com/file.pdf',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    expect(request.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'see attached' },
+          { type: 'text', text: '[Attached file: https://cdn.example.com/file.pdf]' },
+        ],
+      },
+    ]);
   });
 });

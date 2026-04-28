@@ -22,11 +22,22 @@ import {
   normalizeWechatEcloudWebhook,
   timingSafeEqualString,
 } from '../lib/wechat-ecloud-webhook.js';
+import { normalizeInboundAttachments } from '../lib/inbound-attachments.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
 
 const LINQ_REPLAY_WINDOW_SECONDS = 300;
+
+interface EvolutionMediaMessage {
+  url?: unknown;
+  caption?: unknown;
+  mimetype?: unknown;
+  fileLength?: unknown;
+  fileName?: unknown;
+  filename?: unknown;
+  title?: unknown;
+}
 
 interface EvolutionWebhookData {
   key?: {
@@ -40,6 +51,10 @@ interface EvolutionWebhookData {
     extendedTextMessage?: {
       text?: string;
     };
+    imageMessage?: EvolutionMediaMessage;
+    audioMessage?: EvolutionMediaMessage;
+    videoMessage?: EvolutionMediaMessage;
+    documentMessage?: EvolutionMediaMessage;
   };
   messageType?: string;
 }
@@ -107,14 +122,109 @@ function normalizeEvolutionExternalId(remoteJid: string): string {
   return digitsOnly || remoteJid;
 }
 
-function readEvolutionText(data: EvolutionWebhookData): string | null {
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readFiniteSize(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function looksLikeDataUrl(value: string): boolean {
+  return /^data:/i.test(value.replace(/[\u0000-\u001f\u007f]/g, '').trim());
+}
+
+function hasDataUrlAttachment(rawAttachments: unknown): boolean {
+  if (!Array.isArray(rawAttachments)) return false;
+
+  return rawAttachments.some((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+    const url = (raw as Record<string, unknown>)['url'];
+    return typeof url === 'string' && looksLikeDataUrl(url);
+  });
+}
+
+function readEvolutionText(data: EvolutionWebhookData): string {
   const conversation = data.message?.conversation?.trim();
   if (conversation) {
     return conversation;
   }
 
   const extendedText = data.message?.extendedTextMessage?.text?.trim();
-  return extendedText || null;
+  if (extendedText) {
+    return extendedText;
+  }
+
+  const imageCaption = data.message?.imageMessage?.caption;
+  if (typeof imageCaption === 'string' && imageCaption.trim()) {
+    return imageCaption.trim();
+  }
+
+  const audioCaption = data.message?.audioMessage?.caption;
+  if (typeof audioCaption === 'string' && audioCaption.trim()) {
+    return audioCaption.trim();
+  }
+
+  const videoCaption = data.message?.videoMessage?.caption;
+  if (typeof videoCaption === 'string' && videoCaption.trim()) {
+    return videoCaption.trim();
+  }
+
+  const documentCaption = data.message?.documentMessage?.caption;
+  if (typeof documentCaption === 'string' && documentCaption.trim()) {
+    return documentCaption.trim();
+  }
+
+  return '';
+}
+
+function readEvolutionMediaMessages(data: EvolutionWebhookData): EvolutionMediaMessage[] {
+  const message = data.message;
+  if (!message) return [];
+
+  return [
+    message.imageMessage,
+    message.audioMessage,
+    message.videoMessage,
+    message.documentMessage,
+  ].filter((media): media is EvolutionMediaMessage => Boolean(media));
+}
+
+function hasEvolutionDataUrlMedia(data: EvolutionWebhookData): boolean {
+  return readEvolutionMediaMessages(data).some((media) => {
+    const url = readNonEmptyString(media.url);
+    return url ? looksLikeDataUrl(url) : false;
+  });
+}
+
+function readEvolutionAttachments(data: EvolutionWebhookData): unknown[] {
+  return readEvolutionMediaMessages(data).flatMap((media) => {
+    const url = readNonEmptyString(media?.url);
+    if (!url) return [];
+
+    const filename =
+      readNonEmptyString(media?.fileName) ??
+      readNonEmptyString(media?.filename) ??
+      readNonEmptyString(media?.title);
+    const contentType = readNonEmptyString(media?.mimetype);
+    const size = readFiniteSize(media?.fileLength);
+
+    return [
+      {
+        url,
+        ...(filename ? { filename } : {}),
+        ...(contentType ? { contentType } : {}),
+        ...(size !== undefined ? { size } : {}),
+      },
+    ];
+  });
 }
 
 function isPrismaUniqueConstraintError(error: unknown): boolean {
@@ -308,7 +418,18 @@ export const gatewayRouter = new Hono()
     }
 
     const text = readEvolutionText(data);
-    if (!text) {
+    if (hasEvolutionDataUrlMedia(data)) {
+      return c.json({ ok: true });
+    }
+
+    const attachmentResult = normalizeInboundAttachments(readEvolutionAttachments(data), {
+      allowDataUrls: false,
+    });
+    if (attachmentResult.rejected) {
+      return c.json({ ok: true });
+    }
+    const attachments = attachmentResult.attachments;
+    if (!text.trim() && attachments.length === 0) {
       return c.json({ ok: true });
     }
 
@@ -318,6 +439,12 @@ export const gatewayRouter = new Hono()
         externalId: normalizeEvolutionExternalId(remoteJid),
         displayName: data.pushName,
         text,
+        ...(attachments.length
+          ? {
+              attachments,
+              attachmentPolicy: { allowDataUrls: false },
+            }
+          : {}),
         meta: {
           platform: 'whatsapp_evolution',
           instanceName: channelConfig.instanceName,

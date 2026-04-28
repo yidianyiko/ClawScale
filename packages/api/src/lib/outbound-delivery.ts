@@ -21,12 +21,48 @@ function normalizeWhatsAppTarget(value: string): string {
   return digits;
 }
 
+export type OutboundMessagePayload = {
+  text: string;
+  messageType: 'text' | 'image' | 'voice';
+  mediaUrls: string[];
+  audioAsVoice: boolean;
+};
+
+function normalizeOutboundPayload(payload: string | OutboundMessagePayload): OutboundMessagePayload {
+  if (typeof payload === 'string') {
+    return {
+      text: payload,
+      messageType: 'text',
+      mediaUrls: [],
+      audioAsVoice: false,
+    };
+  }
+
+  return {
+    ...payload,
+    mediaUrls: payload.mediaUrls ?? [],
+  };
+}
+
+function formatTextWithAttachmentLinks(text: string, mediaUrls: string[]): string {
+  const trimmedText = text.trim();
+  const attachmentText = mediaUrls.map((url) => `Attachment: ${url}`).join('\n');
+  if (!trimmedText) return attachmentText;
+  if (!attachmentText) return trimmedText;
+  return `${trimmedText}\n\n${attachmentText}`;
+}
+
 export async function deliverOutboundMessage(
   channel: { id: string; type: string; status?: string; config?: unknown },
   externalEndUserId: string,
-  text: string,
+  payload: string | OutboundMessagePayload,
 ): Promise<void> {
   assertConnectedChannel(channel);
+  const normalizedPayload = normalizeOutboundPayload(payload);
+  const text =
+    normalizedPayload.mediaUrls.length > 0
+      ? formatTextWithAttachmentLinks(normalizedPayload.text, normalizedPayload.mediaUrls)
+      : normalizedPayload.text;
 
   switch (channel.type) {
     case 'wechat_personal':
@@ -60,6 +96,9 @@ export async function deliverOutboundMessage(
       return;
     }
     default:
+      if (normalizedPayload.mediaUrls.length > 0) {
+        throw new Error(`Unsupported outbound media for channel type: ${channel.type}`);
+      }
       throw new Error(`Unsupported outbound channel type: ${channel.type}`);
   }
 }
