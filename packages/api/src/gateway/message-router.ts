@@ -14,6 +14,7 @@ import * as lineSdk from '@line/bot-sdk';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
 import { EvolutionApiClient } from '../lib/evolution-api.js';
+import { normalizeInboundAttachments } from '../lib/inbound-attachments.js';
 import { getLineBot, handleLineEvents } from '../adapters/line.js';
 import { getTeamsBot, handleTeamsActivity } from '../adapters/teams.js';
 import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-business.js';
@@ -21,9 +22,20 @@ import { verifyWebhook, handleWABusinessWebhook } from '../adapters/whatsapp-bus
 const inboundSchema = z.object({
   externalId: z.string().min(1),
   displayName: z.string().optional(),
-  text: z.string().min(1),
+  text: z.string().default(''),
+  attachments: z.array(z.unknown()).optional(),
   meta: z.record(z.unknown()).default({}),
 });
+
+interface EvolutionMediaMessage {
+  url?: unknown;
+  caption?: unknown;
+  mimetype?: unknown;
+  fileLength?: unknown;
+  fileName?: unknown;
+  filename?: unknown;
+  title?: unknown;
+}
 
 interface EvolutionWebhookData {
   key?: {
@@ -37,6 +49,10 @@ interface EvolutionWebhookData {
     extendedTextMessage?: {
       text?: string;
     };
+    imageMessage?: EvolutionMediaMessage;
+    audioMessage?: EvolutionMediaMessage;
+    videoMessage?: EvolutionMediaMessage;
+    documentMessage?: EvolutionMediaMessage;
   };
   messageType?: string;
 }
@@ -97,14 +113,91 @@ function normalizeEvolutionExternalId(remoteJid: string): string {
   return digitsOnly || remoteJid;
 }
 
-function readEvolutionText(data: EvolutionWebhookData): string | null {
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readFiniteSize(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function hasDataUrlAttachment(rawAttachments: unknown): boolean {
+  if (!Array.isArray(rawAttachments)) return false;
+
+  return rawAttachments.some((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+    const url = (raw as Record<string, unknown>)['url'];
+    return typeof url === 'string' && /^data:/i.test(url.trim());
+  });
+}
+
+function readEvolutionText(data: EvolutionWebhookData): string {
   const conversation = data.message?.conversation?.trim();
   if (conversation) {
     return conversation;
   }
 
   const extendedText = data.message?.extendedTextMessage?.text?.trim();
-  return extendedText || null;
+  if (extendedText) {
+    return extendedText;
+  }
+
+  const imageCaption = data.message?.imageMessage?.caption;
+  if (typeof imageCaption === 'string' && imageCaption.trim()) {
+    return imageCaption.trim();
+  }
+
+  const videoCaption = data.message?.videoMessage?.caption;
+  if (typeof videoCaption === 'string' && videoCaption.trim()) {
+    return videoCaption.trim();
+  }
+
+  const documentCaption = data.message?.documentMessage?.caption;
+  if (typeof documentCaption === 'string' && documentCaption.trim()) {
+    return documentCaption.trim();
+  }
+
+  return '';
+}
+
+function readEvolutionAttachments(data: EvolutionWebhookData): unknown[] {
+  const message = data.message;
+  if (!message) return [];
+
+  const mediaMessages = [
+    message.imageMessage,
+    message.audioMessage,
+    message.videoMessage,
+    message.documentMessage,
+  ];
+
+  return mediaMessages.flatMap((media) => {
+    const url = readNonEmptyString(media?.url);
+    if (!url) return [];
+
+    const filename =
+      readNonEmptyString(media?.fileName) ??
+      readNonEmptyString(media?.filename) ??
+      readNonEmptyString(media?.title);
+    const contentType = readNonEmptyString(media?.mimetype);
+    const size = readFiniteSize(media?.fileLength);
+
+    return [
+      {
+        url,
+        ...(filename ? { filename } : {}),
+        ...(contentType ? { contentType } : {}),
+        ...(size !== undefined ? { size } : {}),
+      },
+    ];
+  });
 }
 
 export const gatewayRouter = new Hono()
@@ -173,7 +266,14 @@ export const gatewayRouter = new Hono()
     }
 
     const text = readEvolutionText(data);
-    if (!text) {
+    const attachmentResult = normalizeInboundAttachments(readEvolutionAttachments(data), {
+      allowDataUrls: false,
+    });
+    if (attachmentResult.rejected) {
+      return c.json({ ok: true });
+    }
+    const attachments = attachmentResult.attachments;
+    if (!text.trim() && attachments.length === 0) {
       return c.json({ ok: true });
     }
 
@@ -183,6 +283,12 @@ export const gatewayRouter = new Hono()
         externalId: normalizeEvolutionExternalId(remoteJid),
         displayName: data.pushName,
         text,
+        ...(attachments.length
+          ? {
+              attachments,
+              attachmentPolicy: { allowDataUrls: false },
+            }
+          : {}),
         meta: {
           platform: 'whatsapp_evolution',
           instanceName: channelConfig.instanceName,
@@ -249,12 +355,33 @@ export const gatewayRouter = new Hono()
   .post('/:channelId', zValidator('json', inboundSchema), async (c) => {
     const channelId = c.req.param('channelId');
     const body = c.req.valid('json');
+    if (hasDataUrlAttachment(body.attachments)) {
+      return c.json({ ok: false, error: 'Invalid attachments' }, 400);
+    }
+
+    const attachmentResult = normalizeInboundAttachments(body.attachments, {
+      allowDataUrls: false,
+    });
+    if (attachmentResult.rejected) {
+      return c.json({ ok: false, error: 'Invalid attachments' }, 400);
+    }
+
+    const attachments = attachmentResult.attachments;
+    if (!body.text.trim() && attachments.length === 0) {
+      return c.json({ ok: false, error: 'Message text or attachment is required' }, 400);
+    }
 
     const result = await routeInboundMessage({
       channelId,
       externalId: body.externalId,
       displayName: body.displayName,
       text: body.text,
+      ...(attachments.length
+        ? {
+            attachments,
+            attachmentPolicy: { allowDataUrls: false },
+          }
+        : {}),
       meta: body.meta,
     });
 
