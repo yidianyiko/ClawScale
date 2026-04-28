@@ -249,6 +249,196 @@ describe('routeInboundMessage', () => {
     expect(db.endUser.findUnique).not.toHaveBeenCalled();
   });
 
+  it('normalizes and persists inbound attachments before backend dispatch', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.message.findMany.mockImplementation(async () => {
+      const created = db.message.create.mock.calls[0]?.[0]?.data;
+      return created ? [{ role: created.role, content: created.content, metadata: created.metadata }] : [];
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'caption',
+      attachments: [
+        { url: ' https://cdn.example.com/photo.jpg ', filename: '', contentType: 'image/jpeg' },
+        { url: 'file:///tmp/secret.png', filename: 'secret.png', contentType: 'image/png' },
+      ],
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    const normalizedAttachment = {
+      url: 'https://cdn.example.com/photo.jpg',
+      filename: 'attachment',
+      contentType: 'image/jpeg',
+      safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+    };
+
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: 'user',
+          content: 'caption',
+          metadata: expect.objectContaining({
+            attachments: [normalizedAttachment],
+          }),
+        }),
+      }),
+    );
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        history: [
+          {
+            role: 'user',
+            content: 'caption',
+            attachments: [normalizedAttachment],
+          },
+        ],
+      }),
+    );
+  });
+
+  it('allows trusted adapter data URLs but persists redacted safe display URL', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'caption',
+      attachments: [{ url: dataUrl, filename: 'photo.png', contentType: 'image/png' }],
+      attachmentPolicy: { allowDataUrls: true },
+      meta: { platform: 'wechat_personal' },
+    });
+
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            attachments: [
+              {
+                url: dataUrl,
+                filename: 'photo.png',
+                contentType: 'image/png',
+                safeDisplayUrl: '[inline image/png attachment: photo.png]',
+                size: 3,
+              },
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('does not trust meta to allow data URL attachments', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'caption',
+      attachments: [{ url: dataUrl, filename: 'photo.png', contentType: 'image/png' }],
+      meta: { platform: 'wechat_personal', allowDataUrls: true, attachmentPolicy: { allowDataUrls: true } },
+    });
+
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.not.objectContaining({
+            attachments: expect.anything(),
+          }),
+        }),
+      }),
+    );
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        history: [],
+      }),
+    );
+  });
+
+  it('drops all attachments at the route boundary when normalization hard rejects', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    const attachments = Array.from({ length: 5 }, (_, index) => ({
+      url: `https://cdn.example.com/${index}.jpg`,
+      filename: `photo-${index}.jpg`,
+      contentType: 'image/jpeg',
+    }));
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'caption',
+      attachments,
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.not.objectContaining({
+            attachments: expect.anything(),
+          }),
+        }),
+      }),
+    );
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        history: [],
+      }),
+    );
+  });
+
   it('threads the provisioned shared-channel customerId into downstream routing metadata', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',

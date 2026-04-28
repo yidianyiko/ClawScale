@@ -38,6 +38,7 @@ export interface HistoryAttachment {
   filename: string;
   contentType: string;
   size?: number;
+  safeDisplayUrl?: string;
 }
 
 export type HistoryMessage = {
@@ -340,18 +341,21 @@ async function runPalmosRegister(
  */
 /** Convert a history message to an OpenAI-compatible message with multimodal content. */
 function toOpenAiMessage(m: HistoryMessage): { role: 'user' | 'assistant'; content: any } {
-  const imageAttachments = m.attachments?.filter((a) => a.contentType.startsWith('image/')) ?? [];
-  if (m.role === 'user' && imageAttachments.length > 0) {
+  const attachments = m.attachments ?? [];
+  if (m.role === 'user' && attachments.length > 0) {
     const parts: any[] = [];
     if (m.content) parts.push({ type: 'text', text: m.content });
-    for (const att of imageAttachments) {
-      parts.push({ type: 'image_url', image_url: { url: att.url } });
-    }
-    // Include non-image attachments as text references
-    const nonImage = m.attachments?.filter((a) => !a.contentType.startsWith('image/')) ?? [];
-    if (nonImage.length > 0) {
-      const refs = nonImage.map((a) => `[Attached file: ${a.filename} (${a.contentType})]`).join('\n');
-      parts.push({ type: 'text', text: refs });
+    for (const att of attachments) {
+      const isImage = att.contentType.startsWith('image/');
+      const isRemoteHttpImage =
+        isImage && (att.url.startsWith('http://') || att.url.startsWith('https://'));
+      if (isRemoteHttpImage) {
+        parts.push({ type: 'image_url', image_url: { url: att.url } });
+      } else if (isImage) {
+        parts.push({ type: 'text', text: `[Attached image: ${att.safeDisplayUrl ?? att.url}]` });
+      } else {
+        parts.push({ type: 'text', text: `[Attached file: ${att.safeDisplayUrl ?? att.url}]` });
+      }
     }
     return { role: m.role, content: parts };
   }
