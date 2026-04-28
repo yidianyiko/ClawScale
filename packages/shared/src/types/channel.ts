@@ -5,6 +5,7 @@ export type ChannelType =
   | 'whatsapp'
   | 'whatsapp_business'
   | 'whatsapp_evolution'
+  | 'wechat_ecloud'
   | 'telegram'
   | 'slack'
   | 'discord'
@@ -60,6 +61,14 @@ export const CHANNEL_CONFIG_SCHEMA: Record<ChannelType, { label: string; fields:
   whatsapp_evolution: {
     label: 'WhatsApp Evolution',
     fields: [],
+  },
+  wechat_ecloud: {
+    label: 'WeChat Ecloud',
+    fields: [
+      { key: 'appId', label: 'App ID', type: 'text', required: true, placeholder: '' },
+      { key: 'token', label: 'Token', type: 'password', required: true, placeholder: '' },
+      { key: 'baseUrl', label: 'Base URL', type: 'text', required: false, placeholder: 'https://api.geweapi.com' },
+    ],
   },
   telegram: {
     label: 'Telegram Bot',

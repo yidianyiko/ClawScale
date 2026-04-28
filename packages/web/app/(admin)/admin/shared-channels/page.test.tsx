@@ -201,4 +201,85 @@ describe('AdminSharedChannelsPage', () => {
     });
     expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_evo');
   });
+
+  it('creates wechat_ecloud shared channels with typed config fields', async () => {
+    vi.mocked(adminApi.post).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        kind: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T11:00:00.000Z',
+        updatedAt: '2026-04-16T11:00:00.000Z',
+      },
+    });
+
+    flushSync(() => {
+      root.render(
+        <LocaleProvider initialLocale="en">
+          <AdminSharedChannelsPage />
+        </LocaleProvider>,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Shared channels');
+    });
+
+    (container.querySelector('button[data-testid="open-create-shared-channel"]') as HTMLButtonElement).click();
+    await waitForEffects();
+
+    const kindInput = container.querySelector('#shared-channel-kind') as HTMLSelectElement;
+    kindInput.value = 'wechat_ecloud';
+    kindInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('#shared-channel-ecloud-app-id')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-ecloud-token')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-ecloud-base-url')).toBeTruthy();
+      expect(container.querySelector('#shared-channel-config')).toBeNull();
+    });
+
+    const nameInput = container.querySelector('#shared-channel-name') as HTMLInputElement;
+    const agentInput = container.querySelector('#shared-channel-agent-id') as HTMLInputElement;
+    const appIdInput = container.querySelector('#shared-channel-ecloud-app-id') as HTMLInputElement;
+    const tokenInput = container.querySelector('#shared-channel-ecloud-token') as HTMLInputElement;
+    const baseUrlInput = container.querySelector('#shared-channel-ecloud-base-url') as HTMLInputElement;
+    expect(tokenInput.type).toBe('password');
+    expect(tokenInput.autocomplete).toBe('new-password');
+    nameInput.value = 'Ecloud WeChat';
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.value = 'agent_coke';
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+    appIdInput.value = 'app_1';
+    appIdInput.dispatchEvent(new Event('input', { bubbles: true }));
+    tokenInput.value = 'token_1';
+    tokenInput.dispatchEvent(new Event('input', { bubbles: true }));
+    baseUrlInput.value = 'https://api.geweapi.com';
+    baseUrlInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitForEffects();
+
+    expect(vi.mocked(adminApi.post)).toHaveBeenCalledWith('/api/admin/shared-channels', {
+      name: 'Ecloud WeChat',
+      kind: 'wechat_ecloud',
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+      },
+    });
+    expect(pushMock).toHaveBeenCalledWith('/admin/shared-channels/detail?id=ch_ecloud');
+  });
 });

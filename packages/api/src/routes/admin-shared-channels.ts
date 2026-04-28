@@ -13,6 +13,14 @@ import {
   type StoredWhatsAppEvolutionConfig,
   type WhatsAppEvolutionConfig,
 } from '../lib/whatsapp-evolution-config.js';
+import {
+  buildPublicWechatEcloudConfig,
+  ensureStoredWechatEcloudConfig,
+  hasWechatEcloudWebhookToken,
+  parseStoredWechatEcloudConfig,
+  parseWechatEcloudConfigInput,
+  type StoredWechatEcloudConfig,
+} from '../lib/wechat-ecloud-config.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
 const CHANNEL_KIND_VALUES = [
@@ -31,6 +39,7 @@ const CHANNEL_KIND_VALUES = [
   'whatsapp_business',
   'whatsapp_evolution',
   'wechat_personal',
+  'wechat_ecloud',
 ] as const;
 
 const sharedChannelSelect = {
@@ -145,6 +154,41 @@ function buildStoredEvolutionConfig(
   };
 }
 
+function buildStoredEcloudConfig(
+  config: StoredWechatEcloudConfig,
+): Prisma.InputJsonObject & StoredWechatEcloudConfig {
+  return {
+    appId: config.appId,
+    token: config.token,
+    baseUrl: config.baseUrl,
+    webhookToken: config.webhookToken,
+  };
+}
+
+function parseEcloudConfigInput(config: Record<string, unknown>) {
+  if ('webhookToken' in config) {
+    return {
+      ok: false as const,
+      response: { ok: false as const, error: 'webhook_token_not_mutable' },
+    };
+  }
+
+  try {
+    return {
+      ok: true as const,
+      data: parseWechatEcloudConfigInput(config),
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      response: {
+        ok: false as const,
+        error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+      },
+    };
+  }
+}
+
 async function ensureEvolutionWebhookToken(
   channel: SharedChannelRow,
 ): Promise<{ channel: SharedChannelRow; config: StoredWhatsAppEvolutionConfig }> {
@@ -235,6 +279,25 @@ function serializeSharedChannel(
     };
   }
 
+  if (row.type === 'wechat_ecloud') {
+    try {
+      parseStoredWechatEcloudConfig(row.config);
+    } catch {
+      return {
+        ...base,
+        ...(options?.includeConfig ? { config: {} } : {}),
+        hasWebhookToken: false,
+        configError: 'invalid_wechat_ecloud_config',
+      };
+    }
+
+    return {
+      ...base,
+      ...(options?.includeConfig ? { config: buildPublicWechatEcloudConfig(row.config) } : {}),
+      hasWebhookToken: hasWechatEcloudWebhookToken(row.config),
+    };
+  }
+
   return {
     ...base,
     ...(options?.includeConfig ? { config: row.config ?? {} } : {}),
@@ -315,6 +378,15 @@ export const adminSharedChannelsRouter = new Hono()
       }
 
       config = buildStoredEvolutionConfig(parsedConfig.data.instanceName, randomUUID());
+    } else if (parsedBody.data.kind === 'wechat_ecloud') {
+      const parsedConfig = parseEcloudConfigInput(parsedBody.data.config);
+      if (!parsedConfig.ok) {
+        return c.json(parsedConfig.response, 400);
+      }
+
+      config = buildStoredEcloudConfig(
+        ensureStoredWechatEcloudConfig(parsedConfig.data, randomUUID),
+      );
     }
 
     const created = await db.channel.create({
@@ -350,6 +422,21 @@ export const adminSharedChannelsRouter = new Hono()
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
 
+    let ecloudStoredConfig: StoredWechatEcloudConfig | undefined;
+    if (existing.type === 'wechat_ecloud') {
+      try {
+        ecloudStoredConfig = parseStoredWechatEcloudConfig(existing.config);
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+          },
+          409,
+        );
+      }
+    }
+
     let config: Prisma.InputJsonValue | undefined;
     if (parsedBody.data.config !== undefined) {
       if (existing.type === 'whatsapp_evolution') {
@@ -373,6 +460,38 @@ export const adminSharedChannelsRouter = new Hono()
         config = buildStoredEvolutionConfig(
           parsedConfig.data.instanceName,
           storedConfig.webhookToken,
+        );
+      } else if (existing.type === 'wechat_ecloud') {
+        if ('webhookToken' in parsedBody.data.config) {
+          return c.json({ ok: false, error: 'webhook_token_not_mutable' }, 400);
+        }
+        if ('token' in parsedBody.data.config) {
+          return c.json({ ok: false, error: 'token_not_mutable' }, 400);
+        }
+        if (existing.status === 'connected') {
+          return c.json({ ok: false, error: 'disconnect_before_config_change' }, 409);
+        }
+
+        const storedConfig = ecloudStoredConfig;
+        if (!storedConfig) {
+          return c.json({ ok: false, error: 'invalid_wechat_ecloud_config' }, 409);
+        }
+
+        const mergedConfig = {
+          appId:
+            typeof parsedBody.data.config.appId === 'string'
+              ? parsedBody.data.config.appId
+              : storedConfig.appId,
+          token: storedConfig.token,
+          baseUrl:
+            typeof parsedBody.data.config.baseUrl === 'string'
+              ? parsedBody.data.config.baseUrl
+              : storedConfig.baseUrl,
+          webhookToken: storedConfig.webhookToken,
+        };
+
+        config = buildStoredEcloudConfig(
+          ensureStoredWechatEcloudConfig(mergedConfig, () => storedConfig.webhookToken),
         );
       } else {
         config = parsedBody.data.config as Prisma.InputJsonValue;
@@ -401,11 +520,36 @@ export const adminSharedChannelsRouter = new Hono()
     if (!existing) {
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
-    if (existing.type !== 'whatsapp_evolution') {
+    if (existing.type !== 'whatsapp_evolution' && existing.type !== 'wechat_ecloud') {
       return c.json({ ok: false, error: 'unsupported_shared_channel_kind' }, 409);
     }
     if (existing.status === 'connected') {
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
+    }
+
+    if (existing.type === 'wechat_ecloud') {
+      try {
+        parseStoredWechatEcloudConfig(existing.config);
+      } catch (error) {
+        return c.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : 'invalid_wechat_ecloud_config',
+          },
+          409,
+        );
+      }
+
+      const updated = (await db.channel.update({
+        where: { id: existing.id },
+        data: { status: 'connected' },
+        select: sharedChannelSelect,
+      })) as SharedChannelRow;
+
+      return c.json({
+        ok: true,
+        data: serializeSharedChannel(updated as never, { includeConfig: true }),
+      });
     }
 
     const client = new EvolutionApiClient();
@@ -440,11 +584,24 @@ export const adminSharedChannelsRouter = new Hono()
     if (!existing) {
       return c.json({ ok: false, error: 'shared_channel_not_found' }, 404);
     }
-    if (existing.type !== 'whatsapp_evolution') {
+    if (existing.type !== 'whatsapp_evolution' && existing.type !== 'wechat_ecloud') {
       return c.json({ ok: false, error: 'unsupported_shared_channel_kind' }, 409);
     }
     if (existing.status === 'disconnected') {
       return c.json({ ok: true, data: serializeSharedChannel(existing as never, { includeConfig: true }) });
+    }
+
+    if (existing.type === 'wechat_ecloud') {
+      const updated = (await db.channel.update({
+        where: { id: existing.id },
+        data: { status: 'disconnected' },
+        select: sharedChannelSelect,
+      })) as SharedChannelRow;
+
+      return c.json({
+        ok: true,
+        data: serializeSharedChannel(updated as never, { includeConfig: true }),
+      });
     }
 
     const client = new EvolutionApiClient();

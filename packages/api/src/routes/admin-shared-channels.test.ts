@@ -105,6 +105,54 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('lists malformed wechat_ecloud rows with safe config error metadata', async () => {
+    db.channel.findMany.mockResolvedValue([
+      {
+        id: 'ch_ecloud_legacy',
+        name: 'Legacy Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      },
+    ]);
+    db.channel.count.mockResolvedValue(1);
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels?limit=20&offset=0');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            id: 'ch_ecloud_legacy',
+            kind: 'wechat_ecloud',
+            hasWebhookToken: false,
+            configError: 'invalid_wechat_ecloud_config',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
+  });
+
   it('returns shared channel details for the configuration page', async () => {
     db.channel.findUnique.mockResolvedValue({
       id: 'ch_1',
@@ -154,6 +202,48 @@ describe('admin shared channels route', () => {
         updatedAt: '2026-04-16T10:00:00.000Z',
       },
     });
+  });
+
+  it('returns malformed wechat_ecloud detail with safe config error metadata', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_ecloud_legacy',
+      name: 'Legacy Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud_legacy');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_ecloud_legacy',
+        kind: 'wechat_ecloud',
+        config: {},
+        hasWebhookToken: false,
+        configError: 'invalid_wechat_ecloud_config',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
   });
 
   it('scrubs webhookToken from shared channel detail responses', async () => {
@@ -430,6 +520,140 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('creates wechat_ecloud shared channels with scrubbed public config and generated webhook tokens', async () => {
+    db.channel.create.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      name: 'Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+        webhookToken: 'token_uuid_1',
+      },
+      createdAt: new Date('2026-04-16T11:45:00.000Z'),
+      updatedAt: new Date('2026-04-16T11:45:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        kind: 'wechat_ecloud',
+        name: 'Ecloud WeChat',
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+        },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        kind: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.geweapi.com',
+          callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+        },
+        hasWebhookToken: true,
+        createdAt: '2026-04-16T11:45:00.000Z',
+        updatedAt: '2026-04-16T11:45:00.000Z',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
+    expect(JSON.stringify(body)).not.toContain('token_uuid_1');
+    expect(db.channel.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'wechat_ecloud',
+        status: 'disconnected',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'token_uuid_1',
+        },
+      }),
+      select: expect.any(Object),
+    });
+  });
+
+  it('serializes wechat_ecloud details without exposing token or webhookToken', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      name: 'Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'connected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.example.test',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      data: {
+        id: 'ch_ecloud',
+        kind: 'wechat_ecloud',
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.example.test',
+          callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+        },
+        hasWebhookToken: true,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
+    expect(JSON.stringify(body)).not.toContain('secret-token');
+  });
+
   it('updates shared channel configuration without changing shared ownership', async () => {
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_1',
@@ -594,6 +818,282 @@ describe('admin shared channels route', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'disconnect_before_instance_change' });
+    expect(db.channel.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects wechat_ecloud token and webhookToken patch attempts', async () => {
+    const row = {
+      id: 'ch_ecloud',
+      name: 'Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    };
+    db.channel.findUnique.mockResolvedValueOnce(row).mockResolvedValueOnce(row);
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const tokenRes = await app.request('/api/admin/shared-channels/ch_ecloud', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          appId: 'app_1',
+          token: 'token_2',
+          baseUrl: 'https://api.geweapi.com',
+        },
+      }),
+    });
+    const webhookTokenRes = await app.request('/api/admin/shared-channels/ch_ecloud', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          appId: 'app_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'new-secret',
+        },
+      }),
+    });
+
+    expect(tokenRes.status).toBe(400);
+    await expect(tokenRes.json()).resolves.toEqual({ ok: false, error: 'token_not_mutable' });
+    expect(webhookTokenRes.status).toBe(400);
+    await expect(webhookTokenRes.json()).resolves.toEqual({ ok: false, error: 'webhook_token_not_mutable' });
+    expect(db.channel.update).not.toHaveBeenCalled();
+  });
+
+  it('updates wechat_ecloud public config while disconnected and refuses config changes while connected', async () => {
+    db.channel.findUnique
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_2',
+          token: 'token_1',
+          baseUrl: 'https://api.example.test',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      });
+    db.channel.update.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      name: 'Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_2',
+        token: 'token_1',
+        baseUrl: 'https://api.example.test',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T12:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const updateRes = await app.request('/api/admin/shared-channels/ch_ecloud', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          appId: 'app_2',
+          baseUrl: 'https://api.example.test',
+        },
+      }),
+    });
+    const updateBody = await updateRes.json();
+
+    expect(updateRes.status).toBe(200);
+    expect(updateBody.data.config).toEqual({
+      appId: 'app_2',
+      baseUrl: 'https://api.example.test',
+      callbackPath: '/gateway/ecloud/wechat/:channelId/:token',
+    });
+    expect(db.channel.update).toHaveBeenCalledWith({
+      where: { id: 'ch_ecloud' },
+      data: {
+        config: {
+          appId: 'app_2',
+          token: 'token_1',
+          baseUrl: 'https://api.example.test',
+          webhookToken: 'secret-token',
+        },
+      },
+      select: expect.any(Object),
+    });
+
+    const connectedRes = await app.request('/api/admin/shared-channels/ch_ecloud', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          appId: 'app_3',
+          baseUrl: 'https://api.other.test',
+        },
+      }),
+    });
+
+    expect(connectedRes.status).toBe(409);
+    await expect(connectedRes.json()).resolves.toEqual({
+      ok: false,
+      error: 'disconnect_before_config_change',
+    });
+  });
+
+  it('returns controlled error when patching malformed legacy wechat_ecloud config', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud_legacy',
+      name: 'Legacy Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud_legacy', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        config: {
+          appId: 'app_2',
+          baseUrl: 'https://api.example.test',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_wechat_ecloud_config:webhookToken',
+    });
+    expect(db.channel.update).not.toHaveBeenCalled();
+  });
+
+  it('returns controlled error for metadata-only patch on malformed legacy wechat_ecloud config', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud_legacy',
+      name: 'Legacy Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        baseUrl: 'https://api.geweapi.com',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud_legacy', {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Renamed Ecloud WeChat',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_wechat_ecloud_config:appId',
+    });
     expect(db.channel.update).not.toHaveBeenCalled();
   });
 
@@ -867,6 +1367,180 @@ describe('admin shared channels route', () => {
     });
   });
 
+  it('connects and disconnects wechat_ecloud shared channels with local status updates only', async () => {
+    db.channel.findUnique
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      });
+    db.channel.update
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'connected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T10:30:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'ch_ecloud',
+        name: 'Ecloud WeChat',
+        type: 'wechat_ecloud',
+        status: 'disconnected',
+        ownershipKind: 'shared',
+        customerId: null,
+        agentId: 'agent_coke',
+        config: {
+          appId: 'app_1',
+          token: 'token_1',
+          baseUrl: 'https://api.geweapi.com',
+          webhookToken: 'secret-token',
+        },
+        createdAt: new Date('2026-04-16T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-16T11:00:00.000Z'),
+        agent: {
+          id: 'agent_coke',
+          slug: 'coke',
+          name: 'Coke',
+        },
+      });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const connectRes = await app.request('/api/admin/shared-channels/ch_ecloud/connect', {
+      method: 'POST',
+    });
+    const disconnectRes = await app.request('/api/admin/shared-channels/ch_ecloud/disconnect', {
+      method: 'POST',
+    });
+
+    expect(connectRes.status).toBe(200);
+    await expect(connectRes.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        kind: 'wechat_ecloud',
+        status: 'connected',
+        hasWebhookToken: true,
+      },
+    });
+    expect(disconnectRes.status).toBe(200);
+    await expect(disconnectRes.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        kind: 'wechat_ecloud',
+        status: 'disconnected',
+        hasWebhookToken: true,
+      },
+    });
+    expect(setWebhook).not.toHaveBeenCalled();
+    expect(clearWebhook).not.toHaveBeenCalled();
+    expect(db.channel.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'ch_ecloud' },
+      data: { status: 'connected' },
+      select: expect.any(Object),
+    });
+    expect(db.channel.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'ch_ecloud' },
+      data: { status: 'disconnected' },
+      select: expect.any(Object),
+    });
+  });
+
+  it('rejects legacy wechat_ecloud connect without webhookToken instead of mutating config', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud_legacy',
+      name: 'Legacy Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'disconnected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud_legacy/connect', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_wechat_ecloud_config:webhookToken',
+    });
+    expect(db.channel.update).not.toHaveBeenCalled();
+    expect(setWebhook).not.toHaveBeenCalled();
+    expect(clearWebhook).not.toHaveBeenCalled();
+  });
+
   it('restores the remote webhook when local disconnect state write fails', async () => {
     db.channel.findUnique.mockResolvedValueOnce({
       id: 'ch_1',
@@ -983,6 +1657,54 @@ describe('admin shared channels route', () => {
     });
     expect(db.channel.update).toHaveBeenCalledWith({
       where: { id: 'ch_1' },
+      data: {
+        status: 'archived',
+        config: {},
+      },
+    });
+  });
+
+  it('retires wechat_ecloud shared channels without remote calls and clears config', async () => {
+    db.channel.findUnique.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      name: 'Ecloud WeChat',
+      type: 'wechat_ecloud',
+      status: 'connected',
+      ownershipKind: 'shared',
+      customerId: null,
+      agentId: 'agent_coke',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+        webhookToken: 'secret-token',
+      },
+      createdAt: new Date('2026-04-16T09:00:00.000Z'),
+      updatedAt: new Date('2026-04-16T10:00:00.000Z'),
+      agent: {
+        id: 'agent_coke',
+        slug: 'coke',
+        name: 'Coke',
+      },
+    });
+    db.channel.update.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      status: 'archived',
+    });
+
+    const app = new Hono();
+    app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
+
+    const res = await app.request('/api/admin/shared-channels/ch_ecloud', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, data: null });
+    expect(setWebhook).not.toHaveBeenCalled();
+    expect(clearWebhook).not.toHaveBeenCalled();
+    expect(db.channel.update).toHaveBeenCalledWith({
+      where: { id: 'ch_ecloud' },
       data: {
         status: 'archived',
         config: {},

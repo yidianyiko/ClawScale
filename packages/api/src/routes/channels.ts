@@ -22,7 +22,7 @@ import { ensureStoredWhatsAppEvolutionConfig } from '../lib/whatsapp-evolution-c
 
 const CHANNEL_TYPES = [
   'whatsapp', 'whatsapp_business', 'telegram', 'slack', 'discord', 'instagram',
-  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal',
+  'facebook', 'line', 'signal', 'teams', 'matrix', 'web', 'wechat_work', 'whatsapp_evolution', 'wechat_personal', 'wechat_ecloud',
 ] as const;
 
 const createSchema = z.object({
@@ -39,6 +39,9 @@ const updateSchema = z.object({
 const evolutionConfigInputSchema = z.object({
   instanceName: z.string().trim().min(1),
 }).strict();
+
+const WECHAT_ECLOUD_GENERIC_ROUTE_ERROR =
+  'wechat_ecloud channels can only be managed through shared-channel admin routes';
 
 const channelListSelect = {
   id: true,
@@ -81,6 +84,9 @@ export const channelsRouter = new Hono()
 
     if (body.type === 'wechat_personal') {
       return c.json({ ok: false, error: 'wechat_personal channels can only be managed through existing legacy rows' }, 400);
+    }
+    if (body.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 400);
     }
 
     let config = body.config as Record<string, unknown>;
@@ -127,6 +133,10 @@ export const channelsRouter = new Hono()
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
 
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
+    }
+
     return c.json({ ok: true, data: channel });
   })
 
@@ -142,6 +152,9 @@ export const channelsRouter = new Hono()
     });
 
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (existing.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
+    }
 
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) {
@@ -194,6 +207,9 @@ export const channelsRouter = new Hono()
 
     const existing = await db.channel.findFirst({ where: { id, tenantId } });
     if (!existing) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (existing.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
+    }
 
     if (existing.type === 'wechat_personal') {
       const liveStatus = getWeixinStatus(id);
@@ -258,6 +274,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
+    }
     if (channel.status === 'archived') {
       return c.json({ ok: false, error: 'archived_channel' }, 409);
     }
@@ -368,6 +387,9 @@ export const channelsRouter = new Hono()
 
     const channel = await db.channel.findFirst({ where: { id, tenantId } });
     if (!channel) return c.json({ ok: false, error: 'Channel not found' }, 404);
+    if (channel.type === 'wechat_ecloud') {
+      return c.json({ ok: false, error: WECHAT_ECLOUD_GENERIC_ROUTE_ERROR }, 409);
+    }
     if (channel.status === 'archived') {
       return c.json({ ok: false, error: 'archived_channel' }, 409);
     }

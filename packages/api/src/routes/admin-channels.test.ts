@@ -123,6 +123,34 @@ describe('admin channels route', () => {
     });
   });
 
+  it('accepts wechat_ecloud as a kind filter', async () => {
+    db.channel.findMany.mockResolvedValue([]);
+    db.channel.count.mockResolvedValue(0);
+
+    const app = new Hono();
+    app.route('/api/admin/channels', adminChannelsRouter);
+
+    const res = await app.request('/api/admin/channels?kind=wechat_ecloud');
+
+    expect(res.status).toBe(200);
+    expect(db.channel.findMany).toHaveBeenCalledWith({
+      orderBy: { createdAt: 'desc' },
+      select: expect.any(Object),
+      skip: 0,
+      take: 50,
+      where: {
+        ownershipKind: 'customer',
+        type: 'wechat_ecloud',
+      },
+    });
+    expect(db.channel.count).toHaveBeenCalledWith({
+      where: {
+        ownershipKind: 'customer',
+        type: 'wechat_ecloud',
+      },
+    });
+  });
+
   it('rejects invalid status and kind filters', async () => {
     const app = new Hono();
     app.route('/api/admin/channels', adminChannelsRouter);

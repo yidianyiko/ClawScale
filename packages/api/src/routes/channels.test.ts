@@ -254,6 +254,65 @@ describe('channels router', () => {
     });
   });
 
+  it('rejects generic admin creation of wechat_ecloud channels', async () => {
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'wechat_ecloud',
+        name: 'Ecloud WeChat',
+        config: { appId: 'app_1', token: 'token_1' },
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'wechat_ecloud channels can only be managed through shared-channel admin routes',
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects generic wechat_ecloud detail without serializing malformed config', async () => {
+    mocks.findFirst.mockResolvedValueOnce({
+      id: 'ch_ecloud',
+      tenantId: 'tnt_1',
+      type: 'wechat_ecloud',
+      name: 'Ecloud WeChat',
+      status: 'disconnected',
+      config: {
+        token: 'token_1',
+        webhookToken: 'secret-token',
+      },
+    });
+
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    const res = await app.request('/api/channels/ch_ecloud', {
+      method: 'GET',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body).toEqual({
+      ok: false,
+      error: 'wechat_ecloud channels can only be managed through shared-channel admin routes',
+    });
+    expect(JSON.stringify(body)).not.toContain('token_1');
+    expect(JSON.stringify(body)).not.toContain('secret-token');
+  });
+
   it('backfills and preserves webhook tokens when patching whatsapp_evolution channels', async () => {
     mocks.findFirst.mockResolvedValueOnce({
       id: 'ch_1',
@@ -368,6 +427,64 @@ describe('channels router', () => {
     expect(res.status).toBe(409);
     expect(body).toEqual({ ok: false, error: 'disconnect_before_instance_change' });
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects generic wechat_ecloud patch and lifecycle routes', async () => {
+    const app = new Hono();
+    app.route('/api/channels', channelsRouter);
+
+    mocks.findFirst.mockResolvedValue({
+      id: 'ch_ecloud',
+      tenantId: 'tnt_1',
+      type: 'wechat_ecloud',
+      name: 'Ecloud WeChat',
+      status: 'disconnected',
+      config: {
+        appId: 'app_1',
+        token: 'token_1',
+        baseUrl: 'https://api.geweapi.com',
+        webhookToken: 'secret-token',
+      },
+    });
+
+    const patchRes = await app.request('/api/channels/ch_ecloud', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Renamed Ecloud',
+      }),
+    });
+    const connectRes = await app.request('/api/channels/ch_ecloud/connect', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const disconnectRes = await app.request('/api/channels/ch_ecloud/disconnect', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+    const deleteRes = await app.request('/api/channels/ch_ecloud', {
+      method: 'DELETE',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+    });
+
+    for (const res of [patchRes, connectRes, disconnectRes, deleteRes]) {
+      expect(res.status).toBe(409);
+      await expect(res.json()).resolves.toEqual({
+        ok: false,
+        error: 'wechat_ecloud channels can only be managed through shared-channel admin routes',
+      });
+    }
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
   });
 
   it('creates generic admin channels with dormant shared ownership metadata', async () => {
