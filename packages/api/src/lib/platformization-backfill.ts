@@ -8,22 +8,22 @@ import {
   summarizeLegacyBaseline,
 } from './platformization-migration.js';
 
-export interface EnsureDefaultAgentInput {
+interface EnsureDefaultAgentInput {
   endpoint: string;
   authToken: string;
 }
 
-export interface AuditLegacyBaselineInput {
+interface AuditLegacyBaselineInput {
   mongoAccountIds: string[];
 }
 
-export interface BackfillLegacyCustomersInput {
+interface BackfillLegacyCustomersInput {
   agentId: string;
   dryRun: boolean;
   cokeAccountIds?: string[];
 }
 
-export interface VerifyPlatformizationMigrationInput {
+interface VerifyPlatformizationMigrationInput {
   cokeAccountIds?: string[];
   expectedAgentId?: string;
 }

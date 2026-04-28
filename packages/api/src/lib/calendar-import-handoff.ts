@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-export const CALENDAR_IMPORT_HANDOFF_TTL_MS = 15 * 60 * 1000;
+const CALENDAR_IMPORT_HANDOFF_TTL_MS = 15 * 60 * 1000;
 
-export type CalendarImportHandoffStatus = 'pending' | 'claimed' | 'consumed';
+type CalendarImportHandoffStatus = 'pending' | 'claimed' | 'consumed';
 
-export interface CalendarImportHandoffSession {
+interface CalendarImportHandoffSession {
   id: string;
   tokenHash: string;
   status: CalendarImportHandoffStatus;
@@ -27,7 +27,7 @@ export interface CalendarImportHandoffSession {
   consumedAt?: Date | null;
 }
 
-export interface CreateCalendarImportHandoffInput {
+interface CreateCalendarImportHandoffInput {
   sourceCustomerId: string;
   tenantId: string;
   channelId: string;
@@ -37,20 +37,20 @@ export interface CreateCalendarImportHandoffInput {
   businessConversationKey: string;
 }
 
-export interface ClaimCalendarImportHandoffInput {
+interface ClaimCalendarImportHandoffInput {
   token: string;
   customerId: string;
   identityId: string;
 }
 
-export interface ResolveClaimedCalendarImportHandoffInput extends ClaimCalendarImportHandoffInput {}
+interface ResolveClaimedCalendarImportHandoffInput extends ClaimCalendarImportHandoffInput {}
 
-export interface ConsumeCalendarImportHandoffInput extends ClaimCalendarImportHandoffInput {
+interface ConsumeCalendarImportHandoffInput extends ClaimCalendarImportHandoffInput {
   targetConversationId: string;
   targetCharacterId: string;
 }
 
-export type CalendarImportHandoffErrorCode =
+type CalendarImportHandoffErrorCode =
   | 'invalid_handoff'
   | 'expired_handoff'
   | 'handoff_already_consumed'

@@ -13,7 +13,7 @@ function buildWebhookPayload(enabled: boolean, url: string) {
   };
 }
 
-export interface EvolutionWebhookConfig {
+interface EvolutionWebhookConfig {
   enabled: boolean;
   url: string;
   events: string[];
@@ -114,5 +114,3 @@ export class EvolutionApiClient {
     return response.text();
   }
 }
-
-export { EVOLUTION_WEBHOOK_EVENTS };

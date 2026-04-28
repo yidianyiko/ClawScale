@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 
 import { db } from '../db/index.js';
 
-export interface SharedChannelRuntimeVerificationSummary {
+interface SharedChannelRuntimeVerificationSummary {
   deliveryPathAssumptions: string[];
   counts: {
     queuedParkedInbounds: number;

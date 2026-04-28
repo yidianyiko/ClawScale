@@ -23,7 +23,7 @@ const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 function getWeixinBootstrapBaseUrl(): string {
   return process.env['WEIXIN_PERSONAL_BASE_URL']?.trim() || DEFAULT_BASE_URL;
 }
-export type WeixinRestoreState = 'initializing' | 'ready' | 'failed';
+type WeixinRestoreState = 'initializing' | 'ready' | 'failed';
 let weixinRestoreState: WeixinRestoreState = 'initializing';
 
 // ── State ─────────────────────────────────────────────────────────────────────

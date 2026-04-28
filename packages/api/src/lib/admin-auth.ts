@@ -3,7 +3,7 @@ import { hashPassword, verifyPassword } from './password.js';
 
 const ADMIN_JWT_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '7d';
 
-export interface AdminJwtPayload {
+interface AdminJwtPayload {
   sub: string;
   email: string;
   tokenType: 'admin';
@@ -11,7 +11,7 @@ export interface AdminJwtPayload {
   exp?: number;
 }
 
-export interface AdminAuthResult {
+interface AdminAuthResult {
   adminId: string;
   email: string;
   isActive: true;
@@ -24,12 +24,12 @@ export interface AdminSession {
   isActive: boolean;
 }
 
-export interface AuthenticateAdminInput {
+interface AuthenticateAdminInput {
   email: string;
   password: string;
 }
 
-export interface GetAdminSessionInput {
+interface GetAdminSessionInput {
   adminId: string;
 }
 
@@ -76,7 +76,7 @@ export function hashAdminPassword(password: string): Promise<string> {
   return hashPassword(password);
 }
 
-export function signAdminToken(input: { adminId: string; email: string }): string {
+function signAdminToken(input: { adminId: string; email: string }): string {
   return jwt.sign(
     {
       sub: input.adminId,

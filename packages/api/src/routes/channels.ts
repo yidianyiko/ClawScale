@@ -251,7 +251,7 @@ export const channelsRouter = new Hono()
 
   // ── POST /api/channels/:id/connect ──────────────────────────────────────────
   // Marks the channel active. The actual webhook listener is configured externally
-  // (e.g. set the webhook URL on the social platform to point at /gateway/:channelId).
+  // on the platform-specific signed or tokenized /gateway route.
   .post('/:id/connect', requireAdmin, async (c) => {
     const { tenantId, userId } = c.get('auth');
     const id = c.req.param('id')!;

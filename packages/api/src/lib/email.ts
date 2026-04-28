@@ -1,12 +1,10 @@
 import { Resend } from 'resend';
 
-export interface SendEmailInput {
+interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
 }
-
-export type SendCokeEmailInput = SendEmailInput;
 
 function getResendApiKey(): string {
   const apiKey = process.env['RESEND_API_KEY']?.trim();
@@ -43,5 +41,3 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     throw new Error('resend_send_failed:missing_id');
   }
 }
-
-export const sendCokeEmail = sendEmail;

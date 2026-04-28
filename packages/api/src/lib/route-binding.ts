@@ -11,11 +11,11 @@ export interface RouteBindingSnapshot {
   previousClawscaleUserId: string | null;
 }
 
-export interface RouteBindingDeliveryRoute {
+interface RouteBindingDeliveryRoute {
   businessConversationKey: string;
 }
 
-export interface CreateRouteBindingSnapshotInput {
+interface CreateRouteBindingSnapshotInput {
   tenantId: string;
   channelId: string;
   endUserId: string;
@@ -28,7 +28,7 @@ export interface CreateRouteBindingSnapshotInput {
   deliveryRoute?: RouteBindingDeliveryRoute | null;
 }
 
-export interface LegacyConversationRouteBindingSource {
+interface LegacyConversationRouteBindingSource {
   tenantId: string;
   channelId: string;
   endUserId: string;
@@ -41,7 +41,7 @@ export interface LegacyConversationRouteBindingSource {
   } | null;
 }
 
-export interface RouteBindingRecord {
+interface RouteBindingRecord {
   tenantId: string;
   cokeAccountId: string;
   businessConversationKey: string;
@@ -51,13 +51,13 @@ export interface RouteBindingRecord {
   isActive: boolean;
 }
 
-export interface RouteBindingBackfillConflict {
+interface RouteBindingBackfillConflict {
   cokeAccountId: string;
   businessConversationKey: string;
   records: RouteBindingRecord[];
 }
 
-export interface CollectedRouteBindingBackfill {
+interface CollectedRouteBindingBackfill {
   records: RouteBindingRecord[];
   conflicts: RouteBindingBackfillConflict[];
 }

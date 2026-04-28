@@ -4,11 +4,13 @@ import type {
   CalendarImportRunTriggerSource as PrismaCalendarImportRunTriggerSource,
 } from '@prisma/client';
 
-export type CalendarImportRunProvider = PrismaCalendarImportRunProvider;
-export type CalendarImportRunStatus = PrismaCalendarImportRunStatus;
-export type CalendarImportRunTriggerSource = PrismaCalendarImportRunTriggerSource;
+type CalendarImportRunProvider = PrismaCalendarImportRunProvider;
+type CalendarImportRunStatus = PrismaCalendarImportRunStatus;
+type CalendarImportRunTriggerSource =
+  | PrismaCalendarImportRunTriggerSource
+  | 'whatsapp_handoff';
 
-export interface CalendarImportRunRecord {
+interface CalendarImportRunRecord {
   id: string;
   customerId: string;
   identityId: string;
@@ -28,7 +30,7 @@ export interface CalendarImportRunRecord {
   updatedAt: Date;
 }
 
-export interface CalendarImportRunClient {
+interface CalendarImportRunClient {
   calendarImportRun: {
     create(args: { data: CalendarImportRunCreateData }): Promise<CalendarImportRunRecord>;
     updateMany(args: {
@@ -48,7 +50,7 @@ export interface CalendarImportRunClient {
   };
 }
 
-export interface CalendarImportRunCreateInput {
+interface CalendarImportRunCreateInput {
   customerId: string;
   identityId: string;
   targetConversationId: string;
@@ -56,17 +58,17 @@ export interface CalendarImportRunCreateInput {
   triggerSource: CalendarImportRunTriggerSource;
 }
 
-export interface CalendarImportRunImportingInput {
+interface CalendarImportRunImportingInput {
   id: string;
   providerAccountEmail?: string | null;
 }
 
-export interface CalendarImportRunBeginResult {
+interface CalendarImportRunBeginResult {
   won: boolean;
   run: CalendarImportRunRecord;
 }
 
-export interface CalendarImportRunFinishedInput {
+interface CalendarImportRunFinishedInput {
   id: string;
   status: Exclude<CalendarImportRunStatus, 'authorizing' | 'importing'>;
   providerAccountEmail?: string | null;
@@ -76,12 +78,12 @@ export interface CalendarImportRunFinishedInput {
   errorSummary?: string | null;
 }
 
-export interface CalendarImportRunLookupInput {
+interface CalendarImportRunLookupInput {
   customerId: string;
   identityId: string;
 }
 
-export interface CalendarImportRunCreateData {
+interface CalendarImportRunCreateData {
   customerId: string;
   identityId: string;
   targetConversationId: string;
@@ -91,7 +93,7 @@ export interface CalendarImportRunCreateData {
   status: CalendarImportRunStatus;
 }
 
-export interface CalendarImportRunUpdateData {
+interface CalendarImportRunUpdateData {
   status?: CalendarImportRunStatus;
   providerAccountEmail?: string | null;
   importedCount?: number;

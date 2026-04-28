@@ -18,11 +18,3 @@ export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, secret) as JwtPayload;
 }
-
-export function decodeToken(token: string): JwtPayload | null {
-  try {
-    return jwt.decode(token) as JwtPayload;
-  } catch {
-    return null;
-  }
-}

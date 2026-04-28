@@ -1,68 +1,40 @@
-export type AiBackendType = 'llm' | 'openclaw' | 'palmos'  | 'claude-code' | 'custom' | 'cli-bridge';
+export type AiBackendType = 'llm' | 'openclaw' | 'palmos' | 'claude-code' | 'custom' | 'cli-bridge';
 
-/** Transport method — how ClawScale connects to the backend. */
 export type Transport = 'http' | 'sse' | 'websocket' | 'pty-websocket';
 
-/** Response format — how ClawScale parses the backend's response. */
 export type ResponseFormat = 'json-auto' | 'langgraph' | 'raw-text';
 
 export interface AiBackendProviderConfig {
-  /** API key */
   apiKey?: string;
-  /** Model identifier (LLM / OpenClaw) */
   model?: string;
-  /** System prompt (LLM only) */
   systemPrompt?: string;
-  /** Base URL — backend endpoint */
   baseUrl?: string;
-  /** Short alias for direct messages (e.g. "gpt" so users can type gpt> hello) */
   commandAlias?: string;
-  /** Optional Authorization header value sent to the backend */
   authHeader?: string;
-  /** Transport override (used by 'custom' type) */
   transport?: Transport;
-  /** Response format override (used by 'custom' type) */
   responseFormat?: ResponseFormat;
-  /** Auto-generated token for CLI bridge authentication */
   bridgeToken?: string;
 }
 
-// ── Backend type descriptors ─────────────────────────────────────────────────
-
-export interface BackendFieldDef {
-  /** Config key this field maps to */
+interface BackendFieldDef {
   key: keyof AiBackendProviderConfig;
-  /** Display label */
   label: string;
-  /** Input type for the form */
   inputType?: 'text' | 'password' | 'textarea' | 'checkbox' | 'select';
-  /** Options for select input type */
   selectOptions?: { label: string; value: string }[];
-  /** Whether this field is required */
   required?: boolean;
-  /** Help text shown below the field */
   hint?: string;
-  /** If true, field is read-only (set by descriptor) */
   fixed?: boolean;
-  /** Default value */
   defaultValue?: string | boolean;
 }
 
 export interface BackendTypeDescriptor {
   type: AiBackendType;
-  /** Display label */
   label: string;
-  /** Default transport for this type */
   transport: Transport;
-  /** Default response format for this type */
   responseFormat: ResponseFormat;
-  /** Endpoint URL pattern — e.g. "{baseUrl}/api/agent/manager/stream" */
   endpointPattern?: string;
-  /** Config values forced by this type (not user-editable) */
   fixedConfig?: Partial<AiBackendProviderConfig>;
-  /** Form fields shown for this type */
   fields: BackendFieldDef[];
-  /** Pre-request hooks (e.g. Palmos user registration) */
   hooks?: ('palmos-register')[];
 }
 
@@ -122,7 +94,10 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
     fields: [
       { key: 'baseUrl', label: 'Endpoint URL', required: true },
       {
-        key: 'transport', label: 'Transport', inputType: 'select', required: true,
+        key: 'transport',
+        label: 'Transport',
+        inputType: 'select',
+        required: true,
         selectOptions: [
           { label: 'HTTP', value: 'http' },
           { label: 'SSE', value: 'sse' },
@@ -130,7 +105,10 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
         ],
       },
       {
-        key: 'responseFormat', label: 'Response Format', inputType: 'select', required: true,
+        key: 'responseFormat',
+        label: 'Response Format',
+        inputType: 'select',
+        required: true,
         selectOptions: [
           { label: 'JSON (auto-detect)', value: 'json-auto' },
           { label: 'LangGraph SSE', value: 'langgraph' },
@@ -152,22 +130,3 @@ export const BACKEND_TYPE_DESCRIPTORS: Record<AiBackendType, BackendTypeDescript
     ],
   },
 };
-
-export interface AiBackend {
-  id: string;
-  tenantId: string;
-  name: string;
-  type: AiBackendType;
-  config: AiBackendProviderConfig;
-  isActive: boolean;
-  /** True for the built-in ClawScale default agent (one per tenant). */
-  isDefault: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const AI_PROVIDER_LABELS: Record<AiBackendType, string> = Object.fromEntries(
-  Object.values(BACKEND_TYPE_DESCRIPTORS).map((d) => [d.type, d.label]),
-) as Record<AiBackendType, string>;
-
-export const AI_PROVIDER_TYPES: AiBackendType[] = Object.keys(BACKEND_TYPE_DESCRIPTORS) as AiBackendType[];

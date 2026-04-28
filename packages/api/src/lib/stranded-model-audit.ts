@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { db } from '../db/index.js';
 
-export interface StrandedModelCounts {
+interface StrandedModelCounts {
   conversations: number;
   messages: number;
   aiBackends: number;
@@ -10,7 +10,7 @@ export interface StrandedModelCounts {
   endUserBackends: number;
 }
 
-export interface StrandedModelAuditSummary {
+interface StrandedModelAuditSummary {
   counts: StrandedModelCounts;
   verdicts: {
     Conversation: 'migrate_route_minimum';

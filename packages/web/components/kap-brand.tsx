@@ -1,7 +1,7 @@
 import { cn } from '../lib/utils';
 
-export const KAP_KOALA_BADGE_SRC = '/kap-koala-badge.png';
-export const KAP_KOALA_HERO_SRC = '/kap-koala-hero.png';
+const KAP_KOALA_BADGE_SRC = '/kap-koala-badge.png';
+const KAP_KOALA_HERO_SRC = '/kap-koala-hero.png';
 
 export function KapKoalaBadge({
   className,

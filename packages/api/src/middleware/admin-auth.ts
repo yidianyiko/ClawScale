@@ -2,7 +2,7 @@ import type { Context, Next } from 'hono';
 import { db } from '../db/index.js';
 import { getAdminSession, verifyAdminToken, type AdminSession } from '../lib/admin-auth.js';
 
-export interface AdminAuthContext extends AdminSession {}
+interface AdminAuthContext extends AdminSession {}
 
 declare module 'hono' {
   interface ContextVariableMap {

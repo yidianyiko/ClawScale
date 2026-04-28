@@ -1,10 +1,10 @@
-export const SUPPORTED_LOCALES = ['en', 'zh'] as const;
+const SUPPORTED_LOCALES = ['en', 'zh'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'en';
 export const LOCALE_STORAGE_KEY = 'coke-locale';
 export const LOCALE_COOKIE_NAME = 'coke-locale';
-export const LOCALE_BOOTSTRAP_KEY = '__COKE_LOCALE__';
+const LOCALE_BOOTSTRAP_KEY = '__COKE_LOCALE__';
 
 type SharedButtonMessages = {
   signIn: string;
@@ -353,7 +353,7 @@ export type LocaleMessages = {
   cokeUserPages: CokeUserPagesMessages;
 };
 
-export type MessagesCatalog = Record<Locale, LocaleMessages>;
+type MessagesCatalog = Record<Locale, LocaleMessages>;
 
 export const messages: MessagesCatalog = {
   en: {
@@ -1146,7 +1146,7 @@ declare global {
   }
 }
 
-export function readSupportedLocale(value: string | null | undefined): Locale | null {
+function readSupportedLocale(value: string | null | undefined): Locale | null {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) {
     return null;

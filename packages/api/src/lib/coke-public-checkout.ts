@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 
 const PUBLIC_CHECKOUT_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '24h';
 
-export interface PublicCheckoutTokenPayload {
+interface PublicCheckoutTokenPayload {
   sub: string;
   customerId: string;
   tokenType: 'action';

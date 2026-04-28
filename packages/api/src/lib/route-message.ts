@@ -24,7 +24,7 @@ import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js
 import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
 import type { Prisma } from '@prisma/client';
-import type { AiBackendType, AiBackendProviderConfig } from '@clawscale/shared';
+import type { AiBackendType, AiBackendProviderConfig } from './ai-backend-runtime.js';
 
 export interface Attachment {
   url: string;
@@ -42,13 +42,13 @@ export interface InboundMessage {
   meta?: Record<string, unknown>;
 }
 
-export interface ReplyEntry {
+interface ReplyEntry {
   backendId: string | null;
   backendName: string | null;
   reply: string;
 }
 
-export interface RouteResult {
+interface RouteResult {
   conversationId: string;
   replies: ReplyEntry[];
   /** @deprecated Use replies[0].reply for backwards compat with single-reply adapters */

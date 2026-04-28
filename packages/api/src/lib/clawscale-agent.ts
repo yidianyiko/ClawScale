@@ -15,7 +15,7 @@ import { createAgent, initChatModel, tool } from 'langchain';
 import { z } from 'zod/v4';
 import { commandList, commandSummary } from './slash-commands.js';
 
-export interface BackendOption {
+interface BackendOption {
   id: string;
   name: string;
 }
@@ -37,7 +37,7 @@ interface HistoryAttachment {
   size?: number;
 }
 
-export interface AgentContext {
+interface AgentContext {
   text: string;
   backends: BackendOption[];
   activeIds: string[];

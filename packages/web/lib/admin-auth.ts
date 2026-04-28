@@ -1,4 +1,4 @@
-export type StoredAdminSession = {
+type StoredAdminSession = {
   adminId: string;
   email: string;
   isActive: boolean;

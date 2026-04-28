@@ -105,14 +105,14 @@ interface ClaimMembershipClient {
   }) => Promise<T>): Promise<T>;
 }
 
-export interface IssueClaimTokenInput {
+interface IssueClaimTokenInput {
   customerId: string;
   identityId: string;
   email: string;
   continueTo?: string;
 }
 
-export interface IssuedClaimToken {
+interface IssuedClaimToken {
   customerId: string;
   identityId: string;
   claimStatus: 'pending';
@@ -120,18 +120,18 @@ export interface IssuedClaimToken {
   token: string;
 }
 
-export interface CompleteCustomerClaimInput {
+interface CompleteCustomerClaimInput {
   token: string;
   password: string;
 }
 
-export interface IssueClaimEntryTokenInput {
+interface IssueClaimEntryTokenInput {
   customerId: string;
   identityId: string;
   continueTo?: string;
 }
 
-export interface VerifiedClaimEntryToken {
+interface VerifiedClaimEntryToken {
   customerId: string;
   identityId: string;
   continueTo?: string;

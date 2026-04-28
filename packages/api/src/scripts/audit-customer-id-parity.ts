@@ -12,7 +12,7 @@ type AuditExample = {
   accountId: string;
 };
 
-export type CustomerIdParityReport = {
+type CustomerIdParityReport = {
   collectionsChecked: string[];
   driftCount: number;
   examples: AuditExample[];

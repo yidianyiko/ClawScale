@@ -7,7 +7,7 @@
  * owner connects or disconnects a channel from the dashboard.
  *
  * Flow per message:
- *   Discord message → normalize → POST /gateway/:channelId (internal) → reply
+ *   Discord message → normalize → routeInboundMessage() → reply
  */
 
 import { Client, Events, GatewayIntentBits, Message } from 'discord.js';

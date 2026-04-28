@@ -27,13 +27,7 @@ interface WABusinessConfig {
   verifyToken: string;
 }
 
-// ── In-memory config cache (channelId → config) ─────────────────────────────
-
 const configs = new Map<string, WABusinessConfig>();
-
-export function getWABusinessConfig(channelId: string): WABusinessConfig | null {
-  return configs.get(channelId) ?? null;
-}
 
 // ── Start / stop ─────────────────────────────────────────────────────────────
 

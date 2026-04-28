@@ -1,13 +1,13 @@
 import type { ApiResponse } from '../../shared/src/types/api';
 import { customerApi } from './customer-api';
 
-export interface CustomerClaimRequestInput {
+interface CustomerClaimRequestInput {
   entryToken: string;
   email: string;
   next?: string;
 }
 
-export interface CustomerClaimRequestResult {
+interface CustomerClaimRequestResult {
   message: 'claim_email_sent';
 }
 
@@ -27,12 +27,12 @@ export interface CustomerGoogleCalendarImportPreflightResult {
   latestRun: CustomerGoogleCalendarImportRunSummary | null;
 }
 
-export interface CustomerGoogleCalendarImportStartResult {
+interface CustomerGoogleCalendarImportStartResult {
   runId: string;
   url: string;
 }
 
-export interface CustomerGoogleCalendarImportStatusResult {
+interface CustomerGoogleCalendarImportStatusResult {
   run?: CustomerGoogleCalendarImportRunSummary | null;
   latestRun: CustomerGoogleCalendarImportRunSummary | null;
 }
@@ -77,12 +77,6 @@ export function claimCustomerCalendarImportHandoff(
     '/api/customer/calendar-import-handoffs/claim',
     { token },
   );
-}
-
-export function getCustomerGoogleCalendarImportStatus(): Promise<
-  ApiResponse<CustomerGoogleCalendarImportStatusResult>
-> {
-  return getCustomerGoogleCalendarImportStatusForRun();
 }
 
 export function getCustomerGoogleCalendarImportStatusForRun(

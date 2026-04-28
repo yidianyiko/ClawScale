@@ -1,17 +1,17 @@
 import { clearAdminSession, getAdminToken, type AdminLoginResult } from './admin-auth';
 
-export type AdminApiSuccess<T> = {
+type AdminApiSuccess<T> = {
   ok: true;
   data: T;
 };
 
-export type AdminApiFailure = {
+type AdminApiFailure = {
   ok: false;
   error: string;
   issues?: unknown;
 };
 
-export type AdminApiResponse<T> = AdminApiSuccess<T> | AdminApiFailure;
+type AdminApiResponse<T> = AdminApiSuccess<T> | AdminApiFailure;
 
 export type AdminCustomerRow = {
   id: string;

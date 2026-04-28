@@ -5,7 +5,7 @@
  * On startup, loads all connected WeCom channels from the DB and starts bots.
  *
  * Flow per message:
- *   WeCom text message → normalize → POST /gateway/:channelId (internal) → reply
+ *   WeCom text message → normalize → routeInboundMessage() → reply
  */
 
 import AiBot from '@wecom/aibot-node-sdk';

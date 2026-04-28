@@ -7,10 +7,10 @@ const PROFILE_KEY = 'customer_profile';
 const LEGACY_COKE_TOKEN_KEY = 'coke_user_token';
 const LEGACY_COKE_PROFILE_KEY = 'coke_user_profile';
 
-export type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
-export type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
+type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
+type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
 
-export interface CustomerSession {
+interface CustomerSession {
   customerId: string;
   identityId: string;
   claimStatus: CustomerClaimStatus;
@@ -32,31 +32,31 @@ export interface CustomerProfile extends CustomerSession {
   subscription_expires_at: string | null;
 }
 
-export interface CustomerAuthMessageResult {
+interface CustomerAuthMessageResult {
   message: string;
 }
 
-export interface RegisterCustomerInput {
+interface RegisterCustomerInput {
   displayName: string;
   email: string;
   password: string;
 }
 
-export interface LoginCustomerInput {
+interface LoginCustomerInput {
   email: string;
   password: string;
 }
 
-export interface VerifyCustomerEmailInput {
+interface VerifyCustomerEmailInput {
   email: string;
   token: string;
 }
 
-export interface CustomerEmailInput {
+interface CustomerEmailInput {
   email: string;
 }
 
-export interface ResetCustomerPasswordInput {
+interface ResetCustomerPasswordInput {
   token: string;
   password: string;
 }
@@ -173,10 +173,6 @@ export function resetCustomerPassword(
   input: ResetCustomerPasswordInput,
 ): Promise<ApiResponse<CustomerAuthMessageResult>> {
   return customerApi.post<ApiResponse<CustomerAuthMessageResult>>('/api/auth/reset-password', input);
-}
-
-export function getCustomerSession(): Promise<ApiResponse<CustomerSession>> {
-  return customerApi.get<ApiResponse<CustomerSession>>('/api/auth/me');
 }
 
 export function getCustomerProfile(): Promise<ApiResponse<CustomerProfile>> {

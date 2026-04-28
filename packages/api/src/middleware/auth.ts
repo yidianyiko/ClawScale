@@ -1,7 +1,7 @@
 import type { Context, Next } from 'hono';
 import { verifyToken, type JwtPayload } from '../lib/jwt.js';
 
-export interface AuthContext {
+interface AuthContext {
   userId: string;
   tenantId: string;
   role: string;

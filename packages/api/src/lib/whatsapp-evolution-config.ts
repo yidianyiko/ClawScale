@@ -8,7 +8,7 @@ export interface StoredWhatsAppEvolutionConfig {
   webhookToken: string;
 }
 
-export interface PublicWhatsAppEvolutionConfig {
+interface PublicWhatsAppEvolutionConfig {
   instanceName: string;
 }
 

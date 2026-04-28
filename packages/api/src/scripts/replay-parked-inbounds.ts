@@ -7,7 +7,7 @@ import { routeInboundMessage } from '../lib/route-message.js';
 const SHARED_CHANNEL_PROVISION_RETRY_THRESHOLD = 3;
 const SHARED_CHANNEL_PROVISION_TIMEOUT_MS = 15_000;
 
-export interface ReplayParkedInboundsSummary {
+interface ReplayParkedInboundsSummary {
   scanned: number;
   replayed: number;
   skipped: number;

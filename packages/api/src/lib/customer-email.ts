@@ -1,17 +1,17 @@
 import { sendEmail } from './email.js';
 
-export interface SendCustomerVerificationEmailInput {
+interface SendCustomerVerificationEmailInput {
   to: string;
   email: string;
   token: string;
 }
 
-export interface SendCustomerPasswordResetEmailInput {
+interface SendCustomerPasswordResetEmailInput {
   to: string;
   token: string;
 }
 
-export interface SendCustomerClaimEmailInput {
+interface SendCustomerClaimEmailInput {
   to: string;
   token: string;
 }

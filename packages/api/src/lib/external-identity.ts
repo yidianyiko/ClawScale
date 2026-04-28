@@ -1,4 +1,4 @@
-export interface NormalizeExternalIdentityInput {
+interface NormalizeExternalIdentityInput {
   provider: string;
   identityType: string;
   rawValue: string;
@@ -10,7 +10,7 @@ export interface NormalizedExternalIdentity {
   identityValue: string;
 }
 
-export interface ExternalIdentityUniqueWhere {
+interface ExternalIdentityUniqueWhere {
   provider_identityType_identityValue: NormalizedExternalIdentity;
 }
 

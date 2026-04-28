@@ -14,7 +14,7 @@ vi.mock('resend', () => ({
 }));
 
 import { sendCustomerClaimEmail, sendCustomerPasswordResetEmail, sendCustomerVerificationEmail } from './customer-email.js';
-import { sendCokeEmail, sendEmail } from './email.js';
+import { sendEmail } from './email.js';
 
 describe('email delivery', () => {
   beforeEach(() => {
@@ -159,20 +159,4 @@ describe('email delivery', () => {
     });
   });
 
-  it('keeps sendCokeEmail as a compatibility alias', async () => {
-    await expect(
-      sendCokeEmail({
-        to: 'alice@example.com',
-        subject: 'Compatibility subject',
-        html: '<p>compat</p>',
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(mocks.sendMock).toHaveBeenCalledWith({
-      from: '"ClawScale" <noreply@keep4oforever.com>',
-      to: 'alice@example.com',
-      subject: 'Compatibility subject',
-      html: '<p>compat</p>',
-    });
-  });
 });

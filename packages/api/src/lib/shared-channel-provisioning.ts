@@ -15,7 +15,7 @@ import {
 import { generateId } from './id.js';
 import { queueParkedInbound } from './parked-inbound.js';
 
-export interface SharedChannelProvisioningInput {
+interface SharedChannelProvisioningInput {
   channelId: string;
   agentId: string;
   displayName?: string | null;
@@ -25,7 +25,7 @@ export interface SharedChannelProvisioningInput {
   payload: Prisma.InputJsonValue;
 }
 
-export interface SharedChannelProvisioningResult {
+interface SharedChannelProvisioningResult {
   customerId: string;
   created: boolean;
   parked: boolean;

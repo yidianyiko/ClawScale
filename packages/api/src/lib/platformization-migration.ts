@@ -4,7 +4,7 @@ export const DEFAULT_COKE_AGENT_ID = 'aff8aa23-e892-4bae-9859-2b274cc9f8ae';
 export const DEFAULT_COKE_AGENT_SLUG = 'coke';
 export const DEFAULT_COKE_AGENT_NAME = 'Coke';
 
-export interface LegacyCokeAccountSeedInput {
+interface LegacyCokeAccountSeedInput {
   cokeAccountId: string;
   email: string;
   displayName?: string | null;
@@ -12,7 +12,7 @@ export interface LegacyCokeAccountSeedInput {
   updatedAt: Date;
 }
 
-export interface LegacyBaselineSummaryInput {
+interface LegacyBaselineSummaryInput {
   cokeAccounts: Array<{
     cokeAccountId: string;
     email: string;

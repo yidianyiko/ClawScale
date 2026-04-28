@@ -40,7 +40,7 @@ type BootstrapClient = {
   $disconnect(): Promise<void>;
 };
 
-export type BootstrapAdminAccountResult =
+type BootstrapAdminAccountResult =
   | {
       status: 'created';
       account: BootstrapAccount;
@@ -59,7 +59,7 @@ function readRequiredEnv(env: BootstrapEnv, name: keyof BootstrapEnv): string {
   return value;
 }
 
-export function readBootstrapAdminEnv(env: BootstrapEnv): {
+function readBootstrapAdminEnv(env: BootstrapEnv): {
   email: string;
   password: string;
 } {
@@ -113,7 +113,7 @@ export async function bootstrapAdminAccount(
   });
 }
 
-export async function main(
+async function main(
   client: BootstrapClient = db,
   env: BootstrapEnv = process.env,
   logger: Pick<typeof console, 'log'> = console,

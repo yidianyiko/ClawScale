@@ -1,11 +1,11 @@
 import { buildRenewalUrl, getSubscriptionSnapshot } from './coke-subscription.js';
 
-export type CokeAccountAccessDeniedReason =
+type CokeAccountAccessDeniedReason =
   | 'email_not_verified'
   | 'subscription_required'
   | 'account_suspended';
 
-export interface CokeAccountAccessDecision {
+interface CokeAccountAccessDecision {
   accountStatus: 'normal' | 'suspended';
   emailVerified: boolean;
   subscriptionActive: boolean;
@@ -15,7 +15,7 @@ export interface CokeAccountAccessDecision {
   renewalUrl: string;
 }
 
-export interface ResolveCokeAccountAccessInput {
+interface ResolveCokeAccountAccessInput {
   account: {
     id: string;
     status: 'normal' | 'suspended';

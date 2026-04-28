@@ -4,7 +4,7 @@
  * ClawScale is a pure forwarder: it sends the user's messages to the backend
  * and returns whatever text (or streamed text) the backend responds with.
  *
- * Dispatch is driven by BackendTypeDescriptors from @clawscale/shared.
+ * Dispatch is driven by API-local BackendTypeDescriptors.
  * Each backend type maps to a transport (http, sse, websocket, pty-websocket)
  * and a response format (json-auto, langgraph, raw-text).
  */
@@ -16,37 +16,37 @@ import type {
   BackendTypeDescriptor,
   Transport,
   ResponseFormat,
-} from '@clawscale/shared';
-import { BACKEND_TYPE_DESCRIPTORS } from '@clawscale/shared';
+} from './ai-backend-runtime.js';
+import { BACKEND_TYPE_DESCRIPTORS } from './ai-backend-runtime.js';
 
-export interface PalmosContext {
+interface PalmosContext {
   endUserId: string;
   tenantId: string;
   conversationId: string;
   displayName?: string;
 }
 
-export interface BackendSpec {
+interface BackendSpec {
   type: AiBackendType;
   config: AiBackendProviderConfig;
   /** Palmos integration context — only used when type is 'palmos' */
   palmosCtx?: PalmosContext;
 }
 
-export interface HistoryAttachment {
+interface HistoryAttachment {
   url: string;
   filename: string;
   contentType: string;
   size?: number;
 }
 
-export type HistoryMessage = {
+type HistoryMessage = {
   role: 'user' | 'assistant';
   content: string;
   attachments?: HistoryAttachment[];
 };
 
-export interface GenerateOptions {
+interface GenerateOptions {
   backend: BackendSpec;
   history: HistoryMessage[];
   /** Display name of the end-user sending the message */
@@ -445,11 +445,6 @@ export function registerBridgeConnection(backendId: string, ws: WebSocket): void
     } catch { /* ignore parse errors */ }
   });
   ws.on('close', () => { bridgeConnections.delete(backendId); });
-}
-
-export function isBridgeConnected(backendId: string): boolean {
-  const ws = bridgeConnections.get(backendId);
-  return ws !== undefined && ws.readyState === ws.OPEN;
 }
 
 async function handlePtyWebSocket(

@@ -19,16 +19,16 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CommandType = 'backends' | 'clear' | 'team' | 'help' | 'link' | 'unlink' | 'linked' | 'deleteaccount';
+type CommandType = 'backends' | 'clear' | 'team' | 'help' | 'link' | 'unlink' | 'linked' | 'deleteaccount';
 
-export interface SystemCommand {
+interface SystemCommand {
   kind: 'system';
   command: CommandType;
   /** Argument after the command (e.g. "2" for /add 2, or backend name) */
   arg: string;
 }
 
-export interface DirectMessage {
+interface DirectMessage {
   kind: 'direct';
   /** Agent/backend name (everything before ">") */
   target: string;
@@ -36,7 +36,7 @@ export interface DirectMessage {
   message: string;
 }
 
-export type ParsedCommand = SystemCommand | DirectMessage;
+type ParsedCommand = SystemCommand | DirectMessage;
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ export function parseCommand(text: string): ParsedCommand | null {
 // ── Command reference ─────────────────────────────────────────────────────────
 
 /** Single source of truth for all command descriptions. */
-export const COMMAND_REFERENCE = [
+const COMMAND_REFERENCE = [
   { command: '/backends', description: 'list available AI backends' },
   { command: '/team', description: 'show agents in your team' },
   { command: '/team invite <name|#>', description: 'invite an agent to your team' },
@@ -131,7 +131,7 @@ export function commandList(): string {
 
 // ── Target resolver ───────────────────────────────────────────────────────────
 
-export interface ResolvedTarget {
+interface ResolvedTarget {
   type: 'clawscale' | 'backend' | 'not_found';
   backendId?: string;
   backendName?: string;

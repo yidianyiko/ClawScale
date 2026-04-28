@@ -2,7 +2,7 @@ import type { ApiResponse } from '../../shared/src/types/api';
 import type { LocaleMessages } from './i18n';
 import { customerApi } from './customer-api';
 
-export type CustomerWechatChannelStatus =
+type CustomerWechatChannelStatus =
   | 'missing'
   | 'disconnected'
   | 'pending'
@@ -19,7 +19,7 @@ export interface CustomerWechatChannelState {
   message?: string;
 }
 
-export interface CustomerWechatChannelViewModel {
+interface CustomerWechatChannelViewModel {
   eyebrow: string;
   title: string;
   description: string;

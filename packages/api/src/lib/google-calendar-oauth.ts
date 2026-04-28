@@ -9,7 +9,7 @@ const GOOGLE_CALENDAR_READONLY_SCOPES = [
 ];
 const GOOGLE_STATE_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '10m';
 
-export interface GoogleCalendarAuthUrlInput {
+interface GoogleCalendarAuthUrlInput {
   runId: string;
   customerId: string;
   identityId: string;
@@ -17,7 +17,7 @@ export interface GoogleCalendarAuthUrlInput {
   redirectUri: string;
 }
 
-export interface GoogleCalendarStatePayload {
+interface GoogleCalendarStatePayload {
   runId: string;
   customerId: string;
   identityId: string;
@@ -25,26 +25,26 @@ export interface GoogleCalendarStatePayload {
   targetTimezone: string;
 }
 
-export interface GoogleCalendarTokenExchangeInput {
+interface GoogleCalendarTokenExchangeInput {
   code: string;
   codeVerifier: string;
   redirectUri: string;
 }
 
-export interface GoogleCalendarTokens {
+interface GoogleCalendarTokens {
   accessToken: string;
   refreshToken: string | null;
   expiryDate: number | null;
   providerAccountEmail: string | null;
 }
 
-export interface GoogleCalendarEventTime {
+interface GoogleCalendarEventTime {
   date?: string;
   dateTime?: string;
   timeZone?: string;
 }
 
-export interface GoogleCalendarDefaultReminder {
+interface GoogleCalendarDefaultReminder {
   method?: string;
   minutes?: number;
 }
@@ -54,7 +54,7 @@ export interface GooglePrimaryCalendarDefaults {
   defaultReminders: GoogleCalendarDefaultReminder[];
 }
 
-export interface GoogleCalendarEventRecord {
+interface GoogleCalendarEventRecord {
   id: string;
   status?: string;
   summary?: string;
@@ -77,7 +77,7 @@ export interface GoogleCalendarEventRecord {
   [key: string]: unknown;
 }
 
-export interface GooglePrimaryCalendarEventsResult {
+interface GooglePrimaryCalendarEventsResult {
   providerAccountEmail: string | null;
   calendarDefaults: GooglePrimaryCalendarDefaults;
   events: GoogleCalendarEventRecord[];

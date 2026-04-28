@@ -16,7 +16,7 @@ import type { IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { db } from '../db/index.js';
 import { registerBridgeConnection } from '../lib/ai-backend.js';
-import type { AiBackendProviderConfig } from '@clawscale/shared';
+import type { AiBackendProviderConfig } from '../lib/ai-backend-runtime.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function initBridgeWebSocket(server: any): void {

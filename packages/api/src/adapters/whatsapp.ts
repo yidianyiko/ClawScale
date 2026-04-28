@@ -7,7 +7,7 @@
  * Flow:
  *   1. Owner requests QR → startWhatsAppQR() → returns base64 PNG
  *   2. Owner scans QR with phone → socket connects → status = connected
- *   3. Incoming message → normalize → POST /gateway/:channelId → reply
+ *   3. Incoming message → normalize → routeInboundMessage() → reply
  */
 
 import path from 'path';

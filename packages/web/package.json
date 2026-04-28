@@ -10,7 +10,6 @@
     "test": "vitest run --environment jsdom"
   },
   "dependencies": {
-    "@clawscale/shared": "workspace:*",
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -21,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "postcss": "^8.5.6",
     "@types/node": "^25",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",

@@ -2,9 +2,9 @@ import type { Prisma } from '@prisma/client';
 
 import { db } from '../db/index.js';
 
-export type ParkedInboundStatus = 'queued' | 'processing' | 'drained' | 'failed';
+type ParkedInboundStatus = 'queued' | 'processing' | 'drained' | 'failed';
 
-export interface ParkedInboundRecord {
+interface ParkedInboundRecord {
   id: string;
   channelId: string;
   provider: string;
@@ -19,7 +19,7 @@ export interface ParkedInboundRecord {
   updatedAt: Date;
 }
 
-export interface QueueParkedInboundInput {
+interface QueueParkedInboundInput {
   channelId: string;
   provider: string;
   identityType: string;
@@ -27,7 +27,7 @@ export interface QueueParkedInboundInput {
   payload: Prisma.InputJsonValue;
 }
 
-export interface DrainParkedInboundsInput {
+interface DrainParkedInboundsInput {
   channelId?: string;
   limit?: number;
 }

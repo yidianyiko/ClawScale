@@ -1,12 +1,12 @@
 import { db } from '../db/index.js';
 import type { RouteBindingSnapshot } from './route-binding.js';
 
-export interface BindBusinessConversationInput {
+interface BindBusinessConversationInput {
   routeBinding: RouteBindingSnapshot;
   businessConversationKey: string;
 }
 
-export interface UpsertDirectDeliveryRouteInput {
+interface UpsertDirectDeliveryRouteInput {
   tenantId: string;
   channelId: string;
   endUserId: string;
@@ -26,12 +26,12 @@ export interface DeliveryRouteRecord {
   isActive: boolean;
 }
 
-export interface ResolveExactDeliveryRouteInput {
+interface ResolveExactDeliveryRouteInput {
   cokeAccountId: string;
   businessConversationKey: string;
 }
 
-export type BusinessConversationBindingErrorCode =
+type BusinessConversationBindingErrorCode =
   | 'conversation_not_found'
   | 'conversation_identity_mismatch'
   | 'external_end_user_mismatch'
@@ -48,7 +48,7 @@ export class BusinessConversationBindingError extends Error {
   }
 }
 
-export type DeliveryRouteResolutionErrorCode = 'missing_delivery_route';
+type DeliveryRouteResolutionErrorCode = 'missing_delivery_route';
 
 export class DeliveryRouteResolutionError extends Error {
   constructor(
@@ -62,12 +62,12 @@ export class DeliveryRouteResolutionError extends Error {
   }
 }
 
-export interface InvalidateRoutesForChannelReplacementInput {
+interface InvalidateRoutesForChannelReplacementInput {
   tenantId: string;
   archivedChannelId: string;
 }
 
-export interface InvalidateRoutesForChannelReplacementResult {
+interface InvalidateRoutesForChannelReplacementResult {
   updatedCount: number;
 }
 

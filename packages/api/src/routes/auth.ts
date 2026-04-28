@@ -8,7 +8,17 @@ import { signToken } from '../lib/jwt.js';
 import { generateId } from '../lib/id.js';
 import { requireAuth } from '../middleware/auth.js';
 import { audit } from '../lib/audit.js';
-import type { TenantSettings } from '@clawscale/shared';
+
+type TenantSettings = {
+  personaName: string;
+  personaPrompt: string;
+  endUserAccess: 'anonymous' | 'whitelist' | 'blacklist';
+  allowList?: string[];
+  blockList?: string[];
+  features: {
+    knowledgeBase: boolean;
+  };
+};
 
 const registerSchema = z.object({
   tenantSlug: z

@@ -5,7 +5,7 @@ import {
   buildLegacyAgentBindingSeed,
 } from './platformization-migration.js';
 
-export type ClawscaleUserBindingErrorCode =
+type ClawscaleUserBindingErrorCode =
   | 'end_user_not_found'
   | 'end_user_already_bound'
   | 'customer_not_found'
@@ -20,16 +20,16 @@ const defaultPersonalTenantSettings = {
 };
 const personalCokeBridgeBackendName = 'Coke Bridge';
 
-export interface EnsureClawscaleUserForCokeAccountInput {
+interface EnsureClawscaleUserForCokeAccountInput {
   cokeAccountId: string;
   displayName?: string | null;
 }
 
-export interface EnsureClawscaleUserForCustomerInput {
+interface EnsureClawscaleUserForCustomerInput {
   customerId: string;
 }
 
-export interface EnsureClawscaleUserForCokeAccountResult {
+interface EnsureClawscaleUserForCokeAccountResult {
   tenantId: string;
   clawscaleUserId: string;
   created: boolean;
@@ -46,20 +46,20 @@ export class ClawscaleUserBindingError extends Error {
   }
 }
 
-export interface BindEndUserToCokeAccountInput {
+interface BindEndUserToCokeAccountInput {
   tenantId: string;
   channelId: string;
   externalId: string;
   cokeAccountId: string;
 }
 
-export interface BindEndUserToCokeAccountResult {
+interface BindEndUserToCokeAccountResult {
   clawscaleUserId: string;
   endUserId: string;
   cokeAccountId: string;
 }
 
-export interface UnifiedConversationIdsInput {
+interface UnifiedConversationIdsInput {
   tenantId: string;
   endUserId: string;
   clawscaleUserId: string | null;

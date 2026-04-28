@@ -56,7 +56,7 @@ async function request<T>(method: string, path: string, getToken: TokenGetter, b
   return JSON.parse(text) as T;
 }
 
-export function createCustomerApiClient(getToken: TokenGetter) {
+function createCustomerApiClient(getToken: TokenGetter) {
   return {
     get: <T>(path: string) => request<T>('GET', path, getToken),
     post: <T>(path: string, body?: unknown) => request<T>('POST', path, getToken, body),

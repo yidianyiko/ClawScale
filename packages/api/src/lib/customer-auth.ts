@@ -7,11 +7,11 @@ const CUSTOMER_JWT_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '7d';
 const CUSTOMER_ACTION_TOKEN_EXPIRES_IN: jwt.SignOptions['expiresIn'] = '15m';
 const BCRYPT_ROUNDS = 10;
 
-export type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
-export type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
-export type CustomerActionPurpose = 'verify_email' | 'password_reset';
+type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
+type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
+type CustomerActionPurpose = 'verify_email' | 'password_reset';
 
-export interface CustomerJwtPayload {
+interface CustomerJwtPayload {
   sub: string;
   identityId: string;
   email: string;
@@ -20,7 +20,7 @@ export interface CustomerJwtPayload {
   exp?: number;
 }
 
-export interface CustomerActionTokenPayload
+interface CustomerActionTokenPayload
   extends Omit<CustomerJwtPayload, 'tokenType'> {
   tokenType: 'action';
   purpose: CustomerActionPurpose;
@@ -46,33 +46,33 @@ export interface CustomerSession {
   membershipRole: CustomerMembershipRole;
 }
 
-export interface RegisterCustomerInput {
+interface RegisterCustomerInput {
   displayName: string;
   email: string;
   password: string;
 }
 
-export interface AuthenticateCustomerInput {
+interface AuthenticateCustomerInput {
   email: string;
   password: string;
 }
 
-export interface GetCustomerSessionInput {
+interface GetCustomerSessionInput {
   customerId: string;
   identityId: string;
 }
 
-export interface VerifyCustomerEmailInput {
+interface VerifyCustomerEmailInput {
   email: string;
   token: string;
 }
 
-export interface ResetCustomerPasswordInput {
+interface ResetCustomerPasswordInput {
   token: string;
   password: string;
 }
 
-export interface IssueCustomerActionTokenInput {
+interface IssueCustomerActionTokenInput {
   purpose: CustomerActionPurpose;
   customerId: string;
   identityId: string;
@@ -365,7 +365,7 @@ export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, BCRYPT_ROUNDS);
 }
 
-export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
+async function verifyPassword(plain: string, hash: string): Promise<boolean> {
   return bcrypt.compare(plain, hash);
 }
 

@@ -1,13 +1,13 @@
 import type { GooglePrimaryCalendarDefaults } from './google-calendar-oauth.js';
 
-export interface GoogleCalendarImportPreflightInput {
+interface GoogleCalendarImportPreflightInput {
   customerId: string;
   identityId: string;
   businessConversationKey?: string | null;
   gatewayConversationId?: string | null;
 }
 
-export interface GoogleCalendarImportPreflightReady {
+interface GoogleCalendarImportPreflightReady {
   ready: true;
   conversationId: string;
   userId: string;
@@ -15,12 +15,12 @@ export interface GoogleCalendarImportPreflightReady {
   timezone: string;
 }
 
-export interface GoogleCalendarImportPreflightBlocked {
+interface GoogleCalendarImportPreflightBlocked {
   ready: false;
   blockedReason: string;
 }
 
-export interface GoogleCalendarRuntimeImportInput {
+interface GoogleCalendarRuntimeImportInput {
   customerId: string;
   identityId: string;
   runId: string;
@@ -32,11 +32,11 @@ export interface GoogleCalendarRuntimeImportInput {
   events: unknown[];
 }
 
-export interface GoogleCalendarImportWarning {
+interface GoogleCalendarImportWarning {
   [key: string]: unknown;
 }
 
-export interface GoogleCalendarRuntimeImportResult {
+interface GoogleCalendarRuntimeImportResult {
   importedCount: number;
   skippedCount: number;
   failedCount: number;

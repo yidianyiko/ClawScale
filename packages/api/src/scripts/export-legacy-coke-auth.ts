@@ -15,12 +15,12 @@ type LegacyExportPayload = {
   verifyTokens: JsonRow[];
 };
 
-export interface ExportLegacyCokeAuthOptions {
+interface ExportLegacyCokeAuthOptions {
   outputPath?: string;
   now?: Date;
 }
 
-export interface ExportLegacyCokeAuthSummary {
+interface ExportLegacyCokeAuthSummary {
   exportedAt: string;
   outputPath: string;
   cokeAccounts: number;

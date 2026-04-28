@@ -11,7 +11,7 @@ import {
 } from '../lib/business-conversation.js';
 
 export const MOVED_TO_AGENT_STORAGE_ERROR = 'moved_to_agent_storage';
-export const GONE_STATUS = 410;
+const GONE_STATUS = 410;
 
 const DEFERRED_SURVIVOR_REASONS = {
   Conversation: 'route_binding_minimum',
@@ -28,7 +28,7 @@ interface RouteBindingCheck {
   resolved?: boolean;
 }
 
-export interface ActiveDeliveryRouteResolutionCheck {
+interface ActiveDeliveryRouteResolutionCheck {
   businessConversationKey: string | null;
   cokeAccountId: string | null;
   channelId: string | null;
@@ -60,7 +60,7 @@ interface DeferredSurvivor {
   reason: (typeof DEFERRED_SURVIVOR_REASONS)[DeferredSurvivorModel];
 }
 
-export interface StrandedModelRetirementSummary {
+interface StrandedModelRetirementSummary {
   errors: string[];
   deferredSurvivors: DeferredSurvivor[];
   deferredUsageCounts?: Partial<Record<DeferredSurvivorModel, number>>;
@@ -229,7 +229,7 @@ async function getActiveDeliveryRoutesForVerification() {
   `);
 }
 
-export async function verifyStrandedModelRetirement() {
+async function verifyStrandedModelRetirement() {
   const schemaPath = resolve(process.cwd(), 'prisma/schema.prisma');
   const migrationsDir = resolve(process.cwd(), 'prisma/migrations');
   const schema = readFileSync(schemaPath, 'utf8');
