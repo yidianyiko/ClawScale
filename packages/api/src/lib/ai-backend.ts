@@ -347,9 +347,7 @@ function toOpenAiMessage(m: HistoryMessage): { role: 'user' | 'assistant'; conte
     if (m.content) parts.push({ type: 'text', text: m.content });
     for (const att of attachments) {
       const isImage = att.contentType.startsWith('image/');
-      const isRemoteHttpImage =
-        isImage && (att.url.startsWith('http://') || att.url.startsWith('https://'));
-      if (isRemoteHttpImage) {
+      if (isImage && isSafeRemoteImageUrl(att)) {
         parts.push({ type: 'image_url', image_url: { url: att.url } });
       } else if (isImage) {
         parts.push({ type: 'text', text: `[Attached image: ${safeAttachmentDisplay(att)}]` });
@@ -362,12 +360,26 @@ function toOpenAiMessage(m: HistoryMessage): { role: 'user' | 'assistant'; conte
   return { role: m.role, content: m.content };
 }
 
+function isSafeRemoteImageUrl(att: HistoryAttachment): boolean {
+  try {
+    const parsed = new URL(att.url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return false;
+    return att.safeDisplayUrl === undefined || att.safeDisplayUrl === att.url;
+  } catch {
+    return false;
+  }
+}
+
 function safeAttachmentDisplay(att: HistoryAttachment): string {
   if (att.safeDisplayUrl) return att.safeDisplayUrl;
   if (att.url.startsWith('data:')) {
     return att.contentType.startsWith('image/')
       ? '[redacted inline image attachment]'
       : `[redacted inline ${att.contentType || 'file'} attachment]`;
+  }
+  if (att.url.startsWith('http://') || att.url.startsWith('https://')) {
+    return isSafeRemoteImageUrl(att) ? att.url : `[redacted ${att.contentType || 'file'} attachment]`;
   }
   return att.url;
 }

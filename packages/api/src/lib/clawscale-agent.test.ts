@@ -56,6 +56,42 @@ describe('runClawscaleAgent multimodal attachment conversion', () => {
     ]);
   });
 
+  it('redacts credentialed or query-bearing http image attachments into safe text', async () => {
+    const secretUrl = 'https://user:pass@cdn.example.com/photo.jpg?token=secret#frag';
+
+    await runClawscaleAgent({
+      text: 'caption',
+      backends: [],
+      activeIds: [],
+      personaName: 'ClawScale',
+      mode: 'select',
+      llmConfig: { model: 'openai:gpt-test', apiKey: 'key', multimodal: true },
+      attachments: [
+        {
+          url: secretUrl,
+          filename: 'photo.jpg',
+          contentType: 'image/jpeg',
+          safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+        },
+      ],
+      executeCommand: vi.fn(),
+    });
+
+    const request = agentInvoke.mock.calls[0]?.[0];
+    const parts = request.messages[0].content;
+    expect(parts).toEqual([
+      { type: 'text', text: 'caption' },
+      { type: 'text', text: '[Attached image: https://cdn.example.com/photo.jpg]' },
+    ]);
+    expect(JSON.stringify(parts)).not.toContain(secretUrl);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({
+        type: 'image_url',
+        image_url: expect.objectContaining({ url: secretUrl }),
+      }),
+    );
+  });
+
   it('redacts data image attachments into text parts', async () => {
     const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
 

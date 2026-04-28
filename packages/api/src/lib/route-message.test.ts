@@ -447,6 +447,17 @@ describe('routeInboundMessage', () => {
     db.message.findMany.mockResolvedValue([
       {
         role: 'user',
+        content: 'legacy over count',
+        metadata: {
+          attachments: Array.from({ length: 5 }, (_, index) => ({
+            url: `https://cdn.example.com/${index}.jpg`,
+            filename: `${index}.jpg`,
+            contentType: 'image/jpeg',
+          })),
+        },
+      },
+      {
+        role: 'user',
         content: 'legacy mixed',
         metadata: {
           attachments: [
@@ -458,17 +469,6 @@ describe('routeInboundMessage', () => {
               contentType: 'image/jpeg',
             },
           ],
-        },
-      },
-      {
-        role: 'user',
-        content: 'legacy over count',
-        metadata: {
-          attachments: Array.from({ length: 5 }, (_, index) => ({
-            url: `https://cdn.example.com/${index}.jpg`,
-            filename: `${index}.jpg`,
-            contentType: 'image/jpeg',
-          })),
         },
       },
     ]);
@@ -503,6 +503,82 @@ describe('routeInboundMessage', () => {
     expect(JSON.stringify(history)).not.toContain('file:///');
     expect(JSON.stringify(history)).not.toContain('user:pass');
     expect(JSON.stringify(history)).not.toContain('token=secret');
+  });
+
+  it('loads the latest 50 messages and returns backend history chronologically', async () => {
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.message.findMany.mockImplementation(async (query) => {
+      expect(query).toEqual(
+        expect.objectContaining({
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+      );
+      return [
+        {
+          role: 'user',
+          content: 'current message',
+          metadata: {
+            attachments: [
+              {
+                url: 'https://cdn.example.com/current.jpg',
+                filename: 'current.jpg',
+                contentType: 'image/jpeg',
+                safeDisplayUrl: 'https://cdn.example.com/current.jpg',
+              },
+            ],
+          },
+        },
+        { role: 'assistant', content: 'recent reply', metadata: null },
+        { role: 'user', content: 'older message', metadata: null },
+      ];
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      text: 'current message',
+      attachments: [
+        {
+          url: 'https://cdn.example.com/current.jpg',
+          filename: 'current.jpg',
+          contentType: 'image/jpeg',
+        },
+      ],
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(generateReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        history: [
+          { role: 'user', content: 'older message' },
+          { role: 'assistant', content: 'recent reply' },
+          {
+            role: 'user',
+            content: 'current message',
+            attachments: [
+              {
+                url: 'https://cdn.example.com/current.jpg',
+                filename: 'current.jpg',
+                contentType: 'image/jpeg',
+                safeDisplayUrl: 'https://cdn.example.com/current.jpg',
+              },
+            ],
+          },
+        ],
+      }),
+    );
   });
 
   it('does not copy inbound attachments onto commands executed by the ClawScale tool', async () => {
@@ -1390,6 +1466,7 @@ describe('routeInboundMessage', () => {
           if (message.role === 'user') return true;
           return message.role === 'assistant' && message.backendId === backendId;
         })
+        .reverse()
         .map((message) => ({
           role: message.role,
           content: message.content,

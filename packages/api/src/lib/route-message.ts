@@ -933,11 +933,11 @@ async function loadHistory(conversationIds: string | string[], backendId: string
         { role: 'assistant', backendId },
       ],
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: 50,
     select: { role: true, content: true, metadata: true },
   });
-  return msgs.map((m) => {
+  return [...msgs].reverse().map((m) => {
     const meta = m.metadata as Record<string, unknown> | null;
     const attachments = scrubHistoryAttachments(meta?.attachments);
     return { role: m.role as 'user' | 'assistant', content: m.content, ...(attachments.length ? { attachments } : {}) };

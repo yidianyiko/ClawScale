@@ -138,6 +138,45 @@ describe('OpenAI backend attachment conversion', () => {
     ]);
   });
 
+  it('redacts credentialed or query-bearing http image attachments into safe text', async () => {
+    const secretUrl = 'https://user:pass@cdn.example.com/photo.jpg?token=secret#frag';
+
+    await generateReply({
+      backend: {
+        type: 'llm',
+        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+      },
+      history: [
+        {
+          role: 'user',
+          content: 'caption',
+          attachments: [
+            {
+              url: secretUrl,
+              filename: 'photo.jpg',
+              contentType: 'image/jpeg',
+              safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
+            },
+          ],
+        },
+      ],
+    });
+
+    const request = openAiCreate.mock.calls[0]?.[0];
+    const parts = request.messages[0].content;
+    expect(parts).toEqual([
+      { type: 'text', text: 'caption' },
+      { type: 'text', text: '[Attached image: https://cdn.example.com/photo.jpg]' },
+    ]);
+    expect(JSON.stringify(parts)).not.toContain(secretUrl);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({
+        type: 'image_url',
+        image_url: expect.objectContaining({ url: secretUrl }),
+      }),
+    );
+  });
+
   it('redacts data image attachments into text parts instead of image_url parts', async () => {
     const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
 
