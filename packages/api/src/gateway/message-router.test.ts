@@ -94,6 +94,26 @@ describe('gatewayRouter generic inbound route', () => {
     expect(routeInboundMessage).not.toHaveBeenCalled();
   });
 
+  it('rejects control-prefixed data URLs before routing', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/ch_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        externalId: 'user_1',
+        text: 'caption',
+        attachments: [{ url: '\u0000data:image/png;base64,cG5n' }],
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
   it('rejects empty messages without valid attachments', async () => {
     const app = new Hono();
     app.route('/gateway', gatewayRouter);
@@ -551,6 +571,40 @@ describe('gatewayRouter evolution whatsapp route', () => {
           message: {
             imageMessage: {
               url: 'data:image/png;base64,cG5n',
+              caption: 'unsafe inline image',
+              mimetype: 'image/png',
+            },
+          },
+          messageType: 'imageMessage',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(routeInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not route Evolution control-prefixed data URL media with captions as text-only input', async () => {
+    const app = new Hono();
+    app.route('/gateway', gatewayRouter);
+
+    const res = await app.request('/gateway/evolution/whatsapp/ch_1/token_1', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          key: {
+            remoteJid: '8619917902815@s.whatsapp.net',
+            fromMe: false,
+            id: 'msg_control_data_url_caption',
+          },
+          pushName: 'Alice',
+          message: {
+            imageMessage: {
+              url: '\u0000data:image/png;base64,cG5n',
               caption: 'unsafe inline image',
               mimetype: 'image/png',
             },

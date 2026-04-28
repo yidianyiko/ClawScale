@@ -128,13 +128,17 @@ function readFiniteSize(value: unknown): number | undefined {
   return undefined;
 }
 
+function looksLikeDataUrl(value: string): boolean {
+  return /^data:/i.test(value.replace(/[\u0000-\u001f\u007f]/g, '').trim());
+}
+
 function hasDataUrlAttachment(rawAttachments: unknown): boolean {
   if (!Array.isArray(rawAttachments)) return false;
 
   return rawAttachments.some((raw) => {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
     const url = (raw as Record<string, unknown>)['url'];
-    return typeof url === 'string' && /^data:/i.test(url.trim());
+    return typeof url === 'string' && looksLikeDataUrl(url);
   });
 }
 
@@ -187,7 +191,7 @@ function readEvolutionMediaMessages(data: EvolutionWebhookData): EvolutionMediaM
 function hasEvolutionDataUrlMedia(data: EvolutionWebhookData): boolean {
   return readEvolutionMediaMessages(data).some((media) => {
     const url = readNonEmptyString(media.url);
-    return url ? /^data:/i.test(url) : false;
+    return url ? looksLikeDataUrl(url) : false;
   });
 }
 
