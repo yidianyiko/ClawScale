@@ -1,5 +1,4 @@
-const SUPPORTED_LOCALES = ['en', 'zh'] as const;
-export type Locale = (typeof SUPPORTED_LOCALES)[number];
+export type Locale = 'en' | 'zh';
 
 export const DEFAULT_LOCALE: Locale = 'en';
 export const LOCALE_STORAGE_KEY = 'coke-locale';
@@ -463,9 +462,9 @@ export const messages: MessagesCatalog = {
         companyHeading: 'Company',
         copyright: '© 2026 Kap AI',
         tagline: 'Built to keep goals moving.',
-        productLinks: ['Capabilities', 'Scenarios', 'Proof'],
+        productLinks: ['Capabilities', 'Scenarios', 'FAQ'],
         accountLinks: ['Sign in', 'Register', 'WeChat setup', 'Renew'],
-        companyLinks: ['About', 'Contact', 'Privacy'],
+        companyLinks: ['About', 'Terms', 'Privacy'],
       },
     },
     customerLayout: {
@@ -859,9 +858,9 @@ export const messages: MessagesCatalog = {
         companyHeading: '公司',
         copyright: '© 2026 Kap AI',
         tagline: '让目标继续往前走。',
-        productLinks: ['能力', '场景', '口碑'],
+        productLinks: ['能力', '场景', '常见问题'],
         accountLinks: ['登录', '注册', '微信设置', '续费'],
-        companyLinks: ['关于', '联系', '隐私'],
+        companyLinks: ['关于', '条款', '隐私'],
       },
     },
     customerLayout: {

@@ -44,6 +44,7 @@ describe('CokeHomepage', () => {
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('#capabilities')).toBeTruthy();
     expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#start-path')).toBeTruthy();
     expect(container.querySelector('#voices')).toBeTruthy();
     expect(container.querySelector('#download')).toBeTruthy();
     expect(container.querySelector('.ticker')).toBeTruthy();
@@ -58,6 +59,14 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('An AI supervisor');
     expect(container.textContent).toContain('Turn goals into reminders, check-ins, and follow-up.');
     expect(container.textContent).toContain('Import Google Calendar into Kap reminders.');
+    expect(container.textContent).toContain('Choose the fastest way to start');
+    expect(container.textContent).toContain('Domestic users');
+    expect(container.textContent).toContain('Global users');
+    expect(container.querySelector('a[href="/global"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/faqs"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/terms"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/privacy"]')).toBeTruthy();
+    expect(container.querySelector('footer a[href="#"]')).toBeFalsy();
     expect(container.textContent).not.toContain('6+');
     expect(container.textContent).not.toContain('99.9%');
     expect(container.textContent).not.toContain('<100ms');
@@ -89,6 +98,9 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('© 2026 Kap AI');
     expect(container.textContent).toContain('把目标变成提醒、检查和后续跟进。');
     expect(container.textContent).toContain('把 Google Calendar 导入成 Kap 提醒。');
+    expect(container.textContent).toContain('选择最快的开始方式');
+    expect(container.textContent).toContain('国内用户');
+    expect(container.textContent).toContain('海外用户');
     expect(container.textContent).not.toContain('六个平台');
     expect(container.textContent).not.toContain('99.9%');
     expect(container.textContent).not.toContain('<100ms');

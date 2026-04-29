@@ -10,7 +10,7 @@ import {
   CheckCheck,
   MessageCircle,
   Route,
-  Sparkles,
+  Smartphone,
   Workflow as WorkflowIcon,
 } from 'lucide-react';
 
@@ -303,9 +303,9 @@ const VOICES = {
 } satisfies Record<Locale, ReadonlyArray<{ avatar: string; role: string; quote: string }>>;
 
 const FOOTER_LINKS = {
-  product: ['/#capabilities', '/#scenarios', '/#voices'],
+  product: ['/#capabilities', '/#scenarios', '/faqs'],
   account: ['/auth/login', '/auth/register', '/channels/wechat-personal', '/account/subscription'],
-  company: ['/', '/#download', '#'],
+  company: ['/', '/terms', '/privacy'],
 } as const;
 
 export function CokeHomepage() {
@@ -317,6 +317,7 @@ export function CokeHomepage() {
       <Ticker locale={locale} />
       <Capabilities locale={locale} />
       <Scenarios locale={locale} />
+      <StartPath locale={locale} />
       <QuoteBand locale={locale} />
       <Voices locale={locale} />
       <DownloadPanel locale={locale} />
@@ -523,6 +524,101 @@ function Scenarios({ locale }: { locale: Locale }) {
               </div>
             </article>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StartPath({ locale }: { locale: Locale }) {
+  const isZh = locale === 'zh';
+  const cards = isZh
+    ? [
+        {
+          icon: MessageCircle,
+          label: '国内用户',
+          title: '先注册账号，再连接个人微信。',
+          body: '注册并验证邮箱后，进入个人微信设置页。Kap 会把连接、断开、重连、续费这些下一步放在同一个账号流程里。',
+          href: '/auth/register',
+          cta: '创建账号',
+        },
+        {
+          icon: Smartphone,
+          label: '海外用户',
+          title: '直接从 WhatsApp 发出第一条任务。',
+          body: '如果你只想马上开始，把真实目标发给 WhatsApp 里的 Kap，让提醒和后续检查留在同一个线程里。',
+          href: '/global',
+          cta: '打开 WhatsApp',
+        },
+        {
+          icon: CalendarCheck,
+          label: '已有日程',
+          title: '把 Google Calendar 接进提醒流。',
+          body: '如果任务已经在日历里，登录账号后从日历导入页授权，让未来事件变成 Kap 对话里的提醒。',
+          href: '/account/calendar-import',
+          cta: '导入日历',
+        },
+      ]
+    : [
+        {
+          icon: MessageCircle,
+          label: 'Domestic users',
+          title: 'Create an account, then connect Personal WeChat.',
+          body: 'Register and verify email first. Kap keeps connect, disconnect, reconnect, and renewal steps visible in the same account flow.',
+          href: '/auth/register',
+          cta: 'Create account',
+        },
+        {
+          icon: Smartphone,
+          label: 'Global users',
+          title: 'Send the first real task from WhatsApp.',
+          body: 'If you want to start immediately, open the WhatsApp thread and tell Kap the goal. The reminder and follow-up stay in that same chat.',
+          href: '/global',
+          cta: 'Open WhatsApp',
+        },
+        {
+          icon: CalendarCheck,
+          label: 'Existing schedule',
+          title: 'Bring Google Calendar into the reminder flow.',
+          body: 'If your tasks already live on the calendar, sign in and authorize import so future events become Kap reminders.',
+          href: '/account/calendar-import',
+          cta: 'Import calendar',
+        },
+      ];
+
+  return (
+    <section className="block start-path-block" id="start-path">
+      <div className="wrap">
+        <span className="eyebrow">{isZh ? '怎么开始' : 'How to start'}</span>
+        <h2>
+          {isZh ? '选择最快的开始方式，' : 'Choose the fastest way to start,'}
+          <br />
+          <span className="accent">{isZh ? '然后把任务留给 Kap 跟进。' : 'then let Kap carry the follow-up.'}</span>
+        </h2>
+        <p className="lead">
+          {isZh
+            ? '入口可以不同，但产品目标是一致的：把真实承诺变成提醒、检查和后续动作。'
+            : 'The entry can differ by user, but the product goal stays the same: turn a real commitment into a reminder, check-in, and next action.'}
+        </p>
+
+        <div className="start-path-grid">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <article key={card.label} className="start-path-card">
+                <div className="start-path-card__icon">
+                  <Icon size={22} aria-hidden="true" />
+                </div>
+                <span className="start-path-card__label">{card.label}</span>
+                <h3>{card.title}</h3>
+                <p>{card.body}</p>
+                <Link href={card.href} className="start-path-card__link">
+                  {card.cta}
+                  <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>

@@ -2819,6 +2819,71 @@
   font-size: 12px;
 }
 
+.coke-site .start-path-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.coke-site .start-path-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  padding: 24px;
+  border-radius: 28px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .start-path-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  background: rgba(232, 105, 60, 0.12);
+  color: var(--claw-600);
+}
+
+.coke-site .start-path-card__label {
+  margin-top: 18px;
+  color: var(--olive-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.coke-site .start-path-card h3 {
+  margin: 16px 0 0;
+  color: var(--ink-1000);
+  font-size: 28px;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.coke-site .start-path-card p {
+  margin: 14px 0 0;
+  color: var(--ink-700);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.coke-site .start-path-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin-top: auto;
+  padding-top: 22px;
+  color: var(--claw-600);
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .coke-site .quoteband {
   padding: 88px 0 0;
 }
@@ -2990,6 +3055,84 @@
   font-size: 13px;
   line-height: 1.5;
   font-weight: 600;
+}
+
+.coke-site .info-page {
+  padding: 72px 0 96px;
+}
+
+.coke-site .info-page__hero {
+  max-width: 760px;
+}
+
+.coke-site .info-page__hero h1 {
+  margin: 0;
+  max-width: 12ch;
+  color: var(--ink-1000);
+  font-family: var(--font-display);
+  font-size: clamp(46px, 7vw, 86px);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  font-variation-settings: 'SOFT' 40, 'opsz' 120;
+}
+
+.coke-site .info-page__hero p {
+  margin: 22px 0 0;
+  max-width: 46rem;
+  color: var(--ink-700);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.coke-site .info-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.coke-site .info-page__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 46px;
+}
+
+.coke-site .info-page__card {
+  padding: 24px;
+  border-radius: 28px;
+  border: 2px solid rgba(27, 20, 16, 0.1);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .info-page__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fff4ea;
+  color: var(--claw-600);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.coke-site .info-page__card h2 {
+  margin: 18px 0 0;
+  color: var(--ink-1000);
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.coke-site .info-page__card p {
+  margin: 12px 0 0;
+  color: var(--ink-700);
+  font-size: 15px;
+  line-height: 1.7;
 }
 
 .coke-site.customer-shell-page {
@@ -3377,7 +3520,9 @@
   }
 
   .coke-site .scen-grid,
-  .coke-site .voices {
+  .coke-site .voices,
+  .coke-site .start-path-grid,
+  .coke-site .info-page__grid {
     grid-template-columns: 1fr;
   }
 
