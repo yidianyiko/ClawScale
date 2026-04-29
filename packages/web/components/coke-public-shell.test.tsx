@@ -52,6 +52,7 @@ describe('CokePublicShell', () => {
     expect(container.querySelector('a[href="/api/coke/auth/login"]')).toBeFalsy();
     expect(container.textContent).toContain('Capabilities');
     expect(container.textContent).toContain('Scenarios');
+    expect(container.textContent).toContain('Demos');
     expect(container.textContent).toContain('Proof');
     expect(container.textContent).toContain('Start');
     expect(container.textContent).toContain('Sign in');
@@ -85,6 +86,7 @@ describe('CokePublicShell', () => {
     expect(container.querySelector('a[href="/api/coke/auth/login"]')).toBeFalsy();
     expect(container.textContent).toContain('能力');
     expect(container.textContent).toContain('场景');
+    expect(container.textContent).toContain('示例');
     expect(container.textContent).toContain('口碑');
     expect(container.textContent).toContain('开始');
     expect(container.textContent).toContain('登录');

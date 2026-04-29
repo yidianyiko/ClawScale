@@ -44,6 +44,7 @@ describe('CokeHomepage', () => {
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('#capabilities')).toBeTruthy();
     expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#demos')).toBeTruthy();
     expect(container.querySelector('#start-path')).toBeTruthy();
     expect(container.querySelector('#voices')).toBeTruthy();
     expect(container.querySelector('#download')).toBeTruthy();
@@ -59,6 +60,10 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('An AI supervisor');
     expect(container.textContent).toContain('Turn goals into reminders, check-ins, and follow-up.');
     expect(container.textContent).toContain('Import Google Calendar into Kap reminders.');
+    expect(container.textContent).toContain('See the supervision loop in real conversations');
+    expect(container.textContent).toContain('Finish one IELTS practice set');
+    expect(container.textContent).toContain('Pay the credit card bill');
+    expect(container.querySelector('a[href="/demos"]')).toBeTruthy();
     expect(container.textContent).toContain('Choose the fastest way to start');
     expect(container.textContent).toContain('Domestic users');
     expect(container.textContent).toContain('Global users');
@@ -98,6 +103,8 @@ describe('CokeHomepage', () => {
     expect(container.textContent).toContain('© 2026 Kap AI');
     expect(container.textContent).toContain('把目标变成提醒、检查和后续跟进。');
     expect(container.textContent).toContain('把 Google Calendar 导入成 Kap 提醒。');
+    expect(container.textContent).toContain('用真实对话看清监督闭环');
+    expect(container.textContent).toContain('做完一套雅思练习');
     expect(container.textContent).toContain('选择最快的开始方式');
     expect(container.textContent).toContain('国内用户');
     expect(container.textContent).toContain('海外用户');

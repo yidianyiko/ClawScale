@@ -367,6 +367,7 @@ export const messages: MessagesCatalog = {
       nav: [
         { href: '/#capabilities', label: 'Capabilities' },
         { href: '/#scenarios', label: 'Scenarios' },
+        { href: '/demos', label: 'Demos' },
         { href: '/#voices', label: 'Proof' },
         { href: '/#download', label: 'Start' },
       ],
@@ -462,7 +463,7 @@ export const messages: MessagesCatalog = {
         companyHeading: 'Company',
         copyright: '© 2026 Kap AI',
         tagline: 'Built to keep goals moving.',
-        productLinks: ['Capabilities', 'Scenarios', 'FAQ'],
+        productLinks: ['Capabilities', 'Scenarios', 'Demos', 'FAQ'],
         accountLinks: ['Sign in', 'Register', 'WeChat setup', 'Renew'],
         companyLinks: ['About', 'Terms', 'Privacy'],
       },
@@ -771,6 +772,7 @@ export const messages: MessagesCatalog = {
       nav: [
         { href: '/#capabilities', label: '能力' },
         { href: '/#scenarios', label: '场景' },
+        { href: '/demos', label: '示例' },
         { href: '/#voices', label: '口碑' },
         { href: '/#download', label: '开始' },
       ],
@@ -858,7 +860,7 @@ export const messages: MessagesCatalog = {
         companyHeading: '公司',
         copyright: '© 2026 Kap AI',
         tagline: '让目标继续往前走。',
-        productLinks: ['能力', '场景', '常见问题'],
+        productLinks: ['能力', '场景', '示例', '常见问题'],
         accountLinks: ['登录', '注册', '微信设置', '续费'],
         companyLinks: ['关于', '条款', '隐私'],
       },

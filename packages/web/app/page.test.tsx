@@ -43,11 +43,13 @@ describe('HomePage', () => {
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('#capabilities')).toBeTruthy();
     expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#demos')).toBeTruthy();
     expect(container.querySelector('#start-path')).toBeTruthy();
     expect(container.querySelector('#download')).toBeTruthy();
     expect(container.textContent).toContain('An AI Supervisor That Follows Up Until It Is Done');
     expect(container.textContent).toContain('Kap AI');
     expect(container.textContent).toContain('Capabilities');
+    expect(container.textContent).toContain('See the supervision loop in real conversations');
     expect(container.textContent).toContain('Choose the fastest way to start');
     expect(container.textContent).not.toContain('Coke AI');
     expect(container.textContent).not.toContain('Register / 注册');
@@ -66,11 +68,13 @@ describe('HomePage', () => {
     expect(container.querySelector('a[href="/auth/login"]')).toBeTruthy();
     expect(container.querySelector('#capabilities')).toBeTruthy();
     expect(container.querySelector('#scenarios')).toBeTruthy();
+    expect(container.querySelector('#demos')).toBeTruthy();
     expect(container.querySelector('#start-path')).toBeTruthy();
     expect(container.querySelector('#download')).toBeTruthy();
     expect(container.textContent).toContain('会主动跟进的 AI 监督者');
     expect(container.textContent).toContain('Kap AI');
     expect(container.textContent).toContain('能力');
+    expect(container.textContent).toContain('用真实对话看清监督闭环');
     expect(container.textContent).toContain('选择最快的开始方式');
     expect(container.textContent).not.toContain('Coke AI');
     expect(container.textContent).not.toContain('Register / 注册');

@@ -302,8 +302,45 @@ const VOICES = {
   ],
 } satisfies Record<Locale, ReadonlyArray<{ avatar: string; role: string; quote: string }>>;
 
+const DEMO_PREVIEWS = {
+  en: [
+    {
+      tag: 'Study',
+      title: 'Finish one IELTS practice set',
+      body: 'Kap asks for timing, creates a reminder, and checks whether the study block actually happened.',
+    },
+    {
+      tag: 'Life admin',
+      title: 'Pay the credit card bill',
+      body: 'A small errand becomes visible before the deadline, with the next action kept in the same thread.',
+    },
+    {
+      tag: 'Calendar',
+      title: 'Turn Google Calendar events into reminders',
+      body: 'Calendar events can become Kap-owned reminders attached to the active conversation.',
+    },
+  ],
+  zh: [
+    {
+      tag: '学习',
+      title: '做完一套雅思练习',
+      body: 'Kap 会追问时间，创建提醒，并在结束后检查学习块有没有真的完成。',
+    },
+    {
+      tag: '生活事项',
+      title: '还信用卡账单',
+      body: '小事项会在截止前被放到眼前，后续动作留在同一个对话线程里。',
+    },
+    {
+      tag: '日历',
+      title: '把 Google Calendar 事件变成提醒',
+      body: '日历事件可以转成 Kap 拥有的提醒，并接到当前对话里。',
+    },
+  ],
+} satisfies Record<Locale, ReadonlyArray<{ tag: string; title: string; body: string }>>;
+
 const FOOTER_LINKS = {
-  product: ['/#capabilities', '/#scenarios', '/faqs'],
+  product: ['/#capabilities', '/#scenarios', '/demos', '/faqs'],
   account: ['/auth/login', '/auth/register', '/channels/wechat-personal', '/account/subscription'],
   company: ['/', '/terms', '/privacy'],
 } as const;
@@ -317,6 +354,7 @@ export function CokeHomepage() {
       <Ticker locale={locale} />
       <Capabilities locale={locale} />
       <Scenarios locale={locale} />
+      <DemoPreview locale={locale} />
       <StartPath locale={locale} />
       <QuoteBand locale={locale} />
       <Voices locale={locale} />
@@ -525,6 +563,44 @@ function Scenarios({ locale }: { locale: Locale }) {
             </article>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function DemoPreview({ locale }: { locale: Locale }) {
+  const isZh = locale === 'zh';
+  const demos = DEMO_PREVIEWS[locale];
+
+  return (
+    <section className="block demo-preview-block" id="demos">
+      <div className="wrap">
+        <span className="eyebrow">{isZh ? '对话示例' : 'Conversation demos'}</span>
+        <h2>
+          {isZh ? '用真实对话看清监督闭环，' : 'See the supervision loop in real conversations,'}
+          <br />
+          <span className="accent">{isZh ? '再决定从哪里开始。' : 'then choose where to start.'}</span>
+        </h2>
+        <p className="lead">
+          {isZh
+            ? '示例展示用户第一句话、Kap 的追问、提醒创建和后续检查，不把产品讲成抽象能力清单。'
+            : 'Examples show the first message, Kap clarification, reminder creation, and follow-up instead of another abstract capability list.'}
+        </p>
+
+        <div className="demo-preview-grid">
+          {demos.map((demo) => (
+            <article key={demo.title} className="demo-preview-card">
+              <span>{demo.tag}</span>
+              <h3>{demo.title}</h3>
+              <p>{demo.body}</p>
+            </article>
+          ))}
+        </div>
+
+        <Link href="/demos" className="demo-preview-link">
+          {isZh ? '查看全部对话示例' : 'View all conversation demos'}
+          <ArrowRight size={15} aria-hidden="true" />
+        </Link>
       </div>
     </section>
   );
