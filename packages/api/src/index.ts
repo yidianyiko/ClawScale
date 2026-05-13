@@ -12,6 +12,7 @@ import { customerClaimRouter } from './routes/customer-claim-routes.js';
 import { customerChannelRouter } from './routes/customer-channel-routes.js';
 import { customerGoogleCalendarImportRouter } from './routes/customer-google-calendar-import-routes.js';
 import { customerGoogleCalendarImportCallbackRouter } from './routes/customer-google-calendar-import-callback-routes.js';
+import { customerReminderRouter } from './routes/customer-reminder-routes.js';
 import {
   customerCalendarImportHandoffRouter,
   internalCalendarImportHandoffRouter,
@@ -60,6 +61,7 @@ app.route('/api/auth/claim', customerClaimRouter);
 app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportRouter);
 app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
 app.route('/api/customer/calendar-import-handoffs', customerCalendarImportHandoffRouter);
+app.route('/api/customer/reminders', customerReminderRouter);
 app.route('/api/admin', adminAuthRouter);
 app.route('/api/admin/customers', adminCustomersRouter);
 app.route('/api/admin/shared-channels', adminSharedChannelsRouter);

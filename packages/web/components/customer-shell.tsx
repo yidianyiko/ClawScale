@@ -15,12 +15,14 @@ const CUSTOMER_NAV = {
     { href: '/channels/wechat-personal', label: 'WeChat' },
     { href: '/account/subscription', label: 'Renewal' },
     { href: '/account/calendar-import', label: 'Calendar' },
+    { href: '/account/reminders', label: 'Reminders' },
   ],
   zh: [
     { href: '/channels', label: '通道' },
     { href: '/channels/wechat-personal', label: '微信' },
     { href: '/account/subscription', label: '续费' },
     { href: '/account/calendar-import', label: '日历' },
+    { href: '/account/reminders', label: '提醒' },
   ],
 } satisfies Record<Locale, ReadonlyArray<{ href: string; label: string }>>;
 

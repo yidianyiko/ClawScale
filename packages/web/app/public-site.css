@@ -3684,6 +3684,216 @@
   text-transform: uppercase;
 }
 
+.coke-site .customer-reminders-page {
+  max-width: 1000px;
+}
+
+.coke-site .customer-reminder-board__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.coke-site .customer-reminder-weekbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.coke-site .customer-reminder-weekbar strong {
+  min-width: 0;
+  color: var(--ink-900);
+  font-size: 15px;
+  text-align: center;
+}
+
+.coke-site .customer-reminder-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.coke-site .customer-reminder-day {
+  min-width: 112px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-radius: 18px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.coke-site .customer-reminder-day__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(27, 20, 16, 0.08);
+}
+
+.coke-site .customer-reminder-day__head strong {
+  color: var(--ink-1000);
+  font-size: 13px;
+}
+
+.coke-site .customer-reminder-day__head span,
+.coke-site .customer-reminder-empty {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+.coke-site .customer-reminder-day__items {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 220px;
+  padding: 10px;
+}
+
+.coke-site .customer-reminder-empty {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.coke-site .customer-reminder-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .customer-reminder-card__open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coke-site .customer-reminder-card__open:focus-visible {
+  outline: 2px solid var(--claw-500);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.coke-site .customer-reminder-card time {
+  color: var(--olive-500);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.coke-site .customer-reminder-card h2 {
+  margin: 4px 0 0;
+  color: var(--ink-1000);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.coke-site .customer-reminder-card p {
+  margin: 6px 0 0;
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.coke-site .customer-reminder-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.coke-site .customer-reminder-card__actions button,
+.coke-site .customer-reminder-icon-button {
+  min-height: 30px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: rgba(246, 241, 232, 0.74);
+  color: var(--ink-700);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.coke-site .customer-reminder-card__actions button:hover,
+.coke-site .customer-reminder-icon-button:hover {
+  background: #fff;
+  color: var(--ink-1000);
+}
+
+.coke-site .customer-reminder-drawer {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 2px solid rgba(27, 20, 16, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-md);
+}
+
+.coke-site .customer-reminder-drawer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.coke-site .customer-reminder-drawer__head h2 {
+  margin: 8px 0 0;
+  color: var(--ink-1000);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.coke-site .customer-reminder-form {
+  display: grid;
+  gap: 14px;
+}
+
+.coke-site .customer-reminder-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.coke-site .customer-reminder-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.coke-site .customer-reminder-form input,
+.coke-site .customer-reminder-form select {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(27, 20, 16, 0.14);
+  background: #fff;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
 @media (max-width: 1080px) {
   .coke-site .hero-grid,
   .coke-site .customer-shell__grid,

@@ -60,6 +60,7 @@ function createCustomerApiClient(getToken: TokenGetter) {
   return {
     get: <T>(path: string) => request<T>('GET', path, getToken),
     post: <T>(path: string, body?: unknown) => request<T>('POST', path, getToken, body),
+    patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, getToken, body),
     delete: <T>(path: string) => request<T>('DELETE', path, getToken),
   };
 }

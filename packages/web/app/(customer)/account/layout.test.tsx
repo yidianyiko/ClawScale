@@ -48,6 +48,8 @@ describe('CustomerAccountLayout', () => {
     expect(container.querySelector('a[href="/"][aria-label="Kap AI"]')).toBeTruthy();
     expect(container.querySelector('img[alt="Kap koala badge"]')).toBeTruthy();
     expect(container.querySelector('a[href="/account/subscription"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/account/reminders"]')).toBeTruthy();
+    expect(container.textContent).toContain('提醒');
     expect(container.textContent).toContain('把你的下一步继续推进');
     expect(container.textContent).toContain('在同一个地方完成下一步');
     expect(container.textContent).toContain('body');
