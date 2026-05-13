@@ -77,15 +77,15 @@ through. On first inbound contact, Gateway:
 4. provisions the configured shared-channel agent
 5. parks the inbound event if provisioning is still pending
 
-Current and active shared-channel work is centered on the `whatsapp_evolution`
-shape, with the same model intended for additional shared adapters such as
-Linq or WeChat Ecloud.
+This README describes the Gateway-owned model. The current active shared-channel
+kinds and provider webhook paths are canonicalized in
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and the route/API index in
+[`../docs/product-specs/FEATURE_TREE.md`](../docs/product-specs/FEATURE_TREE.md).
 
-Important admin/API surfaces:
+Stable admin/API entrypoints:
 
 - `/admin/shared-channels`
 - `/api/admin/shared-channels`
-- `/gateway/evolution/whatsapp/:channelId/:webhookToken`
 
 Shared-channel secrets stay server-side. Public/admin responses must not expose
 stored webhook tokens or provider credentials.

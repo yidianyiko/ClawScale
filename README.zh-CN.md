@@ -62,14 +62,16 @@ Gateway 把 channel row 作为所有权和生命周期状态的事实来源。
 4. 为配置的共享渠道 agent 执行开通
 5. 如果开通仍在 pending，就先 park 这条入站事件
 
-当前活跃的共享渠道工作主要围绕 `whatsapp_evolution` 形态展开；Linq、
-WeChat Ecloud 等后续共享适配器也应沿用同一模型。
+本 README 只描述 Gateway 拥有的共享渠道模型。当前活跃的共享渠道类型和
+provider webhook 路径以 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+为准；路由和 API 入口索引以
+[`../docs/product-specs/FEATURE_TREE.md`](../docs/product-specs/FEATURE_TREE.md)
+为准，避免在多处维护同一份当前状态。
 
-重要的管理和 API 表面：
+稳定的管理和 API 入口：
 
 - `/admin/shared-channels`
 - `/api/admin/shared-channels`
-- `/gateway/evolution/whatsapp/:channelId/:webhookToken`
 
 共享渠道密钥只保存在服务端。公开或管理员响应不能泄露存储的 webhook token
 或 provider 凭据。
