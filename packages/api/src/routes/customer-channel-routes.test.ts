@@ -218,6 +218,38 @@ describe('customerChannelRouter', () => {
     });
   });
 
+  it('creates a personal channel for the authenticated customer', async () => {
+    mocks.createOrReusePersonalWeChatChannel.mockResolvedValue({
+      id: 'ch_1',
+      status: 'disconnected',
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
+
+    const res = await app.request('/api/customer/channels/wechat-personal', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.createOrReusePersonalWeChatChannel).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      clawscaleUserId: 'csu_1',
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        channel_id: 'ch_1',
+        status: 'disconnected',
+        qr: null,
+        qr_url: null,
+      },
+    });
+  });
+
   it('disconnects the authenticated customer channel', async () => {
     mocks.disconnectPersonalWeChatChannel.mockResolvedValue({
       id: 'ch_1',
@@ -291,6 +323,84 @@ describe('customerChannelRouter', () => {
         qr: null,
         qr_url: null,
       },
+    });
+  });
+
+  it('blocks connect when the compatibility account requires a subscription', async () => {
+    mocks.resolveCokeAccountAccess.mockResolvedValueOnce({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'subscription_required',
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
+
+    const res = await app.request('/api/customer/channels/wechat-personal/connect', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(res.status).toBe(402);
+    expect(mocks.ensureClawscaleUserForCustomer).not.toHaveBeenCalled();
+    expect(mocks.createOrReusePersonalWeChatChannel).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'subscription_required',
+    });
+  });
+
+  it('still allows status and delete when the compatibility account requires a subscription', async () => {
+    mocks.resolveCokeAccountAccess.mockResolvedValue({
+      accountStatus: 'normal',
+      emailVerified: true,
+      subscriptionActive: false,
+      subscriptionExpiresAt: null,
+      accountAccessAllowed: false,
+      accountAccessDeniedReason: 'subscription_required',
+      renewalUrl: 'https://coke.example/account/subscription',
+    });
+    mocks.channelFindMany.mockResolvedValue([
+      {
+        id: 'ch_1',
+        type: 'wechat_personal',
+        scope: 'personal',
+        ownerClawscaleUserId: 'csu_1',
+        status: 'disconnected',
+        updatedAt: new Date('2026-04-16T00:00:00.000Z'),
+      },
+    ]);
+    mocks.archivePersonalWeChatChannel.mockResolvedValue({
+      id: 'ch_1',
+      status: 'archived',
+    });
+
+    const app = new Hono();
+    app.route('/api/customer/channels/wechat-personal', customerChannelRouter);
+
+    const statusRes = await app.request('/api/customer/channels/wechat-personal/status', {
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+    const deleteRes = await app.request('/api/customer/channels/wechat-personal', {
+      method: 'DELETE',
+      headers: {
+        authorization: 'Bearer customer-token',
+      },
+    });
+
+    expect(statusRes.status).toBe(200);
+    expect(deleteRes.status).toBe(200);
+    expect(mocks.archivePersonalWeChatChannel).toHaveBeenCalledWith({
+      tenantId: 'ten_1',
+      clawscaleUserId: 'csu_1',
     });
   });
 
