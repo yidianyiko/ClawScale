@@ -1,5 +1,7 @@
 import type { ChannelType } from '@clawscale/shared';
 
+// Backend-only provider configuration schema. Do not import from
+// gateway/packages/web; see docs/design-docs/channel-field-inventory.md.
 export interface ChannelConfigField {
   key: string;
   label: string;

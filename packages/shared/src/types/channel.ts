@@ -1,6 +1,9 @@
 /**
  * Channel types — social platforms the bot can connect to.
  */
+// Frontend-safe channel enums/read DTOs only. Provider config schemas live in
+// gateway/packages/api/src/channel/provider-config-schema.ts; see
+// docs/design-docs/channel-field-inventory.md for field classification.
 export type ChannelType =
   | 'whatsapp'
   | 'whatsapp_business'
