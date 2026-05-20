@@ -85,6 +85,12 @@ function makeOwnerMembership(
   };
 }
 
+const connectActionAvailability = {
+  allowedActions: ['connect', 'archive', 'refresh'],
+  blockedReasons: [],
+  recommendedNextAction: 'connect',
+};
+
 describe('customerChannelRouter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,6 +181,7 @@ describe('customerChannelRouter', () => {
         status: 'disconnected',
         qr: null,
         qr_url: null,
+        actionAvailability: connectActionAvailability,
       },
     });
   });

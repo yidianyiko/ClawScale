@@ -37,7 +37,10 @@ vi.mock('../adapters/wechat.js', () => ({
   stopWeixinBot: mocks.stopWeixinBot,
 }));
 
-import { createPersonalWechatChannelRouter } from './user-wechat-channel.js';
+import {
+  buildPersonalWechatActionAvailability,
+  createPersonalWechatChannelRouter,
+} from './user-wechat-channel.js';
 
 function createTestRouter() {
   return createPersonalWechatChannelRouter({
@@ -52,6 +55,72 @@ function createTestRouter() {
 }
 
 const userWechatChannelRouter = createTestRouter();
+
+const connectActionAvailability = {
+  allowedActions: ['connect', 'archive', 'refresh'],
+  blockedReasons: [],
+  recommendedNextAction: 'connect',
+};
+
+const createActionAvailability = {
+  allowedActions: ['create', 'refresh'],
+  blockedReasons: [],
+  recommendedNextAction: 'create',
+};
+
+describe('buildPersonalWechatActionAvailability', () => {
+  it.each([
+    ['account_suspended'],
+    ['email_not_verified'],
+    ['subscription_required'],
+  ] as const)('when access is denied for %s, only refresh is allowed', (reason) => {
+    const result = buildPersonalWechatActionAvailability({
+      status: 'connected',
+      accessDeniedReason: reason,
+    });
+    expect(result.allowedActions).toEqual(['refresh']);
+    expect(result.blockedReasons).toEqual([reason]);
+    expect(result.recommendedNextAction).toBe('refresh');
+  });
+
+  it.each(['connected'] as const)('status=%s exposes disconnect/archive/refresh', (status) => {
+    const result = buildPersonalWechatActionAvailability({ status });
+    expect(result.allowedActions).toEqual(['disconnect', 'archive', 'refresh']);
+    expect(result.blockedReasons).toEqual([]);
+    expect(result.recommendedNextAction).toBe('disconnect');
+  });
+
+  it.each(['missing', 'archived'] as const)('status=%s exposes create/refresh', (status) => {
+    const result = buildPersonalWechatActionAvailability({ status });
+    expect(result.allowedActions).toEqual(['create', 'refresh']);
+    expect(result.recommendedNextAction).toBe('create');
+  });
+
+  it.each(['disconnected', 'pending', 'error'] as const)(
+    'status=%s exposes connect/archive/refresh',
+    (status) => {
+      const result = buildPersonalWechatActionAvailability({ status });
+      expect(result.allowedActions).toEqual(['connect', 'archive', 'refresh']);
+      expect(result.recommendedNextAction).toBe('connect');
+    },
+  );
+
+  it('never claims a recommended action that is not in allowedActions', () => {
+    for (const status of [
+      'missing',
+      'disconnected',
+      'pending',
+      'connected',
+      'error',
+      'archived',
+    ] as const) {
+      const result = buildPersonalWechatActionAvailability({ status });
+      if (result.recommendedNextAction) {
+        expect(result.allowedActions).toContain(result.recommendedNextAction);
+      }
+    }
+  });
+});
 
 describe('userWechatChannelRouter', () => {
   beforeEach(() => {
@@ -414,6 +483,7 @@ describe('userWechatChannelRouter', () => {
         status: 'missing',
         qr: null,
         qr_url: null,
+        actionAvailability: createActionAvailability,
       },
     });
   });
@@ -443,6 +513,7 @@ describe('userWechatChannelRouter', () => {
         status: 'archived',
         qr: null,
         qr_url: null,
+        actionAvailability: createActionAvailability,
       },
     });
   });
@@ -533,6 +604,7 @@ describe('userWechatChannelRouter', () => {
         status: 'disconnected',
         qr: null,
         qr_url: null,
+        actionAvailability: connectActionAvailability,
       },
     });
   });
@@ -563,6 +635,7 @@ describe('userWechatChannelRouter', () => {
         status: 'disconnected',
         qr: null,
         qr_url: null,
+        actionAvailability: connectActionAvailability,
       },
     });
   });
@@ -592,6 +665,7 @@ describe('userWechatChannelRouter', () => {
         status: 'error',
         qr: null,
         qr_url: null,
+        actionAvailability: connectActionAvailability,
       },
     });
   });

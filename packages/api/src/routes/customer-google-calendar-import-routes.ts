@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { Hono } from 'hono';
+import type { ProductActionAvailability } from '@clawscale/shared';
 import { db } from '../db/index.js';
 import { resolveCokeAccountAccess } from '../lib/coke-account-access.js';
 import {
@@ -123,6 +124,73 @@ function serializeRun(run: Awaited<ReturnType<typeof getLatestCalendarImportRun>
     skippedCount: run.skippedCount,
     failedCount: run.failedCount,
     errorSummary: run.errorSummary,
+  };
+}
+
+type CalendarImportCustomerAction =
+  | 'start_oauth'
+  | 'continue_oauth'
+  | 'run_import'
+  | 'cancel_import'
+  | 'reset';
+type CalendarImportBlockedReason =
+  | 'oauth_required'
+  | 'oauth_in_progress'
+  | 'import_in_progress'
+  | 'subscription_required'
+  | 'account_suspended';
+
+type CalendarImportLifecycleStatus =
+  | null
+  | 'authorizing'
+  | 'importing'
+  | 'succeeded'
+  | 'succeeded_with_errors'
+  | 'failed';
+
+export function buildCalendarImportActionAvailability(input: {
+  status: CalendarImportLifecycleStatus;
+  blockedReason?: CalendarImportBlockedReason | null;
+}): ProductActionAvailability<CalendarImportCustomerAction, CalendarImportBlockedReason> {
+  if (input.blockedReason) {
+    return {
+      allowedActions: ['reset'],
+      blockedReasons: [input.blockedReason],
+      recommendedNextAction: 'reset',
+    };
+  }
+  if (input.status === 'authorizing') {
+    return {
+      allowedActions: ['continue_oauth', 'reset'],
+      blockedReasons: ['oauth_in_progress'],
+      recommendedNextAction: 'continue_oauth',
+    };
+  }
+  if (input.status === 'importing') {
+    return {
+      allowedActions: ['cancel_import'],
+      blockedReasons: ['import_in_progress'],
+      recommendedNextAction: 'cancel_import',
+    };
+  }
+  if (input.status === 'succeeded' || input.status === 'succeeded_with_errors') {
+    return {
+      allowedActions: ['run_import', 'reset'],
+      blockedReasons: [],
+      recommendedNextAction: 'run_import',
+    };
+  }
+  if (input.status === 'failed') {
+    return {
+      allowedActions: ['run_import', 'reset'],
+      blockedReasons: [],
+      recommendedNextAction: 'run_import',
+    };
+  }
+  return {
+    allowedActions: ['start_oauth'],
+    blockedReasons: ['oauth_required'],
+    recommendedNextAction: 'start_oauth',
   };
 }
 
@@ -325,6 +393,9 @@ export const customerGoogleCalendarImportRouter = new Hono()
       data: {
         latestRun: serializeRun(latestRun),
         ...(requestedRunId ? { run: serializeRun(ownedRequestedRun) } : {}),
+        actionAvailability: buildCalendarImportActionAvailability({
+          status: (ownedRequestedRun ?? latestRun)?.status ?? null,
+        }),
       },
     });
   });

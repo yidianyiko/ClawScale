@@ -1,4 +1,5 @@
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
+import type { ProductActionAvailability } from '@clawscale/shared';
 import { db } from '../db/index.js';
 import {
   archivePersonalWeChatChannel,
@@ -23,6 +24,15 @@ type LifecycleStatus =
   | 'connected'
   | 'error'
   | 'archived';
+
+type PersonalWechatCustomerAction = 'create' | 'connect' | 'disconnect' | 'archive' | 'refresh';
+type PersonalWechatBlockedReason =
+  | 'account_suspended'
+  | 'email_not_verified'
+  | 'subscription_required'
+  | 'channel_missing'
+  | 'channel_connected'
+  | 'channel_archived';
 
 type CurrentChannelRow = {
   id: string;
@@ -159,6 +169,7 @@ function buildLifecyclePayload(
   channelId: string | null,
   status: LifecycleStatus,
   qr: { image: string; url: string } | null,
+  options: { includeActionAvailability?: boolean } = {},
 ) {
   return {
     channel_id: channelId,
@@ -166,6 +177,41 @@ function buildLifecyclePayload(
     qr: status === 'pending' ? qr?.image ?? null : null,
     qr_url: status === 'pending' ? qr?.url ?? null : null,
     ...(status === 'pending' ? { connect_url: qr?.url ?? null } : {}),
+    ...(options.includeActionAvailability
+      ? { actionAvailability: buildPersonalWechatActionAvailability({ status }) }
+      : {}),
+  };
+}
+
+export function buildPersonalWechatActionAvailability(input: {
+  status: LifecycleStatus;
+  accessDeniedReason?: PersonalWechatBlockedReason | null;
+}): ProductActionAvailability<PersonalWechatCustomerAction, PersonalWechatBlockedReason> {
+  if (input.accessDeniedReason) {
+    return {
+      allowedActions: ['refresh'],
+      blockedReasons: [input.accessDeniedReason],
+      recommendedNextAction: 'refresh',
+    };
+  }
+  if (input.status === 'connected') {
+    return {
+      allowedActions: ['disconnect', 'archive', 'refresh'],
+      blockedReasons: [],
+      recommendedNextAction: 'disconnect',
+    };
+  }
+  if (input.status === 'missing' || input.status === 'archived') {
+    return {
+      allowedActions: ['create', 'refresh'],
+      blockedReasons: [],
+      recommendedNextAction: 'create',
+    };
+  }
+  return {
+    allowedActions: ['connect', 'archive', 'refresh'],
+    blockedReasons: [],
+    recommendedNextAction: 'connect',
   };
 }
 
@@ -330,7 +376,9 @@ export function createPersonalWechatChannelRouter(
         if (!channel) {
           return c.json({
             ok: true,
-            data: buildLifecyclePayload(null, 'missing', null),
+            data: buildLifecyclePayload(null, 'missing', null, {
+              includeActionAvailability: true,
+            }),
           });
         }
 
@@ -350,6 +398,7 @@ export function createPersonalWechatChannelRouter(
             channel.id,
             latestStatus,
             latestStatus === 'pending' ? qr : null,
+            { includeActionAvailability: true },
           ),
         });
       } catch (err) {

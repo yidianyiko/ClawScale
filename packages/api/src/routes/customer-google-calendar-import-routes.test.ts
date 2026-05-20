@@ -37,8 +37,57 @@ vi.mock('../lib/google-calendar-oauth.js', () => oauth);
 vi.mock('../lib/google-calendar-import-runs.js', () => importRuns);
 vi.mock('../db/index.js', () => ({ db: {} }));
 
-import { customerGoogleCalendarImportRouter } from './customer-google-calendar-import-routes.js';
+import {
+  buildCalendarImportActionAvailability,
+  customerGoogleCalendarImportRouter,
+} from './customer-google-calendar-import-routes.js';
 import { customerGoogleCalendarImportCallbackRouter } from './customer-google-calendar-import-callback-routes.js';
+
+describe('buildCalendarImportActionAvailability', () => {
+  it.each([
+    ['subscription_required'],
+    ['account_suspended'],
+  ] as const)('when access is blocked for %s, only reset is allowed', (reason) => {
+    const result = buildCalendarImportActionAvailability({
+      status: 'succeeded',
+      blockedReason: reason,
+    });
+    expect(result.allowedActions).toEqual(['reset']);
+    expect(result.blockedReasons).toEqual([reason]);
+    expect(result.recommendedNextAction).toBe('reset');
+  });
+
+  it('maps no oauth state to start_oauth', () => {
+    const result = buildCalendarImportActionAvailability({ status: null });
+    expect(result.allowedActions).toEqual(['start_oauth']);
+    expect(result.blockedReasons).toEqual(['oauth_required']);
+    expect(result.recommendedNextAction).toBe('start_oauth');
+  });
+
+  it('maps oauth-pending state to continue_oauth', () => {
+    const result = buildCalendarImportActionAvailability({ status: 'authorizing' });
+    expect(result.allowedActions).toEqual(['continue_oauth', 'reset']);
+    expect(result.blockedReasons).toEqual(['oauth_in_progress']);
+    expect(result.recommendedNextAction).toBe('continue_oauth');
+  });
+
+  it('maps running import state to cancel_import', () => {
+    const result = buildCalendarImportActionAvailability({ status: 'importing' });
+    expect(result.allowedActions).toEqual(['cancel_import']);
+    expect(result.blockedReasons).toEqual(['import_in_progress']);
+    expect(result.recommendedNextAction).toBe('cancel_import');
+  });
+
+  it.each(['succeeded', 'succeeded_with_errors', 'failed'] as const)(
+    'maps terminal status %s to run_import',
+    (status) => {
+      const result = buildCalendarImportActionAvailability({ status });
+      expect(result.allowedActions).toEqual(['run_import', 'reset']);
+      expect(result.blockedReasons).toEqual([]);
+      expect(result.recommendedNextAction).toBe('run_import');
+    },
+  );
+});
 
 describe('customer google calendar import routes', () => {
   beforeEach(() => {
@@ -326,6 +375,11 @@ describe('customer google calendar import routes', () => {
           failedCount: 1,
           errorSummary: 'one event could not be imported',
         },
+        actionAvailability: {
+          allowedActions: ['run_import', 'reset'],
+          blockedReasons: [],
+          recommendedNextAction: 'run_import',
+        },
       },
     });
   });
@@ -385,6 +439,11 @@ describe('customer google calendar import routes', () => {
           skippedCount: 0,
           failedCount: 1,
           errorSummary: 'callback_failed',
+        },
+        actionAvailability: {
+          allowedActions: ['run_import', 'reset'],
+          blockedReasons: [],
+          recommendedNextAction: 'run_import',
         },
       },
     });

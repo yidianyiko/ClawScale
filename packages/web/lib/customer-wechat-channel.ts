@@ -1,4 +1,5 @@
 import type { ApiResponse } from '../../shared/src/types/api';
+import type { ProductActionAvailability } from '../../shared/src/types/action-availability';
 import type { LocaleMessages } from './i18n';
 import { customerApi } from './customer-api';
 
@@ -17,6 +18,10 @@ export interface CustomerWechatChannelState {
   masked_identity?: string;
   error?: string;
   message?: string;
+  actionAvailability?: ProductActionAvailability<
+    'create' | 'connect' | 'disconnect' | 'archive' | 'refresh',
+    string
+  >;
 }
 
 interface CustomerWechatChannelViewModel {
