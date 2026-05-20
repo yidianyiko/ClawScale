@@ -14,6 +14,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@clawscale/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@hono/node-server':
         specifier: ^1.14.3
         version: 1.19.11(hono@4.12.9)
