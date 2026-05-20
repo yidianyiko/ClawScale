@@ -33,13 +33,13 @@ vi.mock('../lib/business-conversation.js', () => ({
   resolveExactDeliveryRoute: vi.fn(),
 }));
 
-vi.mock('../lib/outbound-delivery.js', () => ({
+vi.mock('../channel/outbound-delivery.js', () => ({
   deliverOutboundMessage: vi.fn(),
 }));
 
 import { db } from '../db/index.js';
 import { resolveExactDeliveryRoute } from '../lib/business-conversation.js';
-import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
+import { deliverOutboundMessage } from '../channel/outbound-delivery.js';
 import { outboundRouter } from './outbound.js';
 
 interface OutboundBody {

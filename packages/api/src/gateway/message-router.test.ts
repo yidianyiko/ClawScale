@@ -19,17 +19,17 @@ const linqCreateChat = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/route-message.js', () => ({ routeInboundMessage }));
-vi.mock('../lib/evolution-api.js', () => ({
+vi.mock('../channel/evolution-api.js', () => ({
   EvolutionApiClient: class {
     sendText = evolutionSendText;
   },
 }));
-vi.mock('../lib/wechat-ecloud-api.js', () => ({
+vi.mock('../channel/wechat-ecloud-api.js', () => ({
   WechatEcloudApiClient: class {
     sendText = ecloudSendText;
   },
 }));
-vi.mock('../lib/linq-api.js', () => ({
+vi.mock('../channel/linq-api.js', () => ({
   LinqApiClient: class {
     createChat = linqCreateChat;
   },

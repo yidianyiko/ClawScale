@@ -6,7 +6,7 @@ import {
   DeliveryRouteResolutionError,
   resolveExactDeliveryRoute,
 } from '../lib/business-conversation.js';
-import { deliverOutboundMessage } from '../lib/outbound-delivery.js';
+import { deliverOutboundMessage } from '../channel/outbound-delivery.js';
 
 const messageTypeSchema = z.enum(['text', 'image', 'voice']);
 const mediaUrlSchema = z.string().trim().url().refine((value) => {

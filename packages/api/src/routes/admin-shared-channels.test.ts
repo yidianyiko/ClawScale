@@ -22,13 +22,13 @@ vi.mock('../middleware/admin-auth.js', () => ({
     await next();
   },
 }));
-vi.mock('../lib/evolution-api.js', () => ({
+vi.mock('../channel/evolution-api.js', () => ({
   EvolutionApiClient: vi.fn().mockImplementation(() => ({
     setWebhook,
     clearWebhook,
   })),
 }));
-vi.mock('../lib/linq-api.js', () => ({
+vi.mock('../channel/linq-api.js', () => ({
   LinqApiClient: vi.fn().mockImplementation(() => ({
     createWebhookSubscription,
     deleteWebhookSubscription,

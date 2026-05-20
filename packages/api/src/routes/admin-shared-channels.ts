@@ -3,9 +3,9 @@ import type { Prisma } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { EvolutionApiClient } from '../lib/evolution-api.js';
+import { EvolutionApiClient } from '../channel/evolution-api.js';
 import { generateId } from '../lib/id.js';
-import { LinqApiClient } from '../lib/linq-api.js';
+import { LinqApiClient } from '../channel/linq-api.js';
 import {
   buildPublicLinqConfig,
   ensureStoredLinqConfig,
@@ -14,7 +14,7 @@ import {
   normalizeLinqPhoneNumber,
   parseStoredLinqConfig,
   type StoredLinqConfig,
-} from '../lib/linq-config.js';
+} from '../channel/linq-config.js';
 import {
   buildPublicWhatsAppEvolutionConfig,
   ensureStoredWhatsAppEvolutionConfig,
@@ -22,7 +22,7 @@ import {
   parseWhatsAppEvolutionConfig,
   type StoredWhatsAppEvolutionConfig,
   type WhatsAppEvolutionConfig,
-} from '../lib/whatsapp-evolution-config.js';
+} from '../channel/whatsapp-evolution-config.js';
 import {
   buildPublicWechatEcloudConfig,
   ensureStoredWechatEcloudConfig,
@@ -30,7 +30,7 @@ import {
   parseStoredWechatEcloudConfig,
   parseWechatEcloudConfigInput,
   type StoredWechatEcloudConfig,
-} from '../lib/wechat-ecloud-config.js';
+} from '../channel/wechat-ecloud-config.js';
 import { requireAdminAuth } from '../middleware/admin-auth.js';
 
 const CHANNEL_KIND_VALUES = [

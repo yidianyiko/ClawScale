@@ -10,15 +10,15 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { db } from '../db/index.js';
 import { routeInboundMessage } from '../lib/route-message.js';
-import { EvolutionApiClient } from '../lib/evolution-api.js';
-import { LinqApiClient } from '../lib/linq-api.js';
-import { normalizeLinqPhoneNumber, parseStoredLinqConfig } from '../lib/linq-config.js';
-import { WechatEcloudApiClient } from '../lib/wechat-ecloud-api.js';
-import { parseStoredWechatEcloudConfig } from '../lib/wechat-ecloud-config.js';
+import { EvolutionApiClient } from '../channel/evolution-api.js';
+import { LinqApiClient } from '../channel/linq-api.js';
+import { normalizeLinqPhoneNumber, parseStoredLinqConfig } from '../channel/linq-config.js';
+import { WechatEcloudApiClient } from '../channel/wechat-ecloud-api.js';
+import { parseStoredWechatEcloudConfig } from '../channel/wechat-ecloud-config.js';
 import {
   normalizeWechatEcloudWebhook,
   timingSafeEqualString,
-} from '../lib/wechat-ecloud-webhook.js';
+} from '../channel/wechat-ecloud-webhook.js';
 import { normalizeInboundAttachments } from '../lib/inbound-attachments.js';
 
 const LINQ_REPLAY_WINDOW_SECONDS = 300;
