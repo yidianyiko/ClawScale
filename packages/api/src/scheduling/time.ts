@@ -4,6 +4,7 @@ import type { BookableWindowRule, GeneratedWindowInstance } from './types.js';
 const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_TIME_RE = /^\d{2}:\d{2}$/;
 const MIN_DURATION_MINUTES = 15;
+const MIN_DURATION_MS = MIN_DURATION_MINUTES * 60 * 1000;
 const MAX_LOOKAHEAD_DAYS = 90;
 const DEV_INSTANCE_SECRET = 'dev-scheduling-instance-secret';
 
@@ -47,9 +48,20 @@ function validateWindowTimes(timeStart: string, timeEnd: string): void {
 
 export function isValidIanaTimezone(value: string): boolean {
   if (typeof value !== 'string' || value.trim() === '') return false;
+  if (value === 'UTC') return true;
+
+  const supportedValuesOf = Intl.supportedValuesOf?.bind(Intl);
+  if (supportedValuesOf) {
+    return supportedValuesOf('timeZone').includes(value);
+  }
+
+  if (!value.includes('/') || /^[A-Z]{2,5}$/.test(value) || value.startsWith('Etc/GMT')) {
+    return false;
+  }
+
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date());
-    return true;
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return formatter.resolvedOptions().timeZone === value;
   } catch {
     return false;
   }
@@ -221,6 +233,7 @@ export function generateWindowInstances(input: {
 
     const instanceStart = utcDateForLocal(date, input.rule.time_start, input.rule.timezone).toISOString();
     const instanceEnd = utcDateForLocal(date, input.rule.time_end, input.rule.timezone).toISOString();
+    if (new Date(instanceEnd).getTime() - new Date(instanceStart).getTime() < MIN_DURATION_MS) continue;
     if (blocked.has(`${instanceStart}|${instanceEnd}`)) continue;
 
     out.push({
