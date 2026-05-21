@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelAppointment,
   confirmAppointment,
@@ -18,17 +18,30 @@ const tx = {
     findFirst: vi.fn(),
     updateMany: vi.fn(),
   },
-  appointmentEvent: { create: vi.fn() },
+  appointmentEvent: { findFirst: vi.fn(), create: vi.fn() },
+  schedulingNotification: { create: vi.fn(), update: vi.fn() },
   $transaction: vi.fn(),
 };
 
 describe('appointment service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 })));
     tx.appointmentRequest.findMany.mockResolvedValue([]);
+    tx.appointmentRequest.findFirst.mockResolvedValue(null);
+    tx.appointmentEvent.findFirst.mockResolvedValue(null);
     tx.serviceLink.updateMany.mockResolvedValue({ count: 1 });
     tx.bookableWindow.updateMany.mockResolvedValue({ count: 1 });
+    tx.schedulingNotification.create.mockImplementation(async ({ data }) => ({
+      id: 'sn_1',
+      ...data,
+    }));
+    tx.schedulingNotification.update.mockResolvedValue({ id: 'sn_1', status: 'delivered' });
     tx.$transaction.mockImplementation(async (fn) => fn(tx));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   function mockActiveServiceLink() {
@@ -170,7 +183,6 @@ describe('appointment service', () => {
     });
 
     expect(tx.appointmentRequest.create).toHaveBeenCalledTimes(2);
-    expect(tx.appointmentRequest.findFirst).not.toHaveBeenCalled();
     expect(JSON.stringify(tx.appointmentRequest.create.mock.calls)).not.toContain('holdExpiresAt');
   });
 
@@ -381,7 +393,12 @@ describe('appointment service', () => {
       bookableWindowExclusion: { findMany: vi.fn().mockResolvedValueOnce([]) },
       appointmentRequest: {
         findMany: vi.fn().mockResolvedValueOnce([]),
-        create: vi.fn().mockResolvedValueOnce({ id: 'ar_tx', status: 'pending_held' }),
+        create: vi.fn().mockResolvedValueOnce({
+          id: 'ar_tx',
+          providerAccountId: 'ck_a',
+          consumerAccountId: 'ck_b',
+          status: 'pending_held',
+        }),
       },
       appointmentEvent: { create: vi.fn() },
     };
@@ -414,6 +431,11 @@ describe('appointment service', () => {
         status: 'active',
       },
     });
+    expect(writeClient.appointmentRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: 'msg_tx',
+      }),
+    });
     expect(writeClient.appointmentRequest.create).toHaveBeenCalledTimes(1);
     expect(writeClient.appointmentEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -422,7 +444,16 @@ describe('appointment service', () => {
         toState: 'pending_held',
         actorAccountId: 'ck_b',
         actorRole: 'consumer',
+        idempotencyKey: 'msg_tx:event:requested',
         reason: 'requested',
+      }),
+    });
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_tx',
+        recipientAccountId: 'ck_a',
+        idempotencyKey: 'appt:ar_tx:request:A',
+        kind: 'appointment_request',
       }),
     });
     expect(tx.serviceLink.findFirst).not.toHaveBeenCalled();
@@ -433,6 +464,12 @@ describe('appointment service', () => {
   });
 
   it('confirms pending held requests by provider with a conditional update and event', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_1',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
     tx.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
     await confirmAppointment(tx as never, {
@@ -452,12 +489,27 @@ describe('appointment service', () => {
         toState: 'confirmed_shared',
         actorAccountId: 'ck_a',
         actorRole: 'provider',
+        idempotencyKey: 'msg_4',
         reason: 'confirmed_by_a',
+      }),
+    });
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_1',
+        recipientAccountId: 'ck_b',
+        idempotencyKey: 'appt:ar_1:confirmed:B',
+        kind: 'appointment_confirmed',
       }),
     });
   });
 
   it('confirms and writes the event in a transaction when available', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_tx_confirm',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
     const writeClient = {
       appointmentRequest: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) },
       appointmentEvent: { create: vi.fn() },
@@ -487,6 +539,12 @@ describe('appointment service', () => {
   });
 
   it('does not emit a confirm event when the conditional transition fails', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_released',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
     tx.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(
@@ -501,6 +559,12 @@ describe('appointment service', () => {
   });
 
   it('rejects pending held requests by provider with release reason and event', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_2',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
     tx.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
     await rejectAppointment(tx as never, {
@@ -520,7 +584,16 @@ describe('appointment service', () => {
         toState: 'released',
         actorAccountId: 'ck_a',
         actorRole: 'provider',
+        idempotencyKey: 'msg_6',
         reason: 'rejected_by_a',
+      }),
+    });
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_2',
+        recipientAccountId: 'ck_b',
+        idempotencyKey: 'appt:ar_2:rejected:B',
+        kind: 'appointment_rejected',
       }),
     });
   });
@@ -558,7 +631,16 @@ describe('appointment service', () => {
         toState: 'released',
         actorAccountId: 'ck_b',
         actorRole: 'consumer',
+        idempotencyKey: 'msg_7',
         reason: 'cancelled_by_b',
+      }),
+    });
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_3',
+        recipientAccountId: 'ck_a',
+        idempotencyKey: 'appt:ar_3:cancelled_by_b:A',
+        kind: 'appointment_cancelled',
       }),
     });
 
@@ -572,6 +654,107 @@ describe('appointment service', () => {
       }),
     ).rejects.toThrow('appointment_not_found');
     expect(tx.appointmentEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays request appointment by idempotency key and ensures the notification exists', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_existing',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
+
+    const result = await requestAppointment(tx as never, {
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      bookableWindowId: 'bw_1',
+      instanceStart: '2026-06-02T11:00:00.000Z',
+      instanceEnd: '2026-06-02T13:00:00.000Z',
+      timezone: 'Asia/Shanghai',
+      idempotencyKey: 'msg_existing',
+    });
+
+    expect(result.id).toBe('ar_existing');
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_existing',
+        recipientAccountId: 'ck_a',
+        idempotencyKey: 'appt:ar_existing:request:A',
+        kind: 'appointment_request',
+      }),
+    });
+  });
+
+  it('replays appointment transitions by scoped idempotency key and ensures the notification exists', async () => {
+    tx.appointmentEvent.findFirst.mockResolvedValueOnce({
+      appointmentId: 'ar_confirmed',
+      toState: 'confirmed_shared',
+      actorAccountId: 'ck_a',
+      actorRole: 'provider',
+      reason: 'confirmed_by_a',
+    });
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_confirmed',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'confirmed_shared',
+    });
+
+    const result = await confirmAppointment(tx as never, {
+      actorAccountId: 'ck_a',
+      requestId: 'ar_confirmed',
+      idempotencyKey: 'msg_confirmed',
+    });
+
+    expect(result).toEqual({ id: 'ar_confirmed', status: 'confirmed_shared' });
+    expect(tx.appointmentEvent.findFirst).toHaveBeenCalledWith({
+      where: {
+        appointmentId: 'ar_confirmed',
+        actorAccountId: 'ck_a',
+        actorRole: 'provider',
+        toState: 'confirmed_shared',
+        reason: 'confirmed_by_a',
+        idempotencyKey: 'msg_confirmed',
+      },
+    });
+    expect(tx.appointmentRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+    expect(tx.schedulingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_confirmed',
+        recipientAccountId: 'ck_b',
+        idempotencyKey: 'appt:ar_confirmed:confirmed:B',
+        kind: 'appointment_confirmed',
+      }),
+    });
+  });
+
+  it('does not replay transition idempotency keys across a different request or action', async () => {
+    tx.appointmentEvent.findFirst.mockResolvedValueOnce(null);
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      confirmAppointment(tx as never, {
+        actorAccountId: 'ck_a',
+        requestId: 'ar_other',
+        idempotencyKey: 'msg_reused',
+      }),
+    ).rejects.toThrow('appointment_not_found');
+
+    expect(tx.appointmentEvent.findFirst).toHaveBeenCalledWith({
+      where: {
+        appointmentId: 'ar_other',
+        actorAccountId: 'ck_a',
+        actorRole: 'provider',
+        toState: 'confirmed_shared',
+        reason: 'confirmed_by_a',
+        idempotencyKey: 'msg_reused',
+      },
+    });
+    expect(tx.appointmentRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.schedulingNotification.create).not.toHaveBeenCalled();
   });
 
   it('does not emit a cancel event when the observed state is stale before update', async () => {

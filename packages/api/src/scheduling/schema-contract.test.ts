@@ -33,6 +33,8 @@ describe('user-link scheduling schema contract', () => {
     expect(sql).toContain('CREATE UNIQUE INDEX "appointment_instance_occupancy_uniq"');
     expect(sql).toContain("WHERE status IN ('pending_held', 'confirmed_shared')");
     expect(sql).toContain('CREATE UNIQUE INDEX "service_links_provider_consumer_uniq"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "appointment_requests_provider_account_id_consumer_account_id_idempotency_key_key"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "appointment_events_idempotency_key_key"');
   });
 
   it('enforces denormalized scheduling ownership with composite constraints', () => {

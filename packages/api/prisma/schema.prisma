@@ -759,6 +759,7 @@ model AppointmentRequest {
   instanceStart     DateTime                  @map("instance_start")
   instanceEnd       DateTime                  @map("instance_end")
   timezone          String
+  idempotencyKey    String?                   @map("idempotency_key")
   status            AppointmentRequestStatus  @default(pending_held)
   releaseReason     AppointmentReleaseReason? @map("release_reason")
   createdAt         DateTime                  @default(now()) @map("created_at")
@@ -775,6 +776,7 @@ model AppointmentRequest {
   @@index([providerAccountId, status])
   @@index([consumerAccountId, status])
   @@index([bookableWindowId, instanceStart, instanceEnd])
+  @@unique([providerAccountId, consumerAccountId, idempotencyKey])
   @@map("appointment_requests")
 }
 
@@ -785,6 +787,7 @@ model AppointmentEvent {
   toState        AppointmentRequestStatus  @map("to_state")
   actorAccountId String                    @map("actor_account_id")
   actorRole      AppointmentActorRole      @map("actor_role")
+  idempotencyKey  String?                   @unique @map("idempotency_key")
   reason         String?
   createdAt      DateTime                  @default(now()) @map("created_at")
 

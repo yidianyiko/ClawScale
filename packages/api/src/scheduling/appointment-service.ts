@@ -1,4 +1,5 @@
 import { capQueryRange, generateWindowInstances, renderWindowForViewer } from './time.js';
+import { enqueueSchedulingNotification } from './notification-service.js';
 import type { BookableWindowRule, GeneratedWindowInstance, SchedulingCapability } from './types.js';
 
 const APPOINTMENT_REQUEST_CAPABILITY: SchedulingCapability = 'appointment_request';
@@ -14,7 +15,23 @@ interface AppointmentRecord {
   id: string;
   providerAccountId: string;
   consumerAccountId: string;
-  status: 'pending_held' | 'confirmed_shared';
+  status: 'pending_held' | 'confirmed_shared' | 'released';
+}
+
+interface AppointmentEventRecord {
+  appointmentId: string;
+  toState: 'pending_held' | 'confirmed_shared' | 'released';
+  actorAccountId: string;
+  actorRole: 'provider' | 'consumer';
+  reason?: string | null;
+}
+
+interface SchedulingNotificationRecord {
+  id: string;
+  recipientAccountId: string;
+  idempotencyKey: string;
+  kind: string;
+  payload: unknown;
 }
 
 interface AppointmentClient {
@@ -46,7 +63,7 @@ interface AppointmentClient {
       orderBy?: Record<string, unknown>;
       include?: Record<string, unknown>;
     }): Promise<Array<Record<string, unknown>>>;
-    create(args: { data: Record<string, unknown> }): Promise<{ id: string } & Record<string, unknown>>;
+    create(args: { data: Record<string, unknown> }): Promise<AppointmentRecord>;
     findFirst(args: { where: Record<string, unknown> }): Promise<AppointmentRecord | null>;
     updateMany(args: {
       where: Record<string, unknown>;
@@ -54,7 +71,17 @@ interface AppointmentClient {
     }): Promise<{ count: number }>;
   };
   appointmentEvent: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<AppointmentEventRecord | null>;
     create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  };
+  schedulingNotification: {
+    create(args: { data: Record<string, unknown> }): Promise<SchedulingNotificationRecord>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      take: number;
+    }): Promise<SchedulingNotificationRecord[]>;
+    update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
   };
   $transaction?<T>(fn: (client: AppointmentWriteClient) => Promise<T>): Promise<T>;
 }
@@ -226,10 +253,105 @@ async function writeTransitionEvent(
     toState: 'confirmed_shared' | 'released';
     actorAccountId: string;
     actorRole: 'provider' | 'consumer';
+    idempotencyKey?: string | null;
     reason: string;
   },
 ): Promise<void> {
   await client.appointmentEvent.create({ data });
+}
+
+async function findIdempotentEvent(
+  client: Pick<AppointmentClient, 'appointmentEvent'>,
+  where: Record<string, unknown> & { idempotencyKey?: string },
+): Promise<AppointmentEventRecord | null> {
+  if (!where.idempotencyKey) return null;
+  return client.appointmentEvent.findFirst({ where });
+}
+
+function notificationText(kind: string): string {
+  const messages: Record<string, string> = {
+    appointment_request: '你有一个新的预约请求，请确认或拒绝。',
+    appointment_confirmed: '你的预约已确认。',
+    appointment_rejected: '你的预约请求已被拒绝。',
+    appointment_cancelled: '预约已取消。',
+  };
+  return messages[kind] ?? '预约状态已更新。';
+}
+
+async function enqueueAppointmentNotification(
+  client: AppointmentClient,
+  input: {
+    appointmentId: string;
+    recipientAccountId: string;
+    idempotencyKey: string;
+    kind: string;
+    metadata: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await enqueueSchedulingNotification(client, {
+      appointmentId: input.appointmentId,
+      recipientAccountId: input.recipientAccountId,
+      idempotencyKey: input.idempotencyKey,
+      kind: input.kind,
+      text: notificationText(input.kind),
+      metadata: input.metadata,
+    });
+  } catch {
+    // The notification intent is persisted before delivery; retry handles failures.
+  }
+}
+
+async function enqueueRequestNotification(client: AppointmentClient, request: AppointmentRecord): Promise<void> {
+  await enqueueAppointmentNotification(client, {
+    appointmentId: request.id,
+    recipientAccountId: request.providerAccountId,
+    idempotencyKey: `appt:${request.id}:request:A`,
+    kind: 'appointment_request',
+    metadata: {
+      request_id: request.id,
+      provider_account_id: request.providerAccountId,
+      consumer_account_id: request.consumerAccountId,
+      allowed_actions: ['confirm', 'reject'],
+    },
+  });
+}
+
+async function enqueueProviderDecisionNotification(
+  client: AppointmentClient,
+  request: AppointmentRecord,
+  input: { kind: 'appointment_confirmed' | 'appointment_rejected'; notificationAction: 'confirmed' | 'rejected' },
+): Promise<void> {
+  await enqueueAppointmentNotification(client, {
+    appointmentId: request.id,
+    recipientAccountId: request.consumerAccountId,
+    idempotencyKey: `appt:${request.id}:${input.notificationAction}:B`,
+    kind: input.kind,
+    metadata: {
+      request_id: request.id,
+      provider_account_id: request.providerAccountId,
+      consumer_account_id: request.consumerAccountId,
+    },
+  });
+}
+
+async function enqueueCancellationNotification(
+  client: AppointmentClient,
+  request: AppointmentRecord,
+  input: { actorRole: 'provider' | 'consumer'; releaseReason: 'cancelled_by_a' | 'cancelled_by_b' },
+): Promise<void> {
+  await enqueueAppointmentNotification(client, {
+    appointmentId: request.id,
+    recipientAccountId: input.actorRole === 'provider' ? request.consumerAccountId : request.providerAccountId,
+    idempotencyKey: `appt:${request.id}:${input.releaseReason}:${input.actorRole === 'provider' ? 'B' : 'A'}`,
+    kind: 'appointment_cancelled',
+    metadata: {
+      request_id: request.id,
+      provider_account_id: request.providerAccountId,
+      consumer_account_id: request.consumerAccountId,
+      release_reason: input.releaseReason,
+    },
+  });
 }
 
 export async function queryBookableWindows(
@@ -306,11 +428,23 @@ export async function requestAppointment(
     timezone: string;
     idempotencyKey: string;
   },
-): Promise<{ id: string } & Record<string, unknown>> {
-  void input.idempotencyKey;
+): Promise<AppointmentRecord> {
+  const existing = input.idempotencyKey
+    ? await client.appointmentRequest.findFirst({
+        where: {
+          providerAccountId: input.providerAccountId,
+          consumerAccountId: input.consumerAccountId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      })
+    : null;
+  if (existing) {
+    await enqueueRequestNotification(client, existing);
+    return existing;
+  }
 
   try {
-    return await runAppointmentWrite(client, async (writeClient) => {
+    const request = await runAppointmentWrite(client, async (writeClient) => {
       const serviceLink = await requireActiveServiceLink(
         writeClient,
         input.providerAccountId,
@@ -332,6 +466,7 @@ export async function requestAppointment(
           instanceStart: new Date(input.instanceStart),
           instanceEnd: new Date(input.instanceEnd),
           timezone: input.timezone,
+          idempotencyKey: input.idempotencyKey || null,
           status: 'pending_held',
         },
       });
@@ -342,13 +477,29 @@ export async function requestAppointment(
           toState: 'pending_held',
           actorAccountId: input.consumerAccountId,
           actorRole: 'consumer',
+          idempotencyKey: input.idempotencyKey ? `${input.idempotencyKey}:event:requested` : null,
           reason: 'requested',
         },
       });
       return request;
     });
+    await enqueueRequestNotification(client, request);
+    return request;
   } catch (error) {
     if (isUniqueConflict(error)) {
+      const replayed = input.idempotencyKey
+        ? await client.appointmentRequest.findFirst({
+            where: {
+              providerAccountId: input.providerAccountId,
+              consumerAccountId: input.consumerAccountId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          })
+        : null;
+      if (replayed) {
+        await enqueueRequestNotification(client, replayed);
+        return replayed;
+      }
       throw new Error('slot_unavailable');
     }
     throw error;
@@ -359,8 +510,38 @@ export async function confirmAppointment(
   client: AppointmentClient,
   input: { actorAccountId: string; requestId: string; idempotencyKey: string },
 ): Promise<{ id: string; status: 'confirmed_shared' }> {
-  void input.idempotencyKey;
-  return runAppointmentWrite(client, async (writeClient) => {
+  const replayed = await findIdempotentEvent(client, {
+    appointmentId: input.requestId,
+    actorAccountId: input.actorAccountId,
+    actorRole: 'provider',
+    toState: 'confirmed_shared',
+    reason: 'confirmed_by_a',
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (replayed) {
+    const request = await client.appointmentRequest.findFirst({
+      where: { id: input.requestId, providerAccountId: input.actorAccountId },
+    });
+    if (!request) {
+      throw new Error('appointment_not_found');
+    }
+    await enqueueProviderDecisionNotification(client, request, {
+      kind: 'appointment_confirmed',
+      notificationAction: 'confirmed',
+    });
+    return { id: input.requestId, status: 'confirmed_shared' };
+  }
+  const current = await client.appointmentRequest.findFirst({
+    where: {
+      id: input.requestId,
+      providerAccountId: input.actorAccountId,
+      status: 'pending_held',
+    },
+  });
+  if (!current) {
+    throw new Error('appointment_not_found');
+  }
+  const result = await runAppointmentWrite(client, async (writeClient) => {
     const updated = await writeClient.appointmentRequest.updateMany({
       where: {
         id: input.requestId,
@@ -378,18 +559,54 @@ export async function confirmAppointment(
       toState: 'confirmed_shared',
       actorAccountId: input.actorAccountId,
       actorRole: 'provider',
+      idempotencyKey: input.idempotencyKey || null,
       reason: 'confirmed_by_a',
     });
-    return { id: input.requestId, status: 'confirmed_shared' };
+    return { id: input.requestId, status: 'confirmed_shared' as const };
   });
+  await enqueueProviderDecisionNotification(client, current, {
+    kind: 'appointment_confirmed',
+    notificationAction: 'confirmed',
+  });
+  return result;
 }
 
 export async function rejectAppointment(
   client: AppointmentClient,
   input: { actorAccountId: string; requestId: string; idempotencyKey: string },
 ): Promise<{ id: string; status: 'released'; releaseReason: 'rejected_by_a' }> {
-  void input.idempotencyKey;
-  return runAppointmentWrite(client, async (writeClient) => {
+  const replayed = await findIdempotentEvent(client, {
+    appointmentId: input.requestId,
+    actorAccountId: input.actorAccountId,
+    actorRole: 'provider',
+    toState: 'released',
+    reason: 'rejected_by_a',
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (replayed) {
+    const request = await client.appointmentRequest.findFirst({
+      where: { id: input.requestId, providerAccountId: input.actorAccountId },
+    });
+    if (!request) {
+      throw new Error('appointment_not_found');
+    }
+    await enqueueProviderDecisionNotification(client, request, {
+      kind: 'appointment_rejected',
+      notificationAction: 'rejected',
+    });
+    return { id: input.requestId, status: 'released', releaseReason: 'rejected_by_a' };
+  }
+  const current = await client.appointmentRequest.findFirst({
+    where: {
+      id: input.requestId,
+      providerAccountId: input.actorAccountId,
+      status: 'pending_held',
+    },
+  });
+  if (!current) {
+    throw new Error('appointment_not_found');
+  }
+  const result = await runAppointmentWrite(client, async (writeClient) => {
     const updated = await writeClient.appointmentRequest.updateMany({
       where: {
         id: input.requestId,
@@ -411,17 +628,52 @@ export async function rejectAppointment(
       toState: 'released',
       actorAccountId: input.actorAccountId,
       actorRole: 'provider',
+      idempotencyKey: input.idempotencyKey || null,
       reason: 'rejected_by_a',
     });
-    return { id: input.requestId, status: 'released', releaseReason: 'rejected_by_a' };
+    return { id: input.requestId, status: 'released' as const, releaseReason: 'rejected_by_a' as const };
   });
+  await enqueueProviderDecisionNotification(client, current, {
+    kind: 'appointment_rejected',
+    notificationAction: 'rejected',
+  });
+  return result;
 }
 
 export async function cancelAppointment(
   client: AppointmentClient,
   input: { actorAccountId: string; requestId: string; idempotencyKey: string },
 ): Promise<{ id: string; status: 'released'; releaseReason: 'cancelled_by_a' | 'cancelled_by_b' }> {
-  void input.idempotencyKey;
+  const replayed = await findIdempotentEvent(client, {
+    appointmentId: input.requestId,
+    actorAccountId: input.actorAccountId,
+    toState: 'released',
+    reason: { in: ['cancelled_by_a', 'cancelled_by_b'] },
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (replayed) {
+    const releaseReason =
+      replayed.reason === 'cancelled_by_a' || replayed.reason === 'cancelled_by_b'
+        ? replayed.reason
+        : 'cancelled_by_b';
+    const request = await client.appointmentRequest.findFirst({
+      where: {
+        id: input.requestId,
+        OR: [
+          { providerAccountId: input.actorAccountId },
+          { consumerAccountId: input.actorAccountId },
+        ],
+      },
+    });
+    if (!request) {
+      throw new Error('appointment_not_found');
+    }
+    await enqueueCancellationNotification(client, request, {
+      actorRole: replayed.actorRole,
+      releaseReason,
+    });
+    return { id: input.requestId, status: 'released', releaseReason };
+  }
   const current = await client.appointmentRequest.findFirst({
     where: {
       id: input.requestId,
@@ -437,8 +689,9 @@ export async function cancelAppointment(
   }
 
   const actorRole = current.providerAccountId === input.actorAccountId ? 'provider' : 'consumer';
-  const releaseReason = actorRole === 'provider' ? 'cancelled_by_a' : 'cancelled_by_b';
-  return runAppointmentWrite(client, async (writeClient) => {
+  const releaseReason: 'cancelled_by_a' | 'cancelled_by_b' =
+    actorRole === 'provider' ? 'cancelled_by_a' : 'cancelled_by_b';
+  const result = await runAppointmentWrite(client, async (writeClient) => {
     const updated = await writeClient.appointmentRequest.updateMany({
       where: {
         id: current.id,
@@ -457,16 +710,23 @@ export async function cancelAppointment(
     if (updated.count !== 1) {
       throw new Error('appointment_not_found');
     }
+    const fromState = current.status === 'confirmed_shared' ? 'confirmed_shared' : 'pending_held';
     await writeTransitionEvent(writeClient, {
       appointmentId: current.id,
-      fromState: current.status,
+      fromState,
       toState: 'released',
       actorAccountId: input.actorAccountId,
       actorRole,
+      idempotencyKey: input.idempotencyKey || null,
       reason: releaseReason,
     });
-    return { id: current.id, status: 'released', releaseReason };
+    return { id: current.id, status: 'released' as const, releaseReason };
   });
+  await enqueueCancellationNotification(client, current, {
+    actorRole,
+    releaseReason,
+  });
+  return result;
 }
 
 export async function listPendingRequests(

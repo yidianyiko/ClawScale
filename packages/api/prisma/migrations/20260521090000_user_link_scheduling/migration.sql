@@ -115,6 +115,7 @@ CREATE TABLE "appointment_requests" (
     "instance_start" TIMESTAMP(3) NOT NULL,
     "instance_end" TIMESTAMP(3) NOT NULL,
     "timezone" TEXT NOT NULL,
+    "idempotency_key" TEXT,
     "status" "AppointmentRequestStatus" NOT NULL DEFAULT 'pending_held',
     "release_reason" "AppointmentReleaseReason",
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -132,6 +133,7 @@ CREATE TABLE "appointment_events" (
     "to_state" "AppointmentRequestStatus" NOT NULL,
     "actor_account_id" TEXT NOT NULL,
     "actor_role" "AppointmentActorRole" NOT NULL,
+    "idempotency_key" TEXT,
     "reason" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -202,6 +204,9 @@ CREATE UNIQUE INDEX "bookable_windows_id_provider_account_id_key" ON "bookable_w
 CREATE UNIQUE INDEX "bookable_window_exclusions_bookable_window_id_instance_start_instance_end_key" ON "bookable_window_exclusions"("bookable_window_id", "instance_start", "instance_end");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "appointment_requests_provider_account_id_consumer_account_id_idempotency_key_key" ON "appointment_requests"("provider_account_id", "consumer_account_id", "idempotency_key");
+
+-- CreateIndex
 CREATE INDEX "appointment_requests_provider_account_id_status_idx" ON "appointment_requests"("provider_account_id", "status");
 
 -- CreateIndex
@@ -209,6 +214,9 @@ CREATE INDEX "appointment_requests_consumer_account_id_status_idx" ON "appointme
 
 -- CreateIndex
 CREATE INDEX "appointment_requests_bookable_window_id_instance_start_instance_end_idx" ON "appointment_requests"("bookable_window_id", "instance_start", "instance_end");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "appointment_events_idempotency_key_key" ON "appointment_events"("idempotency_key");
 
 -- CreateIndex
 CREATE INDEX "appointment_events_appointment_id_created_at_idx" ON "appointment_events"("appointment_id", "created_at");
