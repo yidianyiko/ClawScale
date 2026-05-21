@@ -97,6 +97,34 @@ describe('availability service', () => {
     expect(client.bookableWindow.create).not.toHaveBeenCalled();
   });
 
+  it('deduplicates an active window when create loses a unique race', async () => {
+    const rule = {
+      type: 'weekly' as const,
+      days_of_week: [2],
+      time_start: '19:00',
+      time_end: '21:00',
+      timezone: 'Asia/Shanghai',
+      effective_from: '2026-06-01',
+      effective_until: null,
+    };
+    const fingerprint = buildRuleFingerprint(rule);
+    client.bookableWindow.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'bw_raced', status: 'active' });
+    client.bookableWindow.create.mockRejectedValueOnce({ code: 'P2002' });
+
+    const result = await confirmBookableWindowPreview(client as never, {
+      providerAccountId: 'ck_a',
+      preview: {
+        previewId: 'bwp_1',
+        windows: [{ rule, fingerprint }],
+      },
+    });
+
+    expect(result).toEqual({ createdIds: [], reusedIds: ['bw_raced'] });
+    expect(client.bookableWindow.findFirst).toHaveBeenCalledTimes(2);
+  });
+
   it('warns before closing a rule that has pending held requests', async () => {
     client.appointmentRequest.findMany.mockResolvedValueOnce([{ id: 'ar_1' }, { id: 'ar_2' }]);
 
@@ -157,7 +185,7 @@ describe('availability service', () => {
       data: { status: 'closed', closedAt: expect.any(Date) },
     });
     expect(client.appointmentRequest.updateMany).toHaveBeenCalledWith({
-      where: { providerAccountId: 'ck_a', bookableWindowId: 'bw_1', status: 'pending_held' },
+      where: { id: { in: ['ar_1', 'ar_2'] }, status: 'pending_held' },
       data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: expect.any(Date) },
     });
     expect(client.appointmentEvent.createMany).toHaveBeenCalledWith({
@@ -178,6 +206,40 @@ describe('availability service', () => {
           actorRole: 'provider',
           reason: 'cancelled_by_a',
         }),
+      ],
+    });
+  });
+
+  it('releases and emits events for pending requests read after confirmed close', async () => {
+    const txClient = {
+      bookableWindow: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) },
+      appointmentRequest: {
+        findMany: vi.fn().mockResolvedValueOnce([{ id: 'ar_tx_1' }, { id: 'ar_tx_2' }]),
+        updateMany: vi.fn().mockResolvedValueOnce({ count: 2 }),
+      },
+      appointmentEvent: { createMany: vi.fn() },
+    };
+    client.$transaction.mockImplementationOnce(async (fn) => fn(txClient));
+
+    const result = await closeBookableWindow(client as never, {
+      providerAccountId: 'ck_a',
+      bookableWindowId: 'bw_1',
+      confirmCancelPending: true,
+    });
+
+    expect(result).toEqual({ ok: true, cancelledPendingCount: 2 });
+    expect(txClient.appointmentRequest.findMany).toHaveBeenCalledWith({
+      where: { providerAccountId: 'ck_a', bookableWindowId: 'bw_1', status: 'pending_held' },
+      select: { id: true },
+    });
+    expect(txClient.appointmentRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['ar_tx_1', 'ar_tx_2'] }, status: 'pending_held' },
+      data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: expect.any(Date) },
+    });
+    expect(txClient.appointmentEvent.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ appointmentId: 'ar_tx_1', reason: 'cancelled_by_a' }),
+        expect.objectContaining({ appointmentId: 'ar_tx_2', reason: 'cancelled_by_a' }),
       ],
     });
   });

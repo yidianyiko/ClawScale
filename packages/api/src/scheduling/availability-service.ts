@@ -93,6 +93,10 @@ function chineseHourToNumber(value: string): number {
   return digits[value] ?? 9;
 }
 
+function isUniqueConflict(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
 async function runAvailabilityWrite<T>(
   client: AvailabilityClient,
   fn: (writeClient: AvailabilityWriteClient) => Promise<T>,
@@ -142,17 +146,35 @@ export async function confirmBookableWindowPreview(
       continue;
     }
 
-    const created = await client.bookableWindow.create({
-      data: {
-        providerAccountId: input.providerAccountId,
-        capability: 'appointment_request',
-        type: window.rule.type,
-        rule: window.rule,
-        ruleFingerprint: fingerprint,
-        status: 'active',
-      },
-    });
-    createdIds.push(created.id);
+    try {
+      const created = await client.bookableWindow.create({
+        data: {
+          providerAccountId: input.providerAccountId,
+          capability: 'appointment_request',
+          type: window.rule.type,
+          rule: window.rule,
+          ruleFingerprint: fingerprint,
+          status: 'active',
+        },
+      });
+      createdIds.push(created.id);
+    } catch (error) {
+      if (!isUniqueConflict(error)) {
+        throw error;
+      }
+      const racedExisting = await client.bookableWindow.findFirst({
+        where: {
+          providerAccountId: input.providerAccountId,
+          capability: 'appointment_request',
+          ruleFingerprint: fingerprint,
+          status: 'active',
+        },
+      });
+      if (!racedExisting) {
+        throw error;
+      }
+      reusedIds.push(racedExisting.id);
+    }
   }
 
   return { createdIds, reusedIds };
@@ -191,13 +213,15 @@ export async function closeBookableWindow(
   }
 
   return runAvailabilityWrite(client, async (writeClient) => {
-    const pending = await readPending(writeClient);
-    if (pending.length > 0 && !input.confirmCancelPending) {
-      return {
-        ok: false,
-        error: 'pending_requests_require_confirmation',
-        pendingCount: pending.length,
-      };
+    if (!input.confirmCancelPending) {
+      const pending = await readPending(writeClient);
+      if (pending.length > 0) {
+        return {
+          ok: false,
+          error: 'pending_requests_require_confirmation',
+          pendingCount: pending.length,
+        };
+      }
     }
 
     const closedAt = new Date();
@@ -213,6 +237,11 @@ export async function closeBookableWindow(
       throw new Error('bookable_window_not_found');
     }
 
+    if (!input.confirmCancelPending) {
+      return { ok: true, cancelledPendingCount: 0 };
+    }
+
+    const pending = await readPending(writeClient);
     if (pending.length === 0) {
       return { ok: true, cancelledPendingCount: 0 };
     }
@@ -220,8 +249,7 @@ export async function closeBookableWindow(
     const releasedAt = new Date();
     const released = await writeClient.appointmentRequest.updateMany({
       where: {
-        providerAccountId: input.providerAccountId,
-        bookableWindowId: input.bookableWindowId,
+        id: { in: pending.map((request) => request.id) },
         status: 'pending_held',
       },
       data: {
@@ -230,7 +258,7 @@ export async function closeBookableWindow(
         releasedAt,
       },
     });
-    if (released.count < pending.length) {
+    if (released.count !== pending.length) {
       throw new Error('appointment_state_conflict');
     }
 
@@ -245,6 +273,6 @@ export async function closeBookableWindow(
       })),
     });
 
-    return { ok: true, cancelledPendingCount: released.count };
+    return { ok: true, cancelledPendingCount: pending.length };
   });
 }

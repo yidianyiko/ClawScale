@@ -51,7 +51,10 @@ interface AppointmentClient {
   $transaction?<T>(fn: (client: AppointmentWriteClient) => Promise<T>): Promise<T>;
 }
 
-type AppointmentWriteClient = Pick<AppointmentClient, 'appointmentRequest' | 'appointmentEvent'>;
+type AppointmentWriteClient = Pick<
+  AppointmentClient,
+  'serviceLink' | 'bookableWindow' | 'bookableWindowExclusion' | 'appointmentRequest' | 'appointmentEvent'
+>;
 
 interface PendingRequestRecord {
   id: string;
@@ -105,7 +108,7 @@ async function runAppointmentWrite<T>(
 }
 
 async function requireAvailableWindowInstance(
-  client: Pick<AppointmentClient, 'bookableWindow' | 'bookableWindowExclusion'>,
+  client: Pick<AppointmentClient, 'bookableWindow' | 'bookableWindowExclusion' | 'appointmentRequest'>,
   input: {
     providerAccountId: string;
     bookableWindowId: string;
@@ -133,6 +136,17 @@ async function requireAvailableWindowInstance(
     instanceStart: toIsoDateTime(item.instanceStart),
     instanceEnd: toIsoDateTime(item.instanceEnd),
   }));
+  const occupied = await client.appointmentRequest.findMany({
+    where: {
+      providerAccountId: input.providerAccountId,
+      status: { in: [...ACTIVE_APPOINTMENT_STATES] },
+    },
+    select: { instanceStart: true, instanceEnd: true },
+  });
+  const occupiedPairs = occupied.map((item) => ({
+    instanceStart: toIsoDateTime(item['instanceStart'] as Date | string),
+    instanceEnd: toIsoDateTime(item['instanceEnd'] as Date | string),
+  }));
   const date = input.instanceStart.slice(0, 10);
   const instances = generateWindowInstances({
     bookableWindowId: input.bookableWindowId,
@@ -140,7 +154,7 @@ async function requireAvailableWindowInstance(
     dateFrom: addUtcDays(date, -1),
     dateTo: addUtcDays(date, 1),
     excluded,
-    occupied: [],
+    occupied: occupiedPairs,
   });
   const requestedStart = toIsoDateTime(input.instanceStart);
   const requestedEnd = toIsoDateTime(input.instanceEnd);
@@ -242,15 +256,15 @@ export async function requestAppointment(
   },
 ): Promise<{ id: string } & Record<string, unknown>> {
   void input.idempotencyKey;
-  const serviceLink = await requireActiveServiceLink(
-    client,
-    input.providerAccountId,
-    input.consumerAccountId,
-  );
-  await requireAvailableWindowInstance(client, input);
 
   try {
     return await runAppointmentWrite(client, async (writeClient) => {
+      const serviceLink = await requireActiveServiceLink(
+        writeClient,
+        input.providerAccountId,
+        input.consumerAccountId,
+      );
+      await requireAvailableWindowInstance(writeClient, input);
       const request = await writeClient.appointmentRequest.create({
         data: {
           providerAccountId: input.providerAccountId,
@@ -383,15 +397,6 @@ export async function cancelAppointment(
       },
     });
     if (updated.count !== 1) {
-      await writeClient.appointmentRequest.findFirst({
-        where: {
-          id: current.id,
-          OR: [
-            { providerAccountId: input.actorAccountId },
-            { consumerAccountId: input.actorAccountId },
-          ],
-        },
-      });
       throw new Error('appointment_not_found');
     }
     await writeTransitionEvent(writeClient, {
