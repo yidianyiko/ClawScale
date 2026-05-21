@@ -111,6 +111,61 @@ enum CalendarImportRunTriggerSource {
   whatsapp_handoff
 }
 
+enum UserLinkStatus {
+  active
+  disabled
+}
+
+enum LinkSessionStatus {
+  opened
+  claimed
+  abandoned
+}
+
+enum ServiceLinkStatus {
+  active
+  blocked
+  removed
+}
+
+enum SchedulingCapability {
+  appointment_request
+}
+
+enum BookableWindowStatus {
+  active
+  closed
+}
+
+enum BookableWindowType {
+  weekly
+  once
+}
+
+enum AppointmentRequestStatus {
+  pending_held
+  confirmed_shared
+  released
+}
+
+enum AppointmentReleaseReason {
+  rejected_by_a
+  cancelled_by_a
+  cancelled_by_b
+}
+
+enum AppointmentActorRole {
+  provider
+  consumer
+  system
+}
+
+enum SchedulingNotificationStatus {
+  pending_delivery
+  delivered
+  failed
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model Tenant {
@@ -292,6 +347,8 @@ model Customer {
   id           String       @id
   kind         CustomerKind @default(personal)
   displayName  String       @map("display_name")
+  tagline     String?  @db.VarChar(120)
+  avatarUrl   String?  @map("avatar_url")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
@@ -302,6 +359,13 @@ model Customer {
   calendarImportRuns CalendarImportRun[]
   clawscaleUser      ClawscaleUser?
   subscriptions      Subscription[]
+  userLinksAsProvider UserLink[] @relation("ProviderUserLinks")
+  serviceLinksAsProvider ServiceLink[] @relation("ProviderServiceLinks")
+  serviceLinksAsConsumer ServiceLink[] @relation("ConsumerServiceLinks")
+  bookableWindows BookableWindow[] @relation("ProviderBookableWindows")
+  appointmentRequestsAsProvider AppointmentRequest[] @relation("ProviderAppointmentRequests")
+  appointmentRequestsAsConsumer AppointmentRequest[] @relation("ConsumerAppointmentRequests")
+  schedulingNotifications SchedulingNotification[]
 
   @@map("customers")
 }
@@ -588,6 +652,166 @@ model CalendarImportHandoffSession {
   @@index([sourceCustomerId])
   @@index([targetCustomerId])
   @@map("calendar_import_handoff_sessions")
+}
+
+model UserLink {
+  id                String         @id @default(cuid())
+  providerAccountId String         @map("provider_account_id")
+  code              String         @unique
+  status            UserLinkStatus @default(active)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  disabledAt        DateTime?      @map("disabled_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  provider     Customer      @relation("ProviderUserLinks", fields: [providerAccountId], references: [id], onDelete: Cascade)
+  linkSessions LinkSession[]
+
+  @@index([providerAccountId])
+  @@index([status])
+  @@map("user_links")
+}
+
+model LinkSession {
+  id                String            @id @default(cuid())
+  tokenHash         String            @unique @map("token_hash")
+  userLinkId        String            @map("user_link_id")
+  providerAccountId String            @map("provider_account_id")
+  consumerAccountId String?           @map("consumer_account_id")
+  status            LinkSessionStatus @default(opened)
+  openedAt          DateTime          @default(now()) @map("opened_at")
+  claimedAt         DateTime?         @map("claimed_at")
+  abandonedAt       DateTime?         @map("abandoned_at")
+  expiresAt         DateTime          @map("expires_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  userLink UserLink @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+
+  @@index([providerAccountId, status])
+  @@index([consumerAccountId])
+  @@index([expiresAt])
+  @@map("link_sessions")
+}
+
+model ServiceLink {
+  id                String                 @id @default(cuid())
+  providerAccountId String                 @map("provider_account_id")
+  consumerAccountId String                 @map("consumer_account_id")
+  status            ServiceLinkStatus      @default(active)
+  capabilities      SchedulingCapability[]
+  createdAt         DateTime               @default(now()) @map("created_at")
+  removedAt         DateTime?              @map("removed_at")
+  blockedAt         DateTime?              @map("blocked_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  provider Customer @relation("ProviderServiceLinks", fields: [providerAccountId], references: [id], onDelete: Cascade)
+  consumer Customer @relation("ConsumerServiceLinks", fields: [consumerAccountId], references: [id], onDelete: Cascade)
+  appointmentRequests AppointmentRequest[]
+
+  @@index([providerAccountId, status])
+  @@index([consumerAccountId, status])
+  @@map("service_links")
+}
+
+model BookableWindow {
+  id                String                 @id @default(cuid())
+  providerAccountId String                 @map("provider_account_id")
+  capability        SchedulingCapability   @default(appointment_request)
+  type              BookableWindowType
+  rule              Json
+  ruleFingerprint   String                 @map("rule_fingerprint")
+  status            BookableWindowStatus   @default(active)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  closedAt          DateTime?              @map("closed_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  provider Customer @relation("ProviderBookableWindows", fields: [providerAccountId], references: [id], onDelete: Cascade)
+  exclusions BookableWindowExclusion[]
+  appointmentRequests AppointmentRequest[]
+
+  @@index([providerAccountId, status])
+  @@index([ruleFingerprint])
+  @@map("bookable_windows")
+}
+
+model BookableWindowExclusion {
+  id               String   @id @default(cuid())
+  bookableWindowId String   @map("bookable_window_id")
+  instanceStart    DateTime @map("instance_start")
+  instanceEnd      DateTime @map("instance_end")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  bookableWindow BookableWindow @relation(fields: [bookableWindowId], references: [id], onDelete: Cascade)
+
+  @@unique([bookableWindowId, instanceStart, instanceEnd])
+  @@map("bookable_window_exclusions")
+}
+
+model AppointmentRequest {
+  id                String                    @id @default(cuid())
+  providerAccountId String                    @map("provider_account_id")
+  consumerAccountId String                    @map("consumer_account_id")
+  serviceLinkId     String                    @map("service_link_id")
+  bookableWindowId  String                    @map("bookable_window_id")
+  instanceStart     DateTime                  @map("instance_start")
+  instanceEnd       DateTime                  @map("instance_end")
+  timezone          String
+  status            AppointmentRequestStatus  @default(pending_held)
+  releaseReason     AppointmentReleaseReason? @map("release_reason")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  releasedAt        DateTime?                 @map("released_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+
+  provider Customer @relation("ProviderAppointmentRequests", fields: [providerAccountId], references: [id], onDelete: Cascade)
+  consumer Customer @relation("ConsumerAppointmentRequests", fields: [consumerAccountId], references: [id], onDelete: Cascade)
+  serviceLink ServiceLink @relation(fields: [serviceLinkId], references: [id], onDelete: Restrict)
+  bookableWindow BookableWindow @relation(fields: [bookableWindowId], references: [id], onDelete: Restrict)
+  events AppointmentEvent[]
+  notifications SchedulingNotification[]
+
+  @@index([providerAccountId, status])
+  @@index([consumerAccountId, status])
+  @@index([bookableWindowId, instanceStart, instanceEnd])
+  @@map("appointment_requests")
+}
+
+model AppointmentEvent {
+  id             String                    @id @default(cuid())
+  appointmentId  String                    @map("appointment_id")
+  fromState      AppointmentRequestStatus? @map("from_state")
+  toState        AppointmentRequestStatus  @map("to_state")
+  actorAccountId String                    @map("actor_account_id")
+  actorRole      AppointmentActorRole      @map("actor_role")
+  reason         String?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+
+  appointment AppointmentRequest @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, createdAt])
+  @@index([actorAccountId, createdAt])
+  @@map("appointment_events")
+}
+
+model SchedulingNotification {
+  id                 String                       @id @default(cuid())
+  appointmentId      String                       @map("appointment_id")
+  recipientAccountId String                       @map("recipient_account_id")
+  idempotencyKey     String                       @unique @map("idempotency_key")
+  kind               String
+  payload            Json
+  status             SchedulingNotificationStatus @default(pending_delivery)
+  attempts           Int                          @default(0)
+  lastError          String?                      @map("last_error")
+  deliveredAt        DateTime?                    @map("delivered_at")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  updatedAt          DateTime                     @updatedAt @map("updated_at")
+
+  appointment AppointmentRequest @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  recipient Customer @relation(fields: [recipientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([recipientAccountId, createdAt])
+  @@map("scheduling_notifications")
 }
 
 model AiBackend {
