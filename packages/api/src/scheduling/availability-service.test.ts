@@ -116,6 +116,29 @@ describe('availability service', () => {
     expect(client.appointmentEvent.createMany).not.toHaveBeenCalled();
   });
 
+  it('warns when pending requests appear between precheck and transactional read', async () => {
+    client.appointmentRequest.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'ar_raced' }]);
+    client.bookableWindow.updateMany.mockResolvedValueOnce({ count: 1 });
+    client.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await closeBookableWindow(client as never, {
+      providerAccountId: 'ck_a',
+      bookableWindowId: 'bw_1',
+      confirmCancelPending: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'pending_requests_require_confirmation',
+      pendingCount: 1,
+    });
+    expect(client.bookableWindow.updateMany).not.toHaveBeenCalled();
+    expect(client.appointmentRequest.updateMany).not.toHaveBeenCalled();
+    expect(client.appointmentEvent.createMany).not.toHaveBeenCalled();
+  });
+
   it('closes and releases pending requests atomically when confirmation is provided', async () => {
     client.appointmentRequest.findMany.mockResolvedValueOnce([{ id: 'ar_1' }, { id: 'ar_2' }]);
     client.bookableWindow.updateMany.mockResolvedValueOnce({ count: 1 });

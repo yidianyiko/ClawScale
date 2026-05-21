@@ -290,7 +290,11 @@ export async function cancelAppointment(
   const updated = await client.appointmentRequest.updateMany({
     where: {
       id: current.id,
-      status: { in: [...ACTIVE_APPOINTMENT_STATES] },
+      status: current.status,
+      OR: [
+        { providerAccountId: input.actorAccountId },
+        { consumerAccountId: input.actorAccountId },
+      ],
     },
     data: {
       status: 'released',
@@ -299,6 +303,15 @@ export async function cancelAppointment(
     },
   });
   if (updated.count !== 1) {
+    await client.appointmentRequest.findFirst({
+      where: {
+        id: current.id,
+        OR: [
+          { providerAccountId: input.actorAccountId },
+          { consumerAccountId: input.actorAccountId },
+        ],
+      },
+    });
     throw new Error('appointment_not_found');
   }
   await writeTransitionEvent(client, {

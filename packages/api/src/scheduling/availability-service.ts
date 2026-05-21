@@ -192,6 +192,14 @@ export async function closeBookableWindow(
 
   return runAvailabilityWrite(client, async (writeClient) => {
     const pending = await readPending(writeClient);
+    if (pending.length > 0 && !input.confirmCancelPending) {
+      return {
+        ok: false,
+        error: 'pending_requests_require_confirmation',
+        pendingCount: pending.length,
+      };
+    }
+
     const closedAt = new Date();
     const closed = await writeClient.bookableWindow.updateMany({
       where: {

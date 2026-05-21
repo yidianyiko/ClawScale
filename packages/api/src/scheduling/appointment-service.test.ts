@@ -240,7 +240,14 @@ describe('appointment service', () => {
     });
 
     expect(tx.appointmentRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: 'ar_3', status: { in: ['pending_held', 'confirmed_shared'] } },
+      where: {
+        id: 'ar_3',
+        status: 'confirmed_shared',
+        OR: [
+          { providerAccountId: 'ck_b' },
+          { consumerAccountId: 'ck_b' },
+        ],
+      },
       data: { status: 'released', releaseReason: 'cancelled_by_b', releasedAt: expect.any(Date) },
     });
     expect(tx.appointmentEvent.create).toHaveBeenCalledWith({
@@ -264,6 +271,37 @@ describe('appointment service', () => {
       }),
     ).rejects.toThrow('appointment_not_found');
     expect(tx.appointmentEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not emit a cancel event when the observed state is stale before update', async () => {
+    tx.appointmentRequest.findFirst.mockResolvedValueOnce({
+      id: 'ar_stale',
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      status: 'pending_held',
+    });
+    tx.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      cancelAppointment(tx as never, {
+        actorAccountId: 'ck_b',
+        requestId: 'ar_stale',
+        idempotencyKey: 'msg_stale',
+      }),
+    ).rejects.toThrow('appointment_not_found');
+
+    expect(tx.appointmentRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'ar_stale',
+        status: 'pending_held',
+        OR: [
+          { providerAccountId: 'ck_b' },
+          { consumerAccountId: 'ck_b' },
+        ],
+      },
+      data: { status: 'released', releaseReason: 'cancelled_by_b', releasedAt: expect.any(Date) },
+    });
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
   });
 
   it('lists pending requests for A with requester identity and hold age instead of TTL', async () => {
