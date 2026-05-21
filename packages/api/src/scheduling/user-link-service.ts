@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { createOrActivateServiceLink } from './service-link-service.js';
 
 const USER_LINK_CODE_BYTES = 9;
 const LINK_SESSION_TOKEN_BYTES = 32;
@@ -42,16 +43,33 @@ interface UserLinkClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
+  serviceLink: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<{
+      id: string;
+      status: 'active' | 'blocked' | 'removed';
+    } | null>;
+    create(args: { data: Record<string, unknown> }): Promise<{
+      id: string;
+      status: 'active' | 'blocked' | 'removed';
+    }>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
+  };
   customer: {
     findUnique(args: {
       where: { id: string };
       select?: Record<string, unknown>;
     }): Promise<ProviderProfileRecord | null>;
   };
-  $transaction?<T>(fn: (client: UserLinkWriteClient) => Promise<T>): Promise<T>;
+  $transaction?<T>(fn: (client: UserLinkTransactionClient) => Promise<T>): Promise<T>;
 }
 
 type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
+type UserLinkTransactionClient = Pick<UserLinkClient, 'userLink' | 'linkSession' | 'serviceLink'>;
+type LinkSessionClaimClient = Pick<UserLinkClient, 'linkSession' | 'serviceLink' | '$transaction'>;
+type LinkSessionClaimWriteClient = Pick<UserLinkClient, 'linkSession' | 'serviceLink'>;
 
 interface UserLinkInput {
   providerAccountId: string;
@@ -212,6 +230,16 @@ async function runUserLinkWrite<T>(
   return fn(client);
 }
 
+async function runLinkSessionClaimWrite<T>(
+  client: LinkSessionClaimClient,
+  fn: (writeClient: LinkSessionClaimWriteClient) => Promise<T>,
+): Promise<T> {
+  if (client.$transaction) {
+    return client.$transaction(fn);
+  }
+  return fn(client);
+}
+
 export async function getOrCreateActiveUserLink(
   client: UserLinkClient,
   input: UserLinkInput,
@@ -333,44 +361,61 @@ export async function getLinkSessionStatus(
 }
 
 export async function claimLinkSession(
-  client: Pick<UserLinkClient, 'linkSession'>,
+  client: LinkSessionClaimClient,
   input: { token: string; consumerAccountId: string },
 ): Promise<LinkSessionRecord> {
   const tokenHashValue = tokenHash(input.token);
   const consumerAccountId = nonEmpty(input.consumerAccountId, 'invalid_consumer_account');
-  const session = await client.linkSession.findUnique({
-    where: { tokenHash: tokenHashValue },
-    select: {
-      id: true,
-      providerAccountId: true,
-      consumerAccountId: true,
-      status: true,
-      expiresAt: true,
-    },
-  });
-  if (!session) {
-    throw new Error('link_session_not_found');
-  }
-  if (session.expiresAt.getTime() <= Date.now()) {
-    throw new Error('link_session_expired');
-  }
-  if (session.status === 'claimed') {
-    if (session.consumerAccountId !== consumerAccountId) {
-      throw new Error('link_session_already_claimed');
-    }
-    return session;
-  }
-  if (session.status !== 'opened') {
-    throw new Error('link_session_not_claimable');
-  }
 
-  await client.linkSession.updateMany({
-    where: { tokenHash: tokenHashValue, status: 'opened', expiresAt: { gt: new Date() } },
-    data: { status: 'claimed', consumerAccountId, claimedAt: new Date() },
+  return runLinkSessionClaimWrite(client, async (writeClient) => {
+    const session = await writeClient.linkSession.findUnique({
+      where: { tokenHash: tokenHashValue },
+      select: {
+        id: true,
+        providerAccountId: true,
+        consumerAccountId: true,
+        status: true,
+        expiresAt: true,
+      },
+    });
+    if (!session) {
+      throw new Error('link_session_not_found');
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      throw new Error('link_session_expired');
+    }
+    if (session.status === 'claimed') {
+      if (session.consumerAccountId !== consumerAccountId) {
+        throw new Error('link_session_already_claimed');
+      }
+      const serviceLink = await createOrActivateServiceLink(writeClient, {
+        providerAccountId: session.providerAccountId,
+        consumerAccountId,
+      });
+      if (serviceLink.status === 'blocked') {
+        throw new Error('service_link_blocked');
+      }
+      return session;
+    }
+    if (session.status !== 'opened') {
+      throw new Error('link_session_not_claimable');
+    }
+
+    const serviceLink = await createOrActivateServiceLink(writeClient, {
+      providerAccountId: session.providerAccountId,
+      consumerAccountId,
+    });
+    if (serviceLink.status === 'blocked') {
+      throw new Error('service_link_blocked');
+    }
+    await writeClient.linkSession.updateMany({
+      where: { tokenHash: tokenHashValue, status: 'opened', expiresAt: { gt: new Date() } },
+      data: { status: 'claimed', consumerAccountId, claimedAt: new Date() },
+    });
+    const current = await getLinkSessionStatus(writeClient, { token: input.token });
+    if (current.status !== 'claimed' || current.consumerAccountId !== consumerAccountId) {
+      throw new Error('link_session_not_claimable');
+    }
+    return current;
   });
-  const current = await getLinkSessionStatus(client, { token: input.token });
-  if (current.status !== 'claimed' || current.consumerAccountId !== consumerAccountId) {
-    throw new Error('link_session_not_claimable');
-  }
-  return current;
 }
