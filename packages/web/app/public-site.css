@@ -4062,6 +4062,12 @@
   width: 100%;
 }
 
+.coke-site .public-user-link__status {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
 .coke-site .public-user-link__actions a {
   display: inline-flex;
   align-items: center;

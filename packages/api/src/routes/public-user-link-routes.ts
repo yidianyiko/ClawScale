@@ -6,6 +6,10 @@ import {
   getLinkSessionStatus,
   readPublicUserLinkByCode,
 } from '../scheduling/user-link-service.js';
+import {
+  getCustomerSession,
+  verifyCustomerToken,
+} from '../lib/customer-auth.js';
 
 export const publicUserLinkRouter = new Hono();
 export const publicLinkSessionRouter = new Hono();
@@ -27,9 +31,26 @@ async function readJsonObject(c: { req: { json(): Promise<unknown>; header(name:
   }
 }
 
-function stringField(body: JsonRecord, key: string, fallback = ''): string {
-  const value = body[key];
-  return typeof value === 'string' ? value : fallback;
+async function readActiveCustomerId(c: { req: { header(name: string): string | undefined } }): Promise<string | null> {
+  const header = c.req.header('Authorization');
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const payload = verifyCustomerToken(token);
+    const session = await getCustomerSession(db as never, {
+      customerId: payload.sub,
+      identityId: payload.identityId,
+    });
+    if (!session || session.claimStatus !== 'active') {
+      return null;
+    }
+    return session.customerId;
+  } catch {
+    return null;
+  }
 }
 
 publicUserLinkRouter.get('/:code', async (c) => {
@@ -73,11 +94,15 @@ publicLinkSessionRouter.post('/:token/claim', async (c) => {
   if (!body) {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
+  const customerId = await readActiveCustomerId(c);
+  if (!customerId) {
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
 
   try {
     const result = await claimLinkSession(db as never, {
       token: c.req.param('token'),
-      consumerAccountId: stringField(body, 'customer_id') || stringField(body, 'consumerAccountId'),
+      consumerAccountId: customerId,
     });
     return c.json({ ok: true, data: result });
   } catch {
