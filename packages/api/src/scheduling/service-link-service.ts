@@ -14,10 +14,10 @@ interface ServiceLinkClient {
   serviceLink: {
     findFirst(args: { where: Record<string, unknown> }): Promise<ServiceLinkRecord | null>;
     create(args: { data: Record<string, unknown> }): Promise<ServiceLinkRecord>;
-    update(args: {
-      where: { id: string };
+    updateMany(args: {
+      where: Record<string, unknown>;
       data: Record<string, unknown>;
-    }): Promise<ServiceLinkRecord>;
+    }): Promise<{ count: number }>;
   };
   appointmentRequest: {
     updateMany(args: {
@@ -67,14 +67,20 @@ async function activateExistingServiceLink(
     return existing;
   }
 
-  return client.serviceLink.update({
-    where: { id: existing.id },
+  const activated = await client.serviceLink.updateMany({
+    where: { id: existing.id, status: 'removed' },
     data: {
       status: 'active',
       removedAt: null,
       capabilities: capabilities(),
     },
   });
+
+  const current = await findServiceLinkById(client, existing.id);
+  if (!current) {
+    throw new Error('service_link_not_found');
+  }
+  return current;
 }
 
 async function findServiceLink(
@@ -146,8 +152,16 @@ export async function blockServiceLink(
       throw new Error('service_link_not_blockable');
     }
 
-    const blocked = await writeClient.serviceLink.update({
-      where: { id: existing.id },
+    if (existing.status === 'blocked') {
+      await writeClient.appointmentRequest.updateMany({
+        where: { ...where, status: 'pending_held' },
+        data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: new Date() },
+      });
+      return existing;
+    }
+
+    const blocked = await writeClient.serviceLink.updateMany({
+      where: { id: existing.id, status: 'active' },
       data: {
         status: 'blocked',
         blockedAt: new Date(),
@@ -155,12 +169,23 @@ export async function blockServiceLink(
       },
     });
 
+    const current = await findServiceLinkById(writeClient, existing.id);
+    if (!current) {
+      throw new Error('service_link_not_found');
+    }
+    if (blocked.count === 0 && current.status === 'removed') {
+      throw new Error('service_link_not_blockable');
+    }
+    if (current.status !== 'blocked') {
+      throw new Error('service_link_not_blockable');
+    }
+
     await writeClient.appointmentRequest.updateMany({
       where: { ...where, status: 'pending_held' },
       data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: new Date() },
     });
 
-    return blocked;
+    return current;
   });
 }
 
@@ -177,14 +202,22 @@ export async function unblockServiceLink(
     throw new Error('service_link_not_blocked');
   }
 
-  return client.serviceLink.update({
-    where: { id: existing.id },
+  const unblocked = await client.serviceLink.updateMany({
+    where: { id: existing.id, status: 'blocked' },
     data: {
       status: 'active',
       blockedAt: null,
       capabilities: capabilities(),
     },
   });
+  const current = await findServiceLinkById(client, existing.id);
+  if (!current) {
+    throw new Error('service_link_not_found');
+  }
+  if (unblocked.count === 0 || current.status !== 'active') {
+    throw new Error('service_link_not_blocked');
+  }
+  return current;
 }
 
 export async function removeServiceLink(
@@ -203,8 +236,22 @@ export async function removeServiceLink(
     throw new Error('service_link_blocked');
   }
 
-  return client.serviceLink.update({
-    where: { id: serviceLinkId },
+  const removed = await client.serviceLink.updateMany({
+    where: { id: serviceLinkId, status: 'active' },
     data: { status: 'removed', removedAt: new Date() },
   });
+  const current = await findServiceLinkById(client, serviceLinkId);
+  if (!current) {
+    throw new Error('service_link_not_found');
+  }
+  if (removed.count === 0) {
+    if (current.status === 'removed') {
+      return current;
+    }
+    if (current.status === 'blocked') {
+      throw new Error('service_link_blocked');
+    }
+    throw new Error('service_link_not_removed');
+  }
+  return current;
 }
