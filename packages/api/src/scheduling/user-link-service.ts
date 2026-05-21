@@ -40,7 +40,10 @@ interface UserLinkClient {
       select?: Record<string, unknown>;
     }): Promise<ProviderProfileRecord | null>;
   };
+  $transaction?<T>(fn: (client: UserLinkWriteClient) => Promise<T>): Promise<T>;
 }
+
+type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
 
 interface UserLinkInput {
   providerAccountId: string;
@@ -94,6 +97,10 @@ function tokenHash(token: string): string {
   return sha256Hex(nonEmpty(token, 'invalid_link_session'));
 }
 
+function isUniqueConflict(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
 function userLinkUrl(code: string): string {
   return `${readDomainClient()}/u/${encodeURIComponent(code)}`;
 }
@@ -135,7 +142,7 @@ function publicResult(
 }
 
 async function createActiveUserLink(
-  client: Pick<UserLinkClient, 'userLink'>,
+  client: UserLinkWriteClient,
   providerAccountId: string,
 ): Promise<UserLinkRecord> {
   return client.userLink.create({
@@ -147,16 +154,51 @@ async function createActiveUserLink(
   });
 }
 
+async function findActiveUserLink(
+  client: UserLinkWriteClient,
+  providerAccountId: string,
+): Promise<UserLinkRecord | null> {
+  return client.userLink.findFirst({
+    where: { providerAccountId, status: 'active' },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async function createActiveUserLinkWithConflictRead(
+  client: UserLinkWriteClient,
+  providerAccountId: string,
+): Promise<UserLinkRecord> {
+  try {
+    return await createActiveUserLink(client, providerAccountId);
+  } catch (error) {
+    if (!isUniqueConflict(error)) {
+      throw error;
+    }
+    const racedLink = await findActiveUserLink(client, providerAccountId);
+    if (!racedLink) {
+      throw error;
+    }
+    return racedLink;
+  }
+}
+
+async function runUserLinkWrite<T>(
+  client: UserLinkClient,
+  fn: (writeClient: UserLinkWriteClient) => Promise<T>,
+): Promise<T> {
+  if (client.$transaction) {
+    return client.$transaction(fn);
+  }
+  return fn(client);
+}
+
 export async function getOrCreateActiveUserLink(
   client: UserLinkClient,
   input: UserLinkInput,
 ): Promise<PublicUserLinkResult> {
   const providerAccountId = nonEmpty(input.providerAccountId, 'invalid_provider_account');
-  const existing = await client.userLink.findFirst({
-    where: { providerAccountId, status: 'active' },
-    orderBy: { createdAt: 'desc' },
-  });
-  const link = existing ?? (await createActiveUserLink(client, providerAccountId));
+  const existing = await findActiveUserLink(client, providerAccountId);
+  const link = existing ?? (await createActiveUserLinkWithConflictRead(client, providerAccountId));
   const profile = await readProviderProfile(client, providerAccountId);
   return publicResult(link, profile);
 }
@@ -179,11 +221,13 @@ export async function resetUserLink(
   input: UserLinkInput,
 ): Promise<PublicUserLinkResult> {
   const providerAccountId = nonEmpty(input.providerAccountId, 'invalid_provider_account');
-  await client.userLink.updateMany({
-    where: { providerAccountId, status: 'active' },
-    data: { status: 'disabled', disabledAt: new Date() },
+  const link = await runUserLinkWrite(client, async (writeClient) => {
+    await writeClient.userLink.updateMany({
+      where: { providerAccountId, status: 'active' },
+      data: { status: 'disabled', disabledAt: new Date() },
+    });
+    return createActiveUserLink(writeClient, providerAccountId);
   });
-  const link = await createActiveUserLink(client, providerAccountId);
   const profile = await readProviderProfile(client, providerAccountId);
   return publicResult(link, profile);
 }

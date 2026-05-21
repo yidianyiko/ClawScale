@@ -25,6 +25,7 @@ interface ServiceLinkClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
+  $transaction?<T>(fn: (client: ServiceLinkWriteClient) => Promise<T>): Promise<T>;
 }
 
 interface ServiceLinkPairInput {
@@ -33,6 +34,7 @@ interface ServiceLinkPairInput {
 }
 
 type ServiceLinkPairWhere = ServiceLinkPairInput & Record<string, unknown>;
+type ServiceLinkWriteClient = Pick<ServiceLinkClient, 'serviceLink' | 'appointmentRequest'>;
 
 function nonEmpty(value: string, code = 'invalid_input'): string {
   const trimmed = value.trim();
@@ -53,35 +55,74 @@ function capabilities(): SchedulingCapability[] {
   return [APPOINTMENT_REQUEST_CAPABILITY];
 }
 
+function isUniqueConflict(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
+
+async function activateExistingServiceLink(
+  client: Pick<ServiceLinkClient, 'serviceLink'>,
+  existing: ServiceLinkRecord,
+): Promise<ServiceLinkRecord> {
+  if (existing.status === 'active' || existing.status === 'blocked') {
+    return existing;
+  }
+
+  return client.serviceLink.update({
+    where: { id: existing.id },
+    data: {
+      status: 'active',
+      removedAt: null,
+      capabilities: capabilities(),
+    },
+  });
+}
+
+async function findServiceLink(
+  client: Pick<ServiceLinkClient, 'serviceLink'>,
+  where: ServiceLinkPairWhere,
+): Promise<ServiceLinkRecord | null> {
+  return client.serviceLink.findFirst({ where });
+}
+
+async function runServiceLinkWrite<T>(
+  client: ServiceLinkClient,
+  fn: (writeClient: ServiceLinkWriteClient) => Promise<T>,
+): Promise<T> {
+  if (client.$transaction) {
+    return client.$transaction(fn);
+  }
+  return fn(client);
+}
+
 export async function createOrActivateServiceLink(
   client: Pick<ServiceLinkClient, 'serviceLink'>,
   input: ServiceLinkPairInput,
 ): Promise<ServiceLinkRecord> {
   const where = pairWhere(input);
-  const existing = await client.serviceLink.findFirst({ where });
+  const existing = await findServiceLink(client, where);
 
-  if (existing?.status === 'active' || existing?.status === 'blocked') {
-    return existing;
+  if (existing) {
+    return activateExistingServiceLink(client, existing);
   }
 
-  if (existing?.status === 'removed') {
-    return client.serviceLink.update({
-      where: { id: existing.id },
+  try {
+    return await client.serviceLink.create({
       data: {
+        ...where,
         status: 'active',
-        removedAt: null,
         capabilities: capabilities(),
       },
     });
+  } catch (error) {
+    if (!isUniqueConflict(error)) {
+      throw error;
+    }
+    const racedLink = await findServiceLink(client, where);
+    if (!racedLink) {
+      throw error;
+    }
+    return activateExistingServiceLink(client, racedLink);
   }
-
-  return client.serviceLink.create({
-    data: {
-      ...where,
-      status: 'active',
-      capabilities: capabilities(),
-    },
-  });
 }
 
 export async function blockServiceLink(
@@ -89,26 +130,28 @@ export async function blockServiceLink(
   input: ServiceLinkPairInput,
 ): Promise<ServiceLinkRecord> {
   const where = pairWhere(input);
-  const existing = await client.serviceLink.findFirst({ where });
-  if (!existing) {
-    throw new Error('service_link_not_found');
-  }
+  return runServiceLinkWrite(client, async (writeClient) => {
+    const existing = await findServiceLink(writeClient, where);
+    if (!existing) {
+      throw new Error('service_link_not_found');
+    }
 
-  const blocked = await client.serviceLink.update({
-    where: { id: existing.id },
-    data: {
-      status: 'blocked',
-      blockedAt: new Date(),
-      capabilities: [],
-    },
+    const blocked = await writeClient.serviceLink.update({
+      where: { id: existing.id },
+      data: {
+        status: 'blocked',
+        blockedAt: new Date(),
+        capabilities: [],
+      },
+    });
+
+    await writeClient.appointmentRequest.updateMany({
+      where: { ...where, status: 'pending_held' },
+      data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: new Date() },
+    });
+
+    return blocked;
   });
-
-  await client.appointmentRequest.updateMany({
-    where: { ...where, status: 'pending_held' },
-    data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: new Date() },
-  });
-
-  return blocked;
 }
 
 export async function unblockServiceLink(
@@ -116,15 +159,12 @@ export async function unblockServiceLink(
   input: ServiceLinkPairInput,
 ): Promise<ServiceLinkRecord> {
   const where = pairWhere(input);
-  const existing = await client.serviceLink.findFirst({ where });
+  const existing = await findServiceLink(client, where);
   if (!existing) {
-    return client.serviceLink.create({
-      data: {
-        ...where,
-        status: 'active',
-        capabilities: capabilities(),
-      },
-    });
+    throw new Error('service_link_not_found');
+  }
+  if (existing.status !== 'blocked') {
+    throw new Error('service_link_not_blocked');
   }
 
   return client.serviceLink.update({
