@@ -124,6 +124,36 @@ describe('service link service', () => {
     });
   });
 
+  it('blocking an already blocked service link is idempotent', async () => {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_1', status: 'blocked' });
+    tx.serviceLink.update.mockResolvedValueOnce({ id: 'sl_1', status: 'blocked' });
+    tx.appointmentRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await blockServiceLink(tx as never, {
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+    });
+
+    expect(result.status).toBe('blocked');
+    expect(tx.appointmentRequest.updateMany).toHaveBeenCalledWith({
+      where: { providerAccountId: 'ck_a', consumerAccountId: 'ck_b', status: 'pending_held' },
+      data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: expect.any(Date) },
+    });
+  });
+
+  it('does not convert a removed service link to blocked', async () => {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_1', status: 'removed' });
+
+    await expect(
+      blockServiceLink(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+      }),
+    ).rejects.toThrow('service_link_not_blockable');
+    expect(tx.serviceLink.update).not.toHaveBeenCalled();
+    expect(tx.appointmentRequest.updateMany).not.toHaveBeenCalled();
+  });
+
   it('uses a transaction for blocking when the root client supports it', async () => {
     const txClient = {
       serviceLink: { findFirst: vi.fn(), update: vi.fn() },
@@ -195,11 +225,30 @@ describe('service link service', () => {
   });
 
   it('removal is reversible and does not block future user-link flow', async () => {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_1', status: 'active' });
     tx.serviceLink.update.mockResolvedValueOnce({ id: 'sl_1', status: 'removed' });
     await removeServiceLink(tx as never, { serviceLinkId: 'sl_1' });
     expect(tx.serviceLink.update).toHaveBeenCalledWith({
       where: { id: 'sl_1' },
       data: { status: 'removed', removedAt: expect.any(Date) },
     });
+  });
+
+  it('removing an already removed service link is idempotent', async () => {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_1', status: 'removed' });
+
+    const result = await removeServiceLink(tx as never, { serviceLinkId: 'sl_1' });
+
+    expect(result.status).toBe('removed');
+    expect(tx.serviceLink.update).not.toHaveBeenCalled();
+  });
+
+  it('does not convert a blocked service link to removed', async () => {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_1', status: 'blocked' });
+
+    await expect(removeServiceLink(tx as never, { serviceLinkId: 'sl_1' })).rejects.toThrow(
+      'service_link_blocked',
+    );
+    expect(tx.serviceLink.update).not.toHaveBeenCalled();
   });
 });

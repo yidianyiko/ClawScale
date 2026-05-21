@@ -58,6 +58,7 @@ export interface PublicUserLinkResult {
   code: string;
   status: 'active';
   url: string;
+  qrUrl: string;
   profile: {
     displayName: string;
     tagline: string | null;
@@ -105,6 +106,10 @@ function userLinkUrl(code: string): string {
   return `${readDomainClient()}/u/${encodeURIComponent(code)}`;
 }
 
+function userLinkQrUrl(code: string): string {
+  return `${userLinkUrl(code)}/qr`;
+}
+
 function authUrl(path: '/auth/login' | '/auth/register', code: string, token: string): string {
   const next = `/u/${encodeURIComponent(code)}?link_session=${encodeURIComponent(token)}`;
   return `${readDomainClient()}${path}?next=${encodeURIComponent(next)}`;
@@ -137,6 +142,7 @@ function publicResult(
     code: link.code,
     status: 'active',
     url: userLinkUrl(link.code),
+    qrUrl: userLinkQrUrl(link.code),
     profile,
   };
 }
@@ -221,13 +227,25 @@ export async function resetUserLink(
   input: UserLinkInput,
 ): Promise<PublicUserLinkResult> {
   const providerAccountId = nonEmpty(input.providerAccountId, 'invalid_provider_account');
-  const link = await runUserLinkWrite(client, async (writeClient) => {
-    await writeClient.userLink.updateMany({
-      where: { providerAccountId, status: 'active' },
-      data: { status: 'disabled', disabledAt: new Date() },
+  let link: UserLinkRecord;
+  try {
+    link = await runUserLinkWrite(client, async (writeClient) => {
+      await writeClient.userLink.updateMany({
+        where: { providerAccountId, status: 'active' },
+        data: { status: 'disabled', disabledAt: new Date() },
+      });
+      return createActiveUserLink(writeClient, providerAccountId);
     });
-    return createActiveUserLink(writeClient, providerAccountId);
-  });
+  } catch (error) {
+    if (!isUniqueConflict(error)) {
+      throw error;
+    }
+    const racedLink = await findActiveUserLink(client, providerAccountId);
+    if (!racedLink) {
+      throw error;
+    }
+    link = racedLink;
+  }
   const profile = await readProviderProfile(client, providerAccountId);
   return publicResult(link, profile);
 }

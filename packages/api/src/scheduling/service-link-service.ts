@@ -84,6 +84,13 @@ async function findServiceLink(
   return client.serviceLink.findFirst({ where });
 }
 
+async function findServiceLinkById(
+  client: Pick<ServiceLinkClient, 'serviceLink'>,
+  serviceLinkId: string,
+): Promise<ServiceLinkRecord | null> {
+  return client.serviceLink.findFirst({ where: { id: serviceLinkId } });
+}
+
 async function runServiceLinkWrite<T>(
   client: ServiceLinkClient,
   fn: (writeClient: ServiceLinkWriteClient) => Promise<T>,
@@ -135,6 +142,9 @@ export async function blockServiceLink(
     if (!existing) {
       throw new Error('service_link_not_found');
     }
+    if (existing.status === 'removed') {
+      throw new Error('service_link_not_blockable');
+    }
 
     const blocked = await writeClient.serviceLink.update({
       where: { id: existing.id },
@@ -181,8 +191,20 @@ export async function removeServiceLink(
   client: Pick<ServiceLinkClient, 'serviceLink'>,
   input: { serviceLinkId: string },
 ): Promise<ServiceLinkRecord> {
+  const serviceLinkId = nonEmpty(input.serviceLinkId, 'invalid_service_link');
+  const existing = await findServiceLinkById(client, serviceLinkId);
+  if (!existing) {
+    throw new Error('service_link_not_found');
+  }
+  if (existing.status === 'removed') {
+    return existing;
+  }
+  if (existing.status === 'blocked') {
+    throw new Error('service_link_blocked');
+  }
+
   return client.serviceLink.update({
-    where: { id: nonEmpty(input.serviceLinkId, 'invalid_service_link') },
+    where: { id: serviceLinkId },
     data: { status: 'removed', removedAt: new Date() },
   });
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createLinkSession,
   disableUserLink,
@@ -21,6 +21,10 @@ describe('user link service', () => {
     process.env.DOMAIN_CLIENT = 'https://kap.example';
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('creates a first active user link with shareable profile fields', async () => {
     db.userLink.findFirst.mockResolvedValueOnce(null);
     db.customer.findUnique.mockResolvedValueOnce({
@@ -34,6 +38,7 @@ describe('user link service', () => {
     const result = await getOrCreateActiveUserLink(db as never, { providerAccountId: 'ck_a' });
 
     expect(result.url).toBe('https://kap.example/u/AbCdEfGhIjK_');
+    expect(result.qrUrl).toBe('https://kap.example/u/AbCdEfGhIjK_/qr');
     expect(result.profile).toEqual({
       displayName: 'Coach A',
       tagline: 'Strength coaching',
@@ -64,12 +69,13 @@ describe('user link service', () => {
     db.customer.findUnique.mockResolvedValueOnce({ id: 'ck_a', displayName: 'Coach A', tagline: null, avatarUrl: null });
     db.userLink.create.mockResolvedValueOnce({ id: 'ul_2', code: 'NewCode123__', status: 'active' });
 
-    await resetUserLink(db as never, { providerAccountId: 'ck_a' });
+    const result = await resetUserLink(db as never, { providerAccountId: 'ck_a' });
 
     expect(db.userLink.updateMany).toHaveBeenCalledWith({
       where: { providerAccountId: 'ck_a', status: 'active' },
       data: { status: 'disabled', disabledAt: expect.any(Date) },
     });
+    expect(result.qrUrl).toBe('https://kap.example/u/NewCode123__/qr');
     expect(db.userLink.create).toHaveBeenCalled();
   });
 
@@ -90,6 +96,26 @@ describe('user link service', () => {
     });
     expect(tx.userLink.create).toHaveBeenCalled();
     expect(db.userLink.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('re-reads active link when concurrent reset creation loses a unique race', async () => {
+    db.userLink.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    db.userLink.findFirst.mockResolvedValueOnce({
+      id: 'ul_race',
+      code: 'ResetRace12_',
+      status: 'active',
+      providerAccountId: 'ck_a',
+    });
+    db.customer.findUnique.mockResolvedValueOnce({ id: 'ck_a', displayName: 'Coach A', tagline: null, avatarUrl: null });
+
+    const result = await resetUserLink(db as never, { providerAccountId: 'ck_a' });
+
+    expect(result.url).toBe('https://kap.example/u/ResetRace12_');
+    expect(result.qrUrl).toBe('https://kap.example/u/ResetRace12_/qr');
+    expect(db.userLink.findFirst).toHaveBeenCalledWith({
+      where: { providerAccountId: 'ck_a', status: 'active' },
+      orderBy: { createdAt: 'desc' },
+    });
   });
 
   it('reads only an active public user link by code without exposing provider account id', async () => {
@@ -115,6 +141,7 @@ describe('user link service', () => {
       id: 'ul_1',
       code: 'AbCdEfGhIjK_',
       status: 'active',
+      qrUrl: 'https://kap.example/u/AbCdEfGhIjK_/qr',
       profile: { displayName: 'Coach A', tagline: 'Strength coaching', avatarUrl: null },
     });
     expect(result).not.toHaveProperty('providerAccountId');
@@ -155,6 +182,5 @@ describe('user link service', () => {
       new Date('2026-05-22T00:00:00.000Z'),
     );
     expect(result.nextUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
-    vi.useRealTimers();
   });
 });
