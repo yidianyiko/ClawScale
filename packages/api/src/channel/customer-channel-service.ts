@@ -25,7 +25,7 @@ export interface CustomerChannelActionRequest {
   identityId: string;
 }
 
-export interface CustomerChannelAuthResult {
+interface CustomerChannelAuthResult {
   tenantId: string;
   clawscaleUserId: string;
 }

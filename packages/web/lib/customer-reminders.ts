@@ -1,7 +1,7 @@
 import type { ApiResponse } from '../../shared/src/types/api';
 import { customerApi } from './customer-api';
 
-export type CustomerReminderState = 'active' | 'completed' | 'cancelled' | 'failed';
+type CustomerReminderState = 'active' | 'completed' | 'cancelled' | 'failed';
 export type CustomerReminderRepeat = 'none' | 'daily' | 'weekly';
 
 export interface CustomerReminder {

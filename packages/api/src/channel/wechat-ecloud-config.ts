@@ -1,12 +1,5 @@
-export const DEFAULT_WECHAT_ECLOUD_BASE_URL = 'https://api.geweapi.com';
-export const WECHAT_ECLOUD_CALLBACK_PATH = '/gateway/ecloud/wechat/:channelId/:token';
-
-export interface WechatEcloudConfigInput {
-  appId: string;
-  token: string;
-  baseUrl?: string;
-  webhookToken?: string;
-}
+const DEFAULT_WECHAT_ECLOUD_BASE_URL = 'https://api.geweapi.com';
+const WECHAT_ECLOUD_CALLBACK_PATH = '/gateway/ecloud/wechat/:channelId/:token';
 
 export interface StoredWechatEcloudConfig {
   appId: string;

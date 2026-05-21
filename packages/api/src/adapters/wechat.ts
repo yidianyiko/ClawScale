@@ -492,7 +492,7 @@ export async function sendWeixinText(
   });
 }
 
-export async function startWeixinBot(channelId: string, baseUrl: string, token: string): Promise<void> {
+async function startWeixinBot(channelId: string, baseUrl: string, token: string): Promise<void> {
   if (channels.has(channelId)) return;
   pollLoop(channelId, baseUrl, token).catch((err) =>
     console.error(`[weixin:${channelId}] Poll loop crashed:`, err),

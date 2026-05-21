@@ -1,8 +1,8 @@
 export const MAX_INBOUND_ATTACHMENTS = 4;
-export const MAX_HTTP_URL_LENGTH = 4096;
-export const MAX_DATA_URL_BYTES = 2 * 1024 * 1024;
-export const MAX_TOTAL_DATA_URL_BYTES = 4 * 1024 * 1024;
-export const MAX_ATTACHMENT_JSON_BYTES = 5 * 1024 * 1024;
+const MAX_HTTP_URL_LENGTH = 4096;
+const MAX_DATA_URL_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_DATA_URL_BYTES = 4 * 1024 * 1024;
+const MAX_ATTACHMENT_JSON_BYTES = 5 * 1024 * 1024;
 
 const ALLOWED_DATA_CONTENT_TYPES = new Set([
   'image/jpeg',
@@ -17,7 +17,7 @@ const ALLOWED_DATA_CONTENT_TYPES = new Set([
 
 const MAX_DISPLAY_FILENAME_LENGTH = 120;
 
-export type InboundAttachment = {
+type InboundAttachment = {
   url: string;
   filename: string;
   contentType: string;

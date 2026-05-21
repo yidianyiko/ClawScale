@@ -41,17 +41,6 @@ export type AdminCustomerRow = {
   parkedInboundCount: number;
 };
 
-export type AdminChannelRow = {
-  id: string;
-  name: string;
-  kind: string;
-  status: string;
-  ownershipKind: string;
-  customerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type AdminSharedChannelRow = {
   id: string;
   name: string;
@@ -83,22 +72,6 @@ export type AdminDeliveryRow = {
   idempotencyKey: string;
   status: string;
   error: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AdminAgentRecord = {
-  id: string;
-  slug: string;
-  name: string;
-  endpoint: string;
-  tokenConfigured: boolean;
-  isDefault: boolean;
-  lastHandshakeHealth: {
-    status: string;
-    source: string;
-    observedAt: string | null;
-  };
   createdAt: string;
   updatedAt: string;
 };

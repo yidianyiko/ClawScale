@@ -3,7 +3,7 @@ import { ArrowRight } from 'lucide-react';
 
 import { CokePublicShell } from './coke-public-shell';
 
-export type PublicInfoSection = {
+type PublicInfoSection = {
   title: string;
   body: string;
 };
