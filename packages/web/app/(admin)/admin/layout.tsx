@@ -4,7 +4,7 @@ import { useEffect, useReducer, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Radio, Send, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, LogOut, MessageSquareText, Radio, Send, ShieldCheck } from 'lucide-react';
 import { LocaleSwitch } from '../../../components/locale-switch';
 import { useLocale } from '../../../components/locale-provider';
 import { adminApi } from '../../../lib/admin-api';
@@ -18,7 +18,8 @@ import { getAdminCopy } from '../../../lib/admin-copy';
 import { cn } from '../../../lib/utils';
 
 const navIcons = {
-  '/admin/customers': Users,
+  '/admin/dashboard': BarChart3,
+  '/admin/customers': MessageSquareText,
   '/admin/shared-channels': Radio,
   '/admin/deliveries': Send,
   '/admin/admins': ShieldCheck,

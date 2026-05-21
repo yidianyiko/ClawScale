@@ -79,6 +79,98 @@ const listQuerySchema = z
   })
   .strict();
 
+type CustomerMessageStatsRow = {
+  customerId: string;
+  lastMessageAt: Date | string | null;
+  conversationCount: number | bigint | null;
+  messageCount: number | bigint | null;
+};
+
+function toNumber(value: number | bigint | null | undefined): number {
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  return 0;
+}
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return new Date(value).toISOString();
+}
+
+async function listCustomerMessageStats(
+  limit: number,
+  offset: number,
+): Promise<CustomerMessageStatsRow[]> {
+  return db.$queryRaw<CustomerMessageStatsRow[]>`
+    WITH message_customer_links AS (
+      SELECT
+        cu.coke_account_id AS customer_id,
+        conv.id AS conversation_id,
+        msg.id AS message_id,
+        msg.created_at AS created_at
+      FROM messages AS msg
+      JOIN conversations AS conv ON conv.id = msg.conversation_id
+      JOIN clawscale_users AS cu ON cu.id = conv.clawscale_user_id
+
+      UNION ALL
+
+      SELECT
+        ch.customer_id AS customer_id,
+        conv.id AS conversation_id,
+        msg.id AS message_id,
+        msg.created_at AS created_at
+      FROM messages AS msg
+      JOIN conversations AS conv ON conv.id = msg.conversation_id
+      JOIN channels AS ch ON ch.id = conv.channel_id
+      WHERE ch.customer_id IS NOT NULL
+
+      UNION ALL
+
+      SELECT
+        COALESCE(
+          msg.metadata #>> '{customerId}',
+          msg.metadata #>> '{customer_id}',
+          msg.metadata #>> '{cokeAccountId}',
+          msg.metadata #>> '{coke_account_id}'
+        ) AS customer_id,
+        msg.conversation_id AS conversation_id,
+        msg.id AS message_id,
+        msg.created_at AS created_at
+      FROM messages AS msg
+      WHERE COALESCE(
+        msg.metadata #>> '{customerId}',
+        msg.metadata #>> '{customer_id}',
+        msg.metadata #>> '{cokeAccountId}',
+        msg.metadata #>> '{coke_account_id}'
+      ) IS NOT NULL
+    )
+    SELECT
+      c.id AS "customerId",
+      MAX(message_customer_links.created_at) AS "lastMessageAt",
+      COUNT(DISTINCT message_customer_links.conversation_id)::int AS "conversationCount",
+      COUNT(DISTINCT message_customer_links.message_id)::int AS "messageCount"
+    FROM customers AS c
+    LEFT JOIN message_customer_links ON message_customer_links.customer_id = c.id
+    GROUP BY c.id, c.created_at
+    ORDER BY MAX(message_customer_links.created_at) DESC NULLS LAST, c.created_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+}
+
 function buildContactIdentifier(row: {
   memberships: Array<{
     identity: {
@@ -153,17 +245,31 @@ export const adminCustomersRouter = new Hono()
     const limit = parsedQuery.data.limit ?? 50;
     const offset = parsedQuery.data.offset ?? 0;
 
-    const [rows, total] = await Promise.all([
-      db.customer.findMany({
-        orderBy: { createdAt: 'desc' },
-        select: customerSelect,
-        skip: offset,
-        take: limit,
-      }),
+    const [messageStatsRows, total] = await Promise.all([
+      listCustomerMessageStats(limit, offset),
       db.customer.count(),
     ]);
+    const orderedCustomerIds = messageStatsRows.map((row) => row.customerId);
+    const statsByCustomerId = new Map(
+      messageStatsRows.map((row) => [row.customerId, row] as const),
+    );
 
-    const customerIds = rows.map((row) => row.id);
+    const rows = orderedCustomerIds.length
+      ? await db.customer.findMany({
+        where: {
+          id: {
+            in: orderedCustomerIds,
+          },
+        },
+        select: customerSelect,
+      })
+      : [];
+    const rowsById = new Map(rows.map((row) => [row.id, row] as const));
+    const orderedRows = orderedCustomerIds
+      .map((customerId) => rowsById.get(customerId))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+    const customerIds = orderedRows.map((row) => row.id);
     const parkedInbounds = customerIds.length
       ? await db.parkedInbound.findMany({
           where: {
@@ -202,11 +308,12 @@ export const adminCustomersRouter = new Hono()
     return c.json({
       ok: true,
       data: {
-        rows: rows.map((row) => {
+        rows: orderedRows.map((row) => {
           const ownerMembership = row.memberships[0];
           const agentBinding = row.agentBindings[0];
           const firstSeenIdentity = row.externalIdentities[0];
           const channelKinds = [...new Set(row.channels.map((channel) => channel.type))].sort();
+          const messageStats = statsByCustomerId.get(row.id);
 
           return {
             id: row.id,
@@ -215,6 +322,9 @@ export const adminCustomersRouter = new Hono()
             claimStatus: ownerMembership?.identity.claimStatus ?? 'unclaimed',
             registeredAt: ownerMembership?.createdAt?.toISOString() ?? row.createdAt.toISOString(),
             firstSeenAt: firstSeenIdentity?.firstSeenAt?.toISOString() ?? null,
+            lastMessageAt: toIso(messageStats?.lastMessageAt),
+            conversationCount: toNumber(messageStats?.conversationCount),
+            messageCount: toNumber(messageStats?.messageCount),
             agent: agentBinding
               ? {
                   id: agentBinding.agent.id,

@@ -33,6 +33,9 @@ describe('AdminCustomersPage', () => {
             parkedInboundCount: 2,
             registeredAt: '2026-04-16T09:00:00.000Z',
             firstSeenAt: '2026-04-15T08:00:00.000Z',
+            lastMessageAt: '2026-04-17T10:30:00.000Z',
+            conversationCount: 1,
+            messageCount: 8,
             agent: {
               id: 'agent_coke',
               slug: 'coke',
@@ -83,6 +86,9 @@ describe('AdminCustomersPage', () => {
               parkedInboundCount: 2,
               registeredAt: '2026-04-16T09:00:00.000Z',
               firstSeenAt: '2026-04-15T08:00:00.000Z',
+              lastMessageAt: '2026-04-17T10:30:00.000Z',
+              conversationCount: 1,
+              messageCount: 8,
               agent: {
                 id: 'agent_coke',
                 slug: 'coke',
@@ -138,6 +144,8 @@ describe('AdminCustomersPage', () => {
     await vi.waitFor(() => {
       expect(vi.mocked(adminApi.get)).toHaveBeenCalledWith('/api/admin/customers?limit=50&offset=0');
       expect(container.textContent).toContain('Customer');
+      expect(container.textContent).toContain('Last message');
+      expect(container.textContent).toContain('Messages');
       expect(container.textContent).toContain('Contact identifier');
       expect(container.textContent).toContain('Claim status');
       expect(container.textContent).toContain('Parked inbounds');

@@ -23,6 +23,9 @@ export type AdminCustomerRow = {
   claimStatus: string;
   registeredAt: string;
   firstSeenAt: string | null;
+  lastMessageAt: string | null;
+  conversationCount: number;
+  messageCount: number;
   agent: {
     id: string;
     slug: string;
@@ -106,6 +109,41 @@ export type AdminAccountRecord = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminDashboardMetrics = {
+  activeCustomers: {
+    day: number;
+    week: number;
+    month: number;
+  };
+  messages: {
+    day: number;
+    week: number;
+    month: number;
+    userDay: number;
+    assistantDay: number;
+    total: number;
+    lastMessageAt: string | null;
+  };
+  customers: {
+    total: number;
+  };
+  conversations: {
+    total: number;
+  };
+  channels: {
+    total: number;
+    connected: number;
+  };
+  parkedInbounds: {
+    queued: number;
+  };
+  agentBindings: {
+    ready: number;
+    pending: number;
+    error: number;
+  };
 };
 
 export type AdminPagedResult<T> = {

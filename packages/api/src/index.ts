@@ -19,6 +19,7 @@ import {
 } from './routes/calendar-import-handoff-routes.js';
 import { customerSubscriptionRouter } from './routes/customer-subscription-routes.js';
 import { adminAuthRouter } from './routes/admin-auth-routes.js';
+import { adminDashboardRouter } from './routes/admin-dashboard.js';
 import { adminCustomersRouter } from './routes/admin-customers.js';
 import { adminSharedChannelsRouter } from './routes/admin-shared-channels.js';
 import { adminDeliveriesRouter } from './routes/admin-deliveries.js';
@@ -63,6 +64,7 @@ app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCa
 app.route('/api/customer/calendar-import-handoffs', customerCalendarImportHandoffRouter);
 app.route('/api/customer/reminders', customerReminderRouter);
 app.route('/api/admin', adminAuthRouter);
+app.route('/api/admin/dashboard', adminDashboardRouter);
 app.route('/api/admin/customers', adminCustomersRouter);
 app.route('/api/admin/shared-channels', adminSharedChannelsRouter);
 app.route('/api/admin/deliveries', adminDeliveriesRouter);

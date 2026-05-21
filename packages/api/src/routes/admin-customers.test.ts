@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
 const db = vi.hoisted(() => ({
+  $queryRaw: vi.fn(),
   customer: {
     findMany: vi.fn(),
     count: vi.fn(),
@@ -32,6 +33,14 @@ describe('admin customers route', () => {
   });
 
   it('returns contact identifier, claim status, lifecycle timestamps, agent, and channel summary', async () => {
+    db.$queryRaw.mockResolvedValue([
+      {
+        customerId: 'cust_123',
+        lastMessageAt: new Date('2026-04-04T12:30:00.000Z'),
+        conversationCount: 1,
+        messageCount: 3,
+      },
+    ]);
     db.customer.findMany.mockResolvedValue([
       {
         id: 'cust_123',
@@ -101,6 +110,9 @@ describe('admin customers route', () => {
             claimStatus: 'active',
             registeredAt: '2026-04-01T10:00:00.000Z',
             firstSeenAt: '2026-04-03T12:00:00.000Z',
+            lastMessageAt: '2026-04-04T12:30:00.000Z',
+            conversationCount: 1,
+            messageCount: 3,
             agent: {
               id: 'agent_coke',
               slug: 'coke',
@@ -121,11 +133,14 @@ describe('admin customers route', () => {
         offset: 0,
       },
     });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
     expect(db.customer.findMany).toHaveBeenCalledWith({
-      orderBy: { createdAt: 'desc' },
+      where: {
+        id: {
+          in: ['cust_123'],
+        },
+      },
       select: expect.any(Object),
-      skip: 0,
-      take: 20,
     });
     expect(db.customer.count).toHaveBeenCalledWith();
     expect(db.parkedInbound.findMany).toHaveBeenCalledWith({
@@ -184,5 +199,62 @@ describe('admin customers route', () => {
     expect(db.customer.findMany).not.toHaveBeenCalled();
     expect(db.customer.count).not.toHaveBeenCalled();
     expect(db.parkedInbound.findMany).not.toHaveBeenCalled();
+  });
+
+  it('requests customers ordered by latest message recency', async () => {
+    db.$queryRaw.mockResolvedValue([
+      {
+        customerId: 'cust_new_chat',
+        lastMessageAt: new Date('2026-04-06T12:00:00.000Z'),
+        conversationCount: 1,
+        messageCount: 1,
+      },
+      {
+        customerId: 'cust_old_chat',
+        lastMessageAt: new Date('2026-04-05T12:00:00.000Z'),
+        conversationCount: 1,
+        messageCount: 1,
+      },
+    ]);
+    db.customer.findMany.mockResolvedValue([
+      {
+        id: 'cust_old_chat',
+        displayName: 'Old Chat',
+        createdAt: new Date('2026-04-10T10:00:00.000Z'),
+        memberships: [],
+        agentBindings: [],
+        externalIdentities: [],
+        channels: [],
+      },
+      {
+        id: 'cust_new_chat',
+        displayName: 'New Chat',
+        createdAt: new Date('2026-04-01T10:00:00.000Z'),
+        memberships: [],
+        agentBindings: [],
+        externalIdentities: [],
+        channels: [],
+      },
+    ]);
+    db.customer.count.mockResolvedValue(2);
+    db.parkedInbound.findMany.mockResolvedValue([]);
+
+    const app = new Hono();
+    app.route('/api/admin/customers', adminCustomersRouter);
+
+    const res = await app.request('/api/admin/customers?limit=20&offset=0');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.rows.map((row: { id: string }) => row.id)).toEqual([
+      'cust_new_chat',
+      'cust_old_chat',
+    ]);
+    expect(body.data.rows[0]).toMatchObject({
+      id: 'cust_new_chat',
+      lastMessageAt: '2026-04-06T12:00:00.000Z',
+      messageCount: 1,
+      conversationCount: 1,
+    });
   });
 });

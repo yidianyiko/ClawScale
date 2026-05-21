@@ -92,6 +92,8 @@ export default function AdminCustomersPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.customer}</th>
+                  <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.lastMessage}</th>
+                  <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.messageCount}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.contactIdentifier}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.claimStatus}</th>
                   <th className="px-5 py-3 text-left font-medium text-gray-500">{copy.customers.columns.parkedInbounds}</th>
@@ -104,7 +106,7 @@ export default function AdminCustomersPage() {
               <tbody className="divide-y divide-gray-50">
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-gray-500">
+                    <td colSpan={10} className="px-5 py-8 text-center text-gray-500">
                       {copy.common.empty}
                     </td>
                   </tr>
@@ -115,6 +117,13 @@ export default function AdminCustomersPage() {
                         <div className="font-medium text-gray-900">{row.displayName}</div>
                         <div className="text-xs text-gray-400">{row.id}</div>
                       </td>
+                      <td className="px-5 py-3.5 text-gray-600">
+                        {row.lastMessageAt ? formatDateTime(row.lastMessageAt) : '—'}
+                        <div className="text-xs text-gray-400">
+                          {row.conversationCount} conversation{row.conversationCount === 1 ? '' : 's'}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-600">{row.messageCount}</td>
                       <td className="px-5 py-3.5 text-gray-600">
                         <div>{row.contactIdentifier.value || 'Unknown'}</div>
                         <div className="text-xs text-gray-400">{row.contactIdentifier.type}</div>
