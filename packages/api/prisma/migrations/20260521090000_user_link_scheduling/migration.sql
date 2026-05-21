@@ -160,6 +160,9 @@ CREATE TABLE "scheduling_notifications" (
 CREATE UNIQUE INDEX "user_links_code_key" ON "user_links"("code");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "user_links_id_provider_account_id_key" ON "user_links"("id", "provider_account_id");
+
+-- CreateIndex
 CREATE INDEX "user_links_provider_account_id_idx" ON "user_links"("provider_account_id");
 
 -- CreateIndex
@@ -184,10 +187,16 @@ CREATE INDEX "service_links_provider_account_id_status_idx" ON "service_links"("
 CREATE INDEX "service_links_consumer_account_id_status_idx" ON "service_links"("consumer_account_id", "status");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "service_links_id_provider_account_id_consumer_account_id_key" ON "service_links"("id", "provider_account_id", "consumer_account_id");
+
+-- CreateIndex
 CREATE INDEX "bookable_windows_provider_account_id_status_idx" ON "bookable_windows"("provider_account_id", "status");
 
 -- CreateIndex
 CREATE INDEX "bookable_windows_rule_fingerprint_idx" ON "bookable_windows"("rule_fingerprint");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "bookable_windows_id_provider_account_id_key" ON "bookable_windows"("id", "provider_account_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "bookable_window_exclusions_bookable_window_id_instance_start_instance_end_key" ON "bookable_window_exclusions"("bookable_window_id", "instance_start", "instance_end");
@@ -244,7 +253,7 @@ WHERE status IN ('pending_held', 'confirmed_shared');
 ALTER TABLE "user_links" ADD CONSTRAINT "user_links_provider_account_id_fkey" FOREIGN KEY ("provider_account_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "link_sessions" ADD CONSTRAINT "link_sessions_user_link_id_fkey" FOREIGN KEY ("user_link_id") REFERENCES "user_links"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "link_sessions" ADD CONSTRAINT "link_sessions_user_link_id_provider_account_id_fkey" FOREIGN KEY ("user_link_id", "provider_account_id") REFERENCES "user_links"("id", "provider_account_id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "service_links" ADD CONSTRAINT "service_links_provider_account_id_fkey" FOREIGN KEY ("provider_account_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -265,10 +274,10 @@ ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_provider
 ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_consumer_account_id_fkey" FOREIGN KEY ("consumer_account_id") REFERENCES "customers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_service_link_id_fkey" FOREIGN KEY ("service_link_id") REFERENCES "service_links"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_service_link_id_provider_account_id_consumer_account_id_fkey" FOREIGN KEY ("service_link_id", "provider_account_id", "consumer_account_id") REFERENCES "service_links"("id", "provider_account_id", "consumer_account_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_bookable_window_id_fkey" FOREIGN KEY ("bookable_window_id") REFERENCES "bookable_windows"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "appointment_requests" ADD CONSTRAINT "appointment_requests_bookable_window_id_provider_account_id_fkey" FOREIGN KEY ("bookable_window_id", "provider_account_id") REFERENCES "bookable_windows"("id", "provider_account_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "appointment_events" ADD CONSTRAINT "appointment_events_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES "appointment_requests"("id") ON DELETE CASCADE ON UPDATE CASCADE;

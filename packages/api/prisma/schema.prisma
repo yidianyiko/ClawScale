@@ -666,6 +666,7 @@ model UserLink {
   provider     Customer      @relation("ProviderUserLinks", fields: [providerAccountId], references: [id], onDelete: Cascade)
   linkSessions LinkSession[]
 
+  @@unique([id, providerAccountId])
   @@index([providerAccountId])
   @@index([status])
   @@map("user_links")
@@ -685,7 +686,7 @@ model LinkSession {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  userLink UserLink @relation(fields: [userLinkId], references: [id], onDelete: Cascade)
+  userLink UserLink @relation(fields: [userLinkId, providerAccountId], references: [id, providerAccountId], onDelete: Cascade)
 
   @@index([providerAccountId, status])
   @@index([consumerAccountId])
@@ -708,6 +709,7 @@ model ServiceLink {
   consumer Customer @relation("ConsumerServiceLinks", fields: [consumerAccountId], references: [id], onDelete: Cascade)
   appointmentRequests AppointmentRequest[]
 
+  @@unique([id, providerAccountId, consumerAccountId])
   @@index([providerAccountId, status])
   @@index([consumerAccountId, status])
   @@map("service_links")
@@ -729,6 +731,7 @@ model BookableWindow {
   exclusions BookableWindowExclusion[]
   appointmentRequests AppointmentRequest[]
 
+  @@unique([id, providerAccountId])
   @@index([providerAccountId, status])
   @@index([ruleFingerprint])
   @@map("bookable_windows")
@@ -764,8 +767,8 @@ model AppointmentRequest {
 
   provider Customer @relation("ProviderAppointmentRequests", fields: [providerAccountId], references: [id], onDelete: Cascade)
   consumer Customer @relation("ConsumerAppointmentRequests", fields: [consumerAccountId], references: [id], onDelete: Cascade)
-  serviceLink ServiceLink @relation(fields: [serviceLinkId], references: [id], onDelete: Restrict)
-  bookableWindow BookableWindow @relation(fields: [bookableWindowId], references: [id], onDelete: Restrict)
+  serviceLink ServiceLink @relation(fields: [serviceLinkId, providerAccountId, consumerAccountId], references: [id, providerAccountId, consumerAccountId], onDelete: Restrict)
+  bookableWindow BookableWindow @relation(fields: [bookableWindowId, providerAccountId], references: [id, providerAccountId], onDelete: Restrict)
   events AppointmentEvent[]
   notifications SchedulingNotification[]
 
