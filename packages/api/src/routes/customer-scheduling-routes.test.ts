@@ -167,4 +167,27 @@ describe('customer scheduling routes', () => {
       consumerAccountId: 'ck_other',
     });
   });
+
+  it('removes a service link where the authenticated customer is the consumer', async () => {
+    db.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_b_side' });
+    scheduling.removeServiceLink.mockResolvedValueOnce({ id: 'sl_b_side', status: 'removed' });
+
+    const res = await createApp().request('/api/customer/scheduling/service-links/ck_provider', {
+      method: 'DELETE',
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.serviceLink.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { providerAccountId: 'ck_123', consumerAccountId: 'ck_provider' },
+          { providerAccountId: 'ck_provider', consumerAccountId: 'ck_123' },
+        ],
+      },
+    });
+    expect(scheduling.removeServiceLink).toHaveBeenCalledWith(db as never, {
+      serviceLinkId: 'sl_b_side',
+    });
+  });
 });

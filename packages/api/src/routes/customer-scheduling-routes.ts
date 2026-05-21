@@ -295,8 +295,10 @@ customerSchedulingRouter.delete('/service-links/:otherAccountId', async (c) => {
   const session = c.get('customerSchedulingAuth');
   const existing = await db.serviceLink.findFirst({
     where: {
-      providerAccountId: session.customerId,
-      consumerAccountId: c.req.param('otherAccountId'),
+      OR: [
+        { providerAccountId: session.customerId, consumerAccountId: c.req.param('otherAccountId') },
+        { providerAccountId: c.req.param('otherAccountId'), consumerAccountId: session.customerId },
+      ],
     },
   });
   if (!existing) {

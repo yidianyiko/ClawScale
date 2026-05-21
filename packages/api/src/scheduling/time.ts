@@ -195,6 +195,33 @@ export function encodeWindowInstanceId(input: {
   return Buffer.from(`${payload}|${sig}`).toString('base64url');
 }
 
+export function decodeWindowInstanceId(value: string): {
+  bookableWindowId: string;
+  instanceStart: string;
+  instanceEnd: string;
+} {
+  let decoded: string;
+  try {
+    decoded = Buffer.from(value, 'base64url').toString('utf8');
+  } catch {
+    throw new Error('invalid_window_instance_id');
+  }
+
+  const [bookableWindowId, instanceStart, instanceEnd, sig, ...extra] = decoded.split('|');
+  if (!bookableWindowId || !instanceStart || !instanceEnd || !sig || extra.length > 0) {
+    throw new Error('invalid_window_instance_id');
+  }
+
+  const payload = `${bookableWindowId}|${instanceStart}|${instanceEnd}`;
+  const secret = process.env['SCHEDULING_INSTANCE_SECRET'] || DEV_INSTANCE_SECRET;
+  const expected = createHmac('sha256', secret).update(payload).digest('base64url').slice(0, 16);
+  if (sig !== expected) {
+    throw new Error('invalid_window_instance_id');
+  }
+
+  return { bookableWindowId, instanceStart, instanceEnd };
+}
+
 function addDays(date: string, days: number): string {
   const value = new Date(`${assertLocalDate(date)}T00:00:00.000Z`);
   value.setUTCDate(value.getUTCDate() + days);

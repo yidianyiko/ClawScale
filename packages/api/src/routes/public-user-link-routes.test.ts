@@ -4,16 +4,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   readPublicUserLinkByCode: vi.fn(),
   createLinkSession: vi.fn(),
+  getLinkSessionStatus: vi.fn(),
+  claimLinkSession: vi.fn(),
 }));
 
 vi.mock('../scheduling/user-link-service.js', () => mocks);
 vi.mock('../db/index.js', () => ({ db: {} }));
 
-import { publicUserLinkRouter } from './public-user-link-routes.js';
+import { publicLinkSessionRouter, publicUserLinkRouter } from './public-user-link-routes.js';
 
 function createApp(): Hono {
   const app = new Hono();
   app.route('/api/public/user-links', publicUserLinkRouter);
+  app.route('/api/public/link-sessions', publicLinkSessionRouter);
   return app;
 }
 
@@ -81,5 +84,58 @@ describe('public user link routes', () => {
     });
     expect(body.data.nextUrl).toContain('link_session');
     expect(body.data.registerUrl).toContain('link_session');
+  });
+
+  it('returns link-session status from the public link-session surface', async () => {
+    mocks.getLinkSessionStatus.mockResolvedValueOnce({
+      status: 'opened',
+      providerAccountId: 'ck_provider',
+      consumerAccountId: null,
+      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
+    });
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/status');
+
+    expect(res.status).toBe(200);
+    expect(mocks.getLinkSessionStatus).toHaveBeenCalledWith({} as never, {
+      token: 'session-token',
+    });
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        status: 'opened',
+        providerAccountId: 'ck_provider',
+        consumerAccountId: null,
+      },
+    });
+  });
+
+  it('claims a link session from the public link-session surface', async () => {
+    mocks.claimLinkSession.mockResolvedValueOnce({
+      status: 'claimed',
+      providerAccountId: 'ck_provider',
+      consumerAccountId: 'ck_consumer',
+      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
+    });
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/claim', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ customer_id: 'ck_consumer' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mocks.claimLinkSession).toHaveBeenCalledWith({} as never, {
+      token: 'session-token',
+      consumerAccountId: 'ck_consumer',
+    });
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        status: 'claimed',
+        providerAccountId: 'ck_provider',
+        consumerAccountId: 'ck_consumer',
+      },
+    });
   });
 });

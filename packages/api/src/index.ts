@@ -13,7 +13,7 @@ import { customerChannelRouter } from './routes/customer-channel-routes.js';
 import { customerGoogleCalendarImportRouter } from './routes/customer-google-calendar-import-routes.js';
 import { customerGoogleCalendarImportCallbackRouter } from './routes/customer-google-calendar-import-callback-routes.js';
 import { customerReminderRouter } from './routes/customer-reminder-routes.js';
-import { publicUserLinkRouter } from './routes/public-user-link-routes.js';
+import { publicLinkSessionRouter, publicUserLinkRouter } from './routes/public-user-link-routes.js';
 import { customerSchedulingRouter } from './routes/customer-scheduling-routes.js';
 import { internalSchedulingRouter } from './routes/internal-scheduling-routes.js';
 import {
@@ -61,6 +61,7 @@ app.route('/api/internal/scheduling', internalSchedulingRouter);
 // ─── Customer and admin routes ───────────────────────────────────────────────
 
 app.route('/api/public/user-links', publicUserLinkRouter);
+app.route('/api/public/link-sessions', publicLinkSessionRouter);
 app.route('/api/outbound', outboundRouter);
 app.route('/api/auth', customerAuthRouter);
 app.route('/api/auth/claim', customerClaimRouter);

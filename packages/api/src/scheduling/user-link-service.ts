@@ -33,6 +33,14 @@ interface UserLinkClient {
   };
   linkSession: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    findUnique(args: {
+      where: { tokenHash: string };
+      select?: Record<string, unknown>;
+    }): Promise<LinkSessionRecord | null>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   customer: {
     findUnique(args: {
@@ -51,6 +59,14 @@ interface UserLinkInput {
 
 interface CreateLinkSessionInput {
   code: string;
+}
+
+interface LinkSessionRecord {
+  id: string;
+  providerAccountId: string;
+  consumerAccountId: string | null;
+  status: 'opened' | 'claimed' | 'abandoned';
+  expiresAt: Date;
 }
 
 export interface PublicUserLinkResult {
@@ -294,4 +310,67 @@ export async function createLinkSession(
     registerUrl: authUrl('/auth/register', userLink.code, token),
     expiresAt,
   };
+}
+
+export async function getLinkSessionStatus(
+  client: Pick<UserLinkClient, 'linkSession'>,
+  input: { token: string },
+): Promise<LinkSessionRecord> {
+  const session = await client.linkSession.findUnique({
+    where: { tokenHash: tokenHash(input.token) },
+    select: {
+      id: true,
+      providerAccountId: true,
+      consumerAccountId: true,
+      status: true,
+      expiresAt: true,
+    },
+  });
+  if (!session) {
+    throw new Error('link_session_not_found');
+  }
+  return session;
+}
+
+export async function claimLinkSession(
+  client: Pick<UserLinkClient, 'linkSession'>,
+  input: { token: string; consumerAccountId: string },
+): Promise<LinkSessionRecord> {
+  const tokenHashValue = tokenHash(input.token);
+  const consumerAccountId = nonEmpty(input.consumerAccountId, 'invalid_consumer_account');
+  const session = await client.linkSession.findUnique({
+    where: { tokenHash: tokenHashValue },
+    select: {
+      id: true,
+      providerAccountId: true,
+      consumerAccountId: true,
+      status: true,
+      expiresAt: true,
+    },
+  });
+  if (!session) {
+    throw new Error('link_session_not_found');
+  }
+  if (session.expiresAt.getTime() <= Date.now()) {
+    throw new Error('link_session_expired');
+  }
+  if (session.status === 'claimed') {
+    if (session.consumerAccountId !== consumerAccountId) {
+      throw new Error('link_session_already_claimed');
+    }
+    return session;
+  }
+  if (session.status !== 'opened') {
+    throw new Error('link_session_not_claimable');
+  }
+
+  await client.linkSession.updateMany({
+    where: { tokenHash: tokenHashValue, status: 'opened', expiresAt: { gt: new Date() } },
+    data: { status: 'claimed', consumerAccountId, claimedAt: new Date() },
+  });
+  const current = await getLinkSessionStatus(client, { token: input.token });
+  if (current.status !== 'claimed' || current.consumerAccountId !== consumerAccountId) {
+    throw new Error('link_session_not_claimable');
+  }
+  return current;
 }

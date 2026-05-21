@@ -24,6 +24,7 @@ import {
   getOrCreateActiveUserLink,
   resetUserLink,
 } from '../scheduling/user-link-service.js';
+import { decodeWindowInstanceId } from '../scheduling/time.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -55,6 +56,14 @@ function optionalStringField(body: JsonRecord, key: string): string | undefined 
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
+function firstStringField(body: JsonRecord, keys: string[], fallback = ''): string {
+  for (const key of keys) {
+    const value = optionalStringField(body, key);
+    if (value) return value;
+  }
+  return fallback;
+}
+
 function numberField(body: JsonRecord, key: string, fallback: number): number {
   const value = body[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -77,6 +86,9 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
   const toolName = c.req.param('toolName');
   const customerId = stringField(body, 'customer_id');
   const consumerAccountId = stringField(body, 'consumer_account_id');
+  const targetAccountId = optionalStringField(body, 'target_account_id');
+  const logicalProviderAccountId = targetAccountId ?? customerId;
+  const logicalConsumerAccountId = targetAccountId ? customerId : consumerAccountId;
 
   try {
     if (toolName === 'get_user_link') {
@@ -124,8 +136,8 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     }
     if (toolName === 'query_bookable_windows') {
       const result = await queryBookableWindows(db as never, {
-        providerAccountId: customerId,
-        consumerAccountId,
+        providerAccountId: logicalProviderAccountId,
+        consumerAccountId: logicalConsumerAccountId,
         dateFrom: stringField(body, 'date_from'),
         dateTo: optionalStringField(body, 'date_to'),
         viewerTimezone: optionalStringField(body, 'viewer_timezone'),
@@ -133,12 +145,19 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       return c.json({ ok: true, data: result });
     }
     if (toolName === 'request_appointment') {
+      const decoded = optionalStringField(body, 'window_instance_id')
+        ? decodeWindowInstanceId(stringField(body, 'window_instance_id'))
+        : {
+            bookableWindowId: stringField(body, 'bookable_window_id'),
+            instanceStart: stringField(body, 'instance_start'),
+            instanceEnd: stringField(body, 'instance_end'),
+          };
       const result = await requestAppointment(db as never, {
-        providerAccountId: customerId,
-        consumerAccountId,
-        bookableWindowId: stringField(body, 'bookable_window_id'),
-        instanceStart: stringField(body, 'instance_start'),
-        instanceEnd: stringField(body, 'instance_end'),
+        providerAccountId: logicalProviderAccountId,
+        consumerAccountId: logicalConsumerAccountId,
+        bookableWindowId: decoded.bookableWindowId,
+        instanceStart: decoded.instanceStart,
+        instanceEnd: decoded.instanceEnd,
         timezone: stringField(body, 'timezone', 'UTC'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       });
@@ -163,7 +182,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     if (toolName === 'cancel_appointment') {
       const result = await cancelAppointment(db as never, {
         actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
+        requestId: firstStringField(body, ['appointment_or_request_id', 'request_id']),
         idempotencyKey: stringField(body, 'idempotency_key'),
       });
       return c.json({ ok: true, data: result });
@@ -183,10 +202,13 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       return c.json({ ok: true, data: result });
     }
     if (toolName === 'remove_service_link') {
+      const otherAccountId = firstStringField(body, ['other_account_id', 'consumer_account_id']);
       const existing = await db.serviceLink.findFirst({
         where: {
-          providerAccountId: customerId,
-          consumerAccountId,
+          OR: [
+            { providerAccountId: customerId, consumerAccountId: otherAccountId },
+            { providerAccountId: otherAccountId, consumerAccountId: customerId },
+          ],
         },
       });
       if (!existing) {

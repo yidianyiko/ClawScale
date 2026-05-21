@@ -43,6 +43,14 @@ vi.mock('../scheduling/service-link-service.js', () => ({
 vi.mock('../scheduling/notification-service.js', () => ({
   retryPendingSchedulingNotifications: scheduling.retryPendingSchedulingNotifications,
 }));
+vi.mock('../scheduling/time.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../scheduling/time.js')>()),
+  decodeWindowInstanceId: vi.fn(() => ({
+    bookableWindowId: 'bw_1',
+    instanceStart: '2026-05-22T01:00:00.000Z',
+    instanceEnd: '2026-05-22T02:00:00.000Z',
+  })),
+}));
 
 import { internalSchedulingRouter } from './internal-scheduling-routes.js';
 
@@ -97,6 +105,111 @@ describe('internal scheduling routes', () => {
       instanceEnd: '2026-05-22T02:00:00.000Z',
       timezone: 'Asia/Tokyo',
       idempotencyKey: 'idem_1',
+    });
+  });
+
+  it('treats customer_id as consumer and target_account_id as provider for bookable queries', async () => {
+    scheduling.queryBookableWindows.mockResolvedValueOnce([]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/query_bookable_windows', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_consumer',
+        target_account_id: 'ck_provider',
+        date_from: '2026-05-22',
+        date_to: '2026-05-23',
+        viewer_timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(scheduling.queryBookableWindows).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_provider',
+      consumerAccountId: 'ck_consumer',
+      dateFrom: '2026-05-22',
+      dateTo: '2026-05-23',
+      viewerTimezone: 'Asia/Tokyo',
+    });
+  });
+
+  it('accepts logical appointment request fields with a window instance id', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/request_appointment', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_consumer',
+        target_account_id: 'ck_provider',
+        window_instance_id: 'encoded-window-instance',
+        timezone: 'Asia/Tokyo',
+        idempotency_key: 'idem_1',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(scheduling.requestAppointment).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_provider',
+      consumerAccountId: 'ck_consumer',
+      bookableWindowId: 'bw_1',
+      instanceStart: '2026-05-22T01:00:00.000Z',
+      instanceEnd: '2026-05-22T02:00:00.000Z',
+      timezone: 'Asia/Tokyo',
+      idempotencyKey: 'idem_1',
+    });
+  });
+
+  it('reads renamed internal appointment and service-link fields with fallback compatibility', async () => {
+    scheduling.cancelAppointment.mockResolvedValueOnce({ id: 'apt_1', status: 'cancelled' });
+    db.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_b_side' });
+    scheduling.removeServiceLink.mockResolvedValueOnce({ id: 'sl_b_side', status: 'removed' });
+
+    const cancelled = await createApp().request('/api/internal/scheduling/tools/cancel_appointment', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_consumer',
+        appointment_or_request_id: 'apt_1',
+        idempotency_key: 'cancel_1',
+      }),
+    });
+    const removed = await createApp().request('/api/internal/scheduling/tools/remove_service_link', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_consumer',
+        other_account_id: 'ck_provider',
+      }),
+    });
+
+    expect(cancelled.status).toBe(200);
+    expect(scheduling.cancelAppointment).toHaveBeenCalledWith(db as never, {
+      actorAccountId: 'ck_consumer',
+      requestId: 'apt_1',
+      idempotencyKey: 'cancel_1',
+    });
+    expect(removed.status).toBe(200);
+    expect(db.serviceLink.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { providerAccountId: 'ck_consumer', consumerAccountId: 'ck_provider' },
+          { providerAccountId: 'ck_provider', consumerAccountId: 'ck_consumer' },
+        ],
+      },
+    });
+    expect(scheduling.removeServiceLink).toHaveBeenCalledWith(db as never, {
+      serviceLinkId: 'sl_b_side',
     });
   });
 
