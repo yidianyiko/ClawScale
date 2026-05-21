@@ -44,6 +44,8 @@ describe('user link service', () => {
       tagline: 'Strength coaching',
       avatarUrl: 'https://img.example/a.png',
     });
+    expect(result).not.toHaveProperty('id');
+    expect(result).not.toHaveProperty('providerAccountId');
     expect(db.userLink.create.mock.calls[0][0].data.code).toMatch(/^[A-Za-z0-9_-]{12}$/);
   });
 
@@ -138,12 +140,12 @@ describe('user link service', () => {
       where: { code: 'AbCdEfGhIjK_', status: 'active' },
     });
     expect(result).toMatchObject({
-      id: 'ul_1',
       code: 'AbCdEfGhIjK_',
       status: 'active',
       qrUrl: 'https://kap.example/u/AbCdEfGhIjK_/qr',
       profile: { displayName: 'Coach A', tagline: 'Strength coaching', avatarUrl: null },
     });
+    expect(result).not.toHaveProperty('id');
     expect(result).not.toHaveProperty('providerAccountId');
   });
 
@@ -177,10 +179,17 @@ describe('user link service', () => {
     expect(result.registerUrl).toContain('/auth/register?next=');
     expect(db.linkSession.create.mock.calls[0][0].data.tokenHash).not.toBe(result.token);
     expect(db.linkSession.create.mock.calls[0][0].data.tokenHash).toHaveLength(64);
+    expect(db.linkSession.create.mock.calls[0][0].data.userLinkId).toBe('ul_1');
+    expect(db.linkSession.create.mock.calls[0][0].data.providerAccountId).toBe('ck_a');
     expect(db.linkSession.create.mock.calls[0][0].data.status).toBe('opened');
     expect(db.linkSession.create.mock.calls[0][0].data.expiresAt).toEqual(
       new Date('2026-05-22T00:00:00.000Z'),
     );
     expect(result.nextUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
+    expect(result).not.toHaveProperty('session');
+    expect(result).not.toHaveProperty('id');
+    expect(result).not.toHaveProperty('tokenHash');
+    expect(result).not.toHaveProperty('userLinkId');
+    expect(result).not.toHaveProperty('providerAccountId');
   });
 });

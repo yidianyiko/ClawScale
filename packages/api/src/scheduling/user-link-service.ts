@@ -54,7 +54,6 @@ interface CreateLinkSessionInput {
 }
 
 export interface PublicUserLinkResult {
-  id: string;
   code: string;
   status: 'active';
   url: string;
@@ -138,7 +137,6 @@ function publicResult(
   profile: PublicUserLinkResult['profile'],
 ): PublicUserLinkResult {
   return {
-    id: link.id,
     code: link.code,
     status: 'active',
     url: userLinkUrl(link.code),
@@ -269,7 +267,6 @@ export async function createLinkSession(
   nextUrl: string;
   registerUrl: string;
   expiresAt: Date;
-  session: Record<string, unknown>;
 }> {
   const code = nonEmpty(input.code, 'invalid_user_link');
   const userLink = await client.userLink.findFirst({
@@ -281,7 +278,7 @@ export async function createLinkSession(
 
   const token = newSessionToken();
   const expiresAt = new Date(Date.now() + LINK_SESSION_TTL_MS);
-  const session = await client.linkSession.create({
+  await client.linkSession.create({
     data: {
       tokenHash: tokenHash(token),
       userLinkId: userLink.id,
@@ -296,6 +293,5 @@ export async function createLinkSession(
     nextUrl: authUrl('/auth/login', userLink.code, token),
     registerUrl: authUrl('/auth/register', userLink.code, token),
     expiresAt,
-    session,
   };
 }
