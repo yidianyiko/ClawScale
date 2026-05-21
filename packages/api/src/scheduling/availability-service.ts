@@ -214,6 +214,18 @@ export async function closeBookableWindow(
 
   return runAvailabilityWrite(client, async (writeClient) => {
     if (!input.confirmCancelPending) {
+      const guarded = await writeClient.bookableWindow.updateMany({
+        where: {
+          id: input.bookableWindowId,
+          providerAccountId: input.providerAccountId,
+          status: 'active',
+        },
+        data: { status: 'active' },
+      });
+      if (guarded.count === 0) {
+        throw new Error('bookable_window_not_found');
+      }
+
       const pending = await readPending(writeClient);
       if (pending.length > 0) {
         return {
@@ -222,6 +234,21 @@ export async function closeBookableWindow(
           pendingCount: pending.length,
         };
       }
+
+      const closedAt = new Date();
+      const closed = await writeClient.bookableWindow.updateMany({
+        where: {
+          id: input.bookableWindowId,
+          providerAccountId: input.providerAccountId,
+          status: 'active',
+        },
+        data: { status: 'closed', closedAt },
+      });
+      if (closed.count === 0) {
+        throw new Error('bookable_window_not_found');
+      }
+
+      return { ok: true, cancelledPendingCount: 0 };
     }
 
     const closedAt = new Date();
@@ -235,10 +262,6 @@ export async function closeBookableWindow(
     });
     if (closed.count === 0) {
       throw new Error('bookable_window_not_found');
-    }
-
-    if (!input.confirmCancelPending) {
-      return { ok: true, cancelledPendingCount: 0 };
     }
 
     const pending = await readPending(writeClient);

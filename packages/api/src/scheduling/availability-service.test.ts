@@ -162,9 +162,48 @@ describe('availability service', () => {
       error: 'pending_requests_require_confirmation',
       pendingCount: 1,
     });
-    expect(client.bookableWindow.updateMany).not.toHaveBeenCalled();
+    expect(client.bookableWindow.updateMany).toHaveBeenCalledTimes(1);
+    expect(client.bookableWindow.updateMany).toHaveBeenCalledWith({
+      where: { id: 'bw_1', providerAccountId: 'ck_a', status: 'active' },
+      data: { status: 'active' },
+    });
     expect(client.appointmentRequest.updateMany).not.toHaveBeenCalled();
     expect(client.appointmentEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it('guards the active window before the no-confirm transactional pending read', async () => {
+    const txClient = {
+      bookableWindow: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) },
+      appointmentRequest: {
+        findMany: vi.fn().mockResolvedValueOnce([{ id: 'ar_after_guard' }]),
+        updateMany: vi.fn(),
+      },
+      appointmentEvent: { createMany: vi.fn() },
+    };
+    client.appointmentRequest.findMany.mockResolvedValueOnce([]);
+    client.$transaction.mockImplementationOnce(async (fn) => fn(txClient));
+
+    const result = await closeBookableWindow(client as never, {
+      providerAccountId: 'ck_a',
+      bookableWindowId: 'bw_1',
+      confirmCancelPending: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'pending_requests_require_confirmation',
+      pendingCount: 1,
+    });
+    expect(txClient.bookableWindow.updateMany).toHaveBeenCalledTimes(1);
+    expect(txClient.bookableWindow.updateMany).toHaveBeenCalledWith({
+      where: { id: 'bw_1', providerAccountId: 'ck_a', status: 'active' },
+      data: { status: 'active' },
+    });
+    expect(txClient.bookableWindow.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      txClient.appointmentRequest.findMany.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(txClient.appointmentRequest.updateMany).not.toHaveBeenCalled();
+    expect(txClient.appointmentEvent.createMany).not.toHaveBeenCalled();
   });
 
   it('closes and releases pending requests atomically when confirmation is provided', async () => {
