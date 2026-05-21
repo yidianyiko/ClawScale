@@ -20,10 +20,18 @@ interface AppointmentRecord {
 interface AppointmentClient {
   serviceLink: {
     findFirst(args: { where: Record<string, unknown> }): Promise<ServiceLinkRecord | null>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   bookableWindow: {
     findFirst(args: { where: Record<string, unknown> }): Promise<{ id: string; rule: unknown } | null>;
     findMany(args: { where: Record<string, unknown> }): Promise<Array<{ id: string; rule: unknown }>>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   bookableWindowExclusion: {
     findMany(args: {
@@ -166,6 +174,50 @@ async function requireAvailableWindowInstance(
   }
 }
 
+async function guardActiveServiceLink(
+  client: Pick<AppointmentClient, 'serviceLink'>,
+  input: {
+    serviceLinkId: string;
+    providerAccountId: string;
+    consumerAccountId: string;
+  },
+): Promise<void> {
+  const guarded = await client.serviceLink.updateMany({
+    where: {
+      id: input.serviceLinkId,
+      providerAccountId: input.providerAccountId,
+      consumerAccountId: input.consumerAccountId,
+      status: 'active',
+      capabilities: { has: APPOINTMENT_REQUEST_CAPABILITY },
+    },
+    data: { status: 'active' },
+  });
+  if (guarded.count !== 1) {
+    throw new Error('service_link_required');
+  }
+}
+
+async function guardActiveBookableWindow(
+  client: Pick<AppointmentClient, 'bookableWindow'>,
+  input: {
+    providerAccountId: string;
+    bookableWindowId: string;
+  },
+): Promise<void> {
+  const guarded = await client.bookableWindow.updateMany({
+    where: {
+      id: input.bookableWindowId,
+      providerAccountId: input.providerAccountId,
+      capability: APPOINTMENT_REQUEST_CAPABILITY,
+      status: 'active',
+    },
+    data: { status: 'active' },
+  });
+  if (guarded.count !== 1) {
+    throw new Error('slot_unavailable');
+  }
+}
+
 async function writeTransitionEvent(
   client: Pick<AppointmentClient, 'appointmentEvent'>,
   data: {
@@ -265,6 +317,12 @@ export async function requestAppointment(
         input.consumerAccountId,
       );
       await requireAvailableWindowInstance(writeClient, input);
+      await guardActiveServiceLink(writeClient, {
+        serviceLinkId: serviceLink.id,
+        providerAccountId: input.providerAccountId,
+        consumerAccountId: input.consumerAccountId,
+      });
+      await guardActiveBookableWindow(writeClient, input);
       const request = await writeClient.appointmentRequest.create({
         data: {
           providerAccountId: input.providerAccountId,

@@ -9,8 +9,8 @@ import {
 } from './appointment-service.js';
 
 const tx = {
-  serviceLink: { findFirst: vi.fn() },
-  bookableWindow: { findMany: vi.fn(), findFirst: vi.fn() },
+  serviceLink: { findFirst: vi.fn(), updateMany: vi.fn() },
+  bookableWindow: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
   bookableWindowExclusion: { findMany: vi.fn() },
   appointmentRequest: {
     findMany: vi.fn(),
@@ -26,6 +26,8 @@ describe('appointment service', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     tx.appointmentRequest.findMany.mockResolvedValue([]);
+    tx.serviceLink.updateMany.mockResolvedValue({ count: 1 });
+    tx.bookableWindow.updateMany.mockResolvedValue({ count: 1 });
     tx.$transaction.mockImplementation(async (fn) => fn(tx));
   });
 
@@ -290,6 +292,78 @@ describe('appointment service', () => {
     expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
   });
 
+  it('does not create a request when the active window guard loses a close race', async () => {
+    mockActiveServiceLink();
+    mockActiveWindow();
+    tx.bookableWindow.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      requestAppointment(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        bookableWindowId: 'bw_1',
+        instanceStart: '2026-06-02T11:00:00.000Z',
+        instanceEnd: '2026-06-02T13:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'msg_window_guard',
+      }),
+    ).rejects.toThrow('slot_unavailable');
+
+    expect(tx.serviceLink.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'sl_1',
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        status: 'active',
+        capabilities: { has: 'appointment_request' },
+      },
+      data: { status: 'active' },
+    });
+    expect(tx.bookableWindow.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'bw_1',
+        providerAccountId: 'ck_a',
+        capability: 'appointment_request',
+        status: 'active',
+      },
+      data: { status: 'active' },
+    });
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does not create a request when the active service-link guard loses a removal race', async () => {
+    mockActiveServiceLink();
+    mockActiveWindow();
+    tx.serviceLink.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      requestAppointment(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        bookableWindowId: 'bw_1',
+        instanceStart: '2026-06-02T11:00:00.000Z',
+        instanceEnd: '2026-06-02T13:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'msg_link_guard',
+      }),
+    ).rejects.toThrow('service_link_required');
+
+    expect(tx.serviceLink.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'sl_1',
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        status: 'active',
+        capabilities: { has: 'appointment_request' },
+      },
+      data: { status: 'active' },
+    });
+    expect(tx.bookableWindow.updateMany).not.toHaveBeenCalled();
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
   it('creates the request and requested event in a transaction when available', async () => {
     const writeClient = {
       serviceLink: {
@@ -298,8 +372,12 @@ describe('appointment service', () => {
           status: 'active',
           capabilities: ['appointment_request'],
         }),
+        updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }),
       },
-      bookableWindow: { findFirst: vi.fn().mockResolvedValueOnce(activeWeeklyWindow) },
+      bookableWindow: {
+        findFirst: vi.fn().mockResolvedValueOnce(activeWeeklyWindow),
+        updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }),
+      },
       bookableWindowExclusion: { findMany: vi.fn().mockResolvedValueOnce([]) },
       appointmentRequest: {
         findMany: vi.fn().mockResolvedValueOnce([]),
