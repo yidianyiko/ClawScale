@@ -36,7 +36,7 @@ describe('notification service', () => {
       recipientAccountId: 'ck_a',
       payload: {
         text: 'Student B requested Tuesday 7 PM',
-        metadata: { requestId: 'ar_1', allowedActions: ['confirm', 'reject'] },
+        metadata: { request_id: 'ar_1', allowed_actions: ['confirm', 'reject'] },
       },
       kind: 'appointment_request',
       appointmentId: 'ar_1',
@@ -49,7 +49,7 @@ describe('notification service', () => {
       idempotencyKey: 'appt:ar_1:request:A',
       kind: 'appointment_request',
       text: 'Student B requested Tuesday 7 PM',
-      metadata: { requestId: 'ar_1', allowedActions: ['confirm', 'reject'] },
+      metadata: { request_id: 'ar_1', allowed_actions: ['confirm', 'reject'] },
     });
 
     expect(client.schedulingNotification.create).toHaveBeenCalledBefore(fetchMock);
@@ -58,13 +58,13 @@ describe('notification service', () => {
         appointmentId: 'ar_1',
         recipientAccountId: 'ck_a',
         idempotencyKey: 'appt:ar_1:request:A',
-        kind: 'appointment_request',
-        payload: {
-          text: 'Student B requested Tuesday 7 PM',
-          metadata: { requestId: 'ar_1', allowedActions: ['confirm', 'reject'] },
+          kind: 'appointment_request',
+          payload: {
+            text: 'Student B requested Tuesday 7 PM',
+            metadata: { request_id: 'ar_1', allowed_actions: ['confirm', 'reject'] },
+          },
+          status: 'pending_delivery',
         },
-        status: 'pending_delivery',
-      },
     });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:8090/bridge/inbound',
@@ -84,8 +84,40 @@ describe('notification service', () => {
       message_type: 'scheduling_notification',
       scheduling: {
         kind: 'appointment_request',
-        requestId: 'ar_1',
-        allowedActions: ['confirm', 'reject'],
+        request_id: 'ar_1',
+        allowed_actions: ['confirm', 'reject'],
+      },
+    });
+  });
+
+  it('does not allow payload metadata to override reserved scheduling fields', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    client.schedulingNotification.create.mockResolvedValueOnce({
+      id: 'sn_reserved',
+      idempotencyKey: 'appt:ar_1:request:A',
+      recipientAccountId: 'ck_a',
+      payload: {
+        text: 'Student B requested Tuesday 7 PM',
+        metadata: { kind: 'tampered', request_id: 'ar_1' },
+      },
+      kind: 'appointment_request',
+      appointmentId: 'ar_1',
+    });
+
+    await enqueueSchedulingNotification(client as never, {
+      appointmentId: 'ar_1',
+      recipientAccountId: 'ck_a',
+      idempotencyKey: 'appt:ar_1:request:A',
+      kind: 'appointment_request',
+      text: 'Student B requested Tuesday 7 PM',
+      metadata: { kind: 'tampered', request_id: 'ar_1' },
+    });
+
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toMatchObject({
+      scheduling: {
+        kind: 'appointment_request',
+        request_id: 'ar_1',
       },
     });
   });
@@ -100,14 +132,14 @@ describe('notification service', () => {
       {
         id: 'sn_delivered',
         recipientAccountId: 'ck_a',
-        payload: { text: 'A confirmed Tuesday 7 PM', metadata: { requestId: 'ar_1' } },
+        payload: { text: 'A confirmed Tuesday 7 PM', metadata: { request_id: 'ar_1' } },
         idempotencyKey: 'appt:ar_1:confirmed:B',
         kind: 'appointment_confirmed',
       },
       {
         id: 'sn_failed',
         recipientAccountId: 'ck_b',
-        payload: { text: 'Delivery should retry later', metadata: { requestId: 'ar_2' } },
+        payload: { text: 'Delivery should retry later', metadata: { request_id: 'ar_2' } },
         idempotencyKey: 'appt:ar_2:request:A',
         kind: 'appointment_request',
       },

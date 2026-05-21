@@ -85,8 +85,8 @@ async function deliver(notification: SchedulingNotificationRecord, client: Sched
       timestamp: Math.floor(Date.now() / 1000),
       message_type: 'scheduling_notification',
       scheduling: {
-        kind: notification.kind,
         ...(payload.metadata || {}),
+        kind: notification.kind,
       },
     }),
   });
