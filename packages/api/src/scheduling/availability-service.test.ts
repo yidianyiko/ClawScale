@@ -157,7 +157,7 @@ describe('availability service', () => {
       data: { status: 'closed', closedAt: expect.any(Date) },
     });
     expect(client.appointmentRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['ar_1', 'ar_2'] }, status: 'pending_held' },
+      where: { providerAccountId: 'ck_a', bookableWindowId: 'bw_1', status: 'pending_held' },
       data: { status: 'released', releaseReason: 'cancelled_by_a', releasedAt: expect.any(Date) },
     });
     expect(client.appointmentEvent.createMany).toHaveBeenCalledWith({

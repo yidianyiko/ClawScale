@@ -219,14 +219,18 @@ export async function closeBookableWindow(
 
     const releasedAt = new Date();
     const released = await writeClient.appointmentRequest.updateMany({
-      where: { id: { in: pending.map((item) => item.id) }, status: 'pending_held' },
+      where: {
+        providerAccountId: input.providerAccountId,
+        bookableWindowId: input.bookableWindowId,
+        status: 'pending_held',
+      },
       data: {
         status: 'released',
         releaseReason: 'cancelled_by_a',
         releasedAt,
       },
     });
-    if (released.count !== pending.length) {
+    if (released.count < pending.length) {
       throw new Error('appointment_state_conflict');
     }
 
@@ -241,6 +245,6 @@ export async function closeBookableWindow(
       })),
     });
 
-    return { ok: true, cancelledPendingCount: pending.length };
+    return { ok: true, cancelledPendingCount: released.count };
   });
 }

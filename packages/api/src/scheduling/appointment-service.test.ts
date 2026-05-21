@@ -10,7 +10,7 @@ import {
 
 const tx = {
   serviceLink: { findFirst: vi.fn() },
-  bookableWindow: { findMany: vi.fn() },
+  bookableWindow: { findMany: vi.fn(), findFirst: vi.fn() },
   bookableWindowExclusion: { findMany: vi.fn() },
   appointmentRequest: {
     findMany: vi.fn(),
@@ -19,10 +19,40 @@ const tx = {
     updateMany: vi.fn(),
   },
   appointmentEvent: { create: vi.fn() },
+  $transaction: vi.fn(),
 };
 
 describe('appointment service', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    tx.$transaction.mockImplementation(async (fn) => fn(tx));
+  });
+
+  function mockActiveServiceLink() {
+    tx.serviceLink.findFirst.mockResolvedValueOnce({
+      id: 'sl_1',
+      status: 'active',
+      capabilities: ['appointment_request'],
+    });
+  }
+
+  const activeWeeklyWindow = {
+    id: 'bw_1',
+    rule: {
+      type: 'weekly',
+      days_of_week: [2],
+      time_start: '19:00',
+      time_end: '21:00',
+      timezone: 'Asia/Shanghai',
+      effective_from: '2026-06-01',
+      effective_until: null,
+    },
+  };
+
+  function mockActiveWindow() {
+    tx.bookableWindow.findFirst.mockResolvedValueOnce(activeWeeklyWindow);
+    tx.bookableWindowExclusion.findMany.mockResolvedValueOnce([]);
+  }
 
   it('queries bookable windows and serializes occupied DB dates before filtering instances', async () => {
     tx.serviceLink.findFirst.mockResolvedValueOnce({
@@ -103,6 +133,8 @@ describe('appointment service', () => {
       status: 'active',
       capabilities: ['appointment_request'],
     });
+    tx.bookableWindow.findFirst.mockResolvedValue(activeWeeklyWindow);
+    tx.bookableWindowExclusion.findMany.mockResolvedValue([]);
     tx.appointmentRequest.create
       .mockResolvedValueOnce({
         id: 'ar_1',
@@ -140,11 +172,8 @@ describe('appointment service', () => {
   });
 
   it('maps Postgres unique conflicts to slot_unavailable', async () => {
-    tx.serviceLink.findFirst.mockResolvedValueOnce({
-      id: 'sl_1',
-      status: 'active',
-      capabilities: ['appointment_request'],
-    });
+    mockActiveServiceLink();
+    mockActiveWindow();
     tx.appointmentRequest.create.mockRejectedValueOnce({ code: 'P2002' });
 
     await expect(
@@ -158,6 +187,117 @@ describe('appointment service', () => {
         idempotencyKey: 'msg_3',
       }),
     ).rejects.toThrow('slot_unavailable');
+  });
+
+  it('rejects requests for missing or closed bookable windows before insert', async () => {
+    mockActiveServiceLink();
+    tx.bookableWindow.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      requestAppointment(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        bookableWindowId: 'bw_closed',
+        instanceStart: '2026-06-02T11:00:00.000Z',
+        instanceEnd: '2026-06-02T13:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'msg_closed',
+      }),
+    ).rejects.toThrow('slot_unavailable');
+
+    expect(tx.bookableWindow.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'bw_closed',
+        providerAccountId: 'ck_a',
+        capability: 'appointment_request',
+        status: 'active',
+      },
+    });
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects excluded bookable window instances before insert', async () => {
+    mockActiveServiceLink();
+    tx.bookableWindow.findFirst.mockResolvedValueOnce(activeWeeklyWindow);
+    tx.bookableWindowExclusion.findMany.mockResolvedValueOnce([
+      {
+        instanceStart: new Date('2026-06-02T11:00:00.000Z'),
+        instanceEnd: new Date('2026-06-02T13:00:00.000Z'),
+      },
+    ]);
+
+    await expect(
+      requestAppointment(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        bookableWindowId: 'bw_1',
+        instanceStart: '2026-06-02T11:00:00.000Z',
+        instanceEnd: '2026-06-02T13:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'msg_excluded',
+      }),
+    ).rejects.toThrow('slot_unavailable');
+
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects arbitrary non-generated instances before insert', async () => {
+    mockActiveServiceLink();
+    mockActiveWindow();
+
+    await expect(
+      requestAppointment(tx as never, {
+        providerAccountId: 'ck_a',
+        consumerAccountId: 'ck_b',
+        bookableWindowId: 'bw_1',
+        instanceStart: '2026-06-03T11:00:00.000Z',
+        instanceEnd: '2026-06-03T13:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'msg_arbitrary',
+      }),
+    ).rejects.toThrow('slot_unavailable');
+
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('creates the request and requested event in a transaction when available', async () => {
+    mockActiveServiceLink();
+    mockActiveWindow();
+    const writeClient = {
+      appointmentRequest: {
+        create: vi.fn().mockResolvedValueOnce({ id: 'ar_tx', status: 'pending_held' }),
+      },
+      appointmentEvent: { create: vi.fn() },
+    };
+    tx.$transaction.mockImplementationOnce(async (fn) => fn(writeClient));
+
+    await requestAppointment(tx as never, {
+      providerAccountId: 'ck_a',
+      consumerAccountId: 'ck_b',
+      bookableWindowId: 'bw_1',
+      instanceStart: '2026-06-02T11:00:00.000Z',
+      instanceEnd: '2026-06-02T13:00:00.000Z',
+      timezone: 'Asia/Shanghai',
+      idempotencyKey: 'msg_tx',
+    });
+
+    expect(tx.$transaction).toHaveBeenCalledTimes(1);
+    expect(writeClient.appointmentRequest.create).toHaveBeenCalledTimes(1);
+    expect(writeClient.appointmentEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_tx',
+        fromState: null,
+        toState: 'pending_held',
+        actorAccountId: 'ck_b',
+        actorRole: 'consumer',
+        reason: 'requested',
+      }),
+    });
+    expect(tx.appointmentRequest.create).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
   });
 
   it('confirms pending held requests by provider with a conditional update and event', async () => {
@@ -183,6 +323,35 @@ describe('appointment service', () => {
         reason: 'confirmed_by_a',
       }),
     });
+  });
+
+  it('confirms and writes the event in a transaction when available', async () => {
+    const writeClient = {
+      appointmentRequest: { updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }) },
+      appointmentEvent: { create: vi.fn() },
+    };
+    tx.$transaction.mockImplementationOnce(async (fn) => fn(writeClient));
+
+    await confirmAppointment(tx as never, {
+      actorAccountId: 'ck_a',
+      requestId: 'ar_tx_confirm',
+      idempotencyKey: 'msg_confirm_tx',
+    });
+
+    expect(tx.$transaction).toHaveBeenCalledTimes(1);
+    expect(writeClient.appointmentRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ar_tx_confirm', providerAccountId: 'ck_a', status: 'pending_held' },
+      data: { status: 'confirmed_shared' },
+    });
+    expect(writeClient.appointmentEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        appointmentId: 'ar_tx_confirm',
+        fromState: 'pending_held',
+        toState: 'confirmed_shared',
+      }),
+    });
+    expect(tx.appointmentRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.appointmentEvent.create).not.toHaveBeenCalled();
   });
 
   it('does not emit a confirm event when the conditional transition fails', async () => {
