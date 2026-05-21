@@ -13,6 +13,9 @@ import { customerChannelRouter } from './routes/customer-channel-routes.js';
 import { customerGoogleCalendarImportRouter } from './routes/customer-google-calendar-import-routes.js';
 import { customerGoogleCalendarImportCallbackRouter } from './routes/customer-google-calendar-import-callback-routes.js';
 import { customerReminderRouter } from './routes/customer-reminder-routes.js';
+import { publicUserLinkRouter } from './routes/public-user-link-routes.js';
+import { customerSchedulingRouter } from './routes/customer-scheduling-routes.js';
+import { internalSchedulingRouter } from './routes/internal-scheduling-routes.js';
 import {
   customerCalendarImportHandoffRouter,
   internalCalendarImportHandoffRouter,
@@ -53,9 +56,11 @@ app.route('/api/internal/coke-bindings', cokeBindingsRouter);
 app.route('/api/internal/coke-delivery', cokeDeliveryRoutesRouter);
 app.route('/api/internal/coke-users/provision', cokeUserProvisionRouter);
 app.route('/api/internal/calendar-import-handoffs', internalCalendarImportHandoffRouter);
+app.route('/api/internal/scheduling', internalSchedulingRouter);
 
 // ─── Customer and admin routes ───────────────────────────────────────────────
 
+app.route('/api/public/user-links', publicUserLinkRouter);
 app.route('/api/outbound', outboundRouter);
 app.route('/api/auth', customerAuthRouter);
 app.route('/api/auth/claim', customerClaimRouter);
@@ -63,6 +68,7 @@ app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportRo
 app.route('/api/customer/google-calendar-import', customerGoogleCalendarImportCallbackRouter);
 app.route('/api/customer/calendar-import-handoffs', customerCalendarImportHandoffRouter);
 app.route('/api/customer/reminders', customerReminderRouter);
+app.route('/api/customer/scheduling', customerSchedulingRouter);
 app.route('/api/admin', adminAuthRouter);
 app.route('/api/admin/dashboard', adminDashboardRouter);
 app.route('/api/admin/customers', adminCustomersRouter);
