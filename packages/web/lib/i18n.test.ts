@@ -117,6 +117,8 @@ describe('i18n helpers', () => {
     expect(messages.zh.customerPages.verifyEmail.verifyingDescription).toBe('正在验证你的邮箱链接...');
     expect(messages.en.customerPages.channelsIndex.title).toBeDefined();
     expect(messages.zh.customerPages.channelsIndex.title).toBeDefined();
+    expect(messages.en.customerPages.myAgent.title).toBe('My Agent');
+    expect(messages.zh.customerPages.myAgent.title).toBe('我的智能体');
     expect(messages.en.customerPages.claim.title).toBeDefined();
     expect(messages.zh.customerPages.claim.title).toBeDefined();
     expect(messages.en.cokeUserLayout.title).toBeDefined();
