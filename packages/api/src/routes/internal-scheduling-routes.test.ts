@@ -96,6 +96,50 @@ describe('internal scheduling routes', () => {
     });
   });
 
+  it.each(['get_user_link', 'reset_user_link', 'disable_user_link'])(
+    'rejects %s when customer_id is missing',
+    async (toolName) => {
+      const res = await createApp().request(`/api/internal/scheduling/tools/${toolName}`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer internal-key',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ customer_id: '   ' }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        ok: false,
+        error: 'invalid_customer_id',
+      });
+      expect(scheduling.getOrCreateActiveUserLink).not.toHaveBeenCalled();
+      expect(scheduling.resetUserLink).not.toHaveBeenCalled();
+      expect(scheduling.disableUserLink).not.toHaveBeenCalled();
+    },
+  );
+
+  it('normalizes active user-link service errors', async () => {
+    scheduling.resetUserLink.mockRejectedValueOnce(new Error('user_link_conflict'));
+
+    const res = await createApp().request('/api/internal/scheduling/tools/reset_user_link', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'user_link_conflict',
+    });
+  });
+
   it.each([
     'open_bookable_windows',
     'confirm_bookable_windows',

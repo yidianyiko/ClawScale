@@ -32,6 +32,13 @@ function stringField(body: JsonRecord, key: string, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function schedulingErrorCode(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return 'scheduling_failed';
+}
+
 function retiredAppointmentSchedulingTool(c: Context): Response {
   return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
 }
@@ -52,6 +59,24 @@ function isRetiredAppointmentSchedulingTool(toolName: string): boolean {
   );
 }
 
+async function runActiveUserLinkTool<T>(
+  c: Context,
+  body: JsonRecord,
+  fn: (customerId: string) => Promise<T>,
+): Promise<Response> {
+  const customerId = stringField(body, 'customer_id').trim();
+  if (!customerId) {
+    return c.json({ ok: false, error: 'invalid_customer_id' }, 400);
+  }
+
+  try {
+    const result = await fn(customerId);
+    return c.json({ ok: true, data: result });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingErrorCode(error) }, 400);
+  }
+}
+
 internalSchedulingRouter.post('/tools/:toolName', async (c) => {
   if (!isAuthorized(c.req.header('Authorization'))) {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
@@ -67,25 +92,26 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
 
-  const customerId = stringField(body, 'customer_id');
-
   if (toolName === 'get_user_link') {
-    const result = await getOrCreateActiveUserLink(db as never, {
-      providerAccountId: customerId,
-    });
-    return c.json({ ok: true, data: result });
+    return runActiveUserLinkTool(c, body, (customerId) =>
+      getOrCreateActiveUserLink(db as never, {
+        providerAccountId: customerId,
+      }),
+    );
   }
   if (toolName === 'reset_user_link') {
-    const result = await resetUserLink(db as never, {
-      providerAccountId: customerId,
-    });
-    return c.json({ ok: true, data: result });
+    return runActiveUserLinkTool(c, body, (customerId) =>
+      resetUserLink(db as never, {
+        providerAccountId: customerId,
+      }),
+    );
   }
   if (toolName === 'disable_user_link') {
-    const result = await disableUserLink(db as never, {
-      providerAccountId: customerId,
-    });
-    return c.json({ ok: true, data: result });
+    return runActiveUserLinkTool(c, body, (customerId) =>
+      disableUserLink(db as never, {
+        providerAccountId: customerId,
+      }),
+    );
   }
   return c.json({ ok: false, error: 'unknown_tool' }, 404);
 });

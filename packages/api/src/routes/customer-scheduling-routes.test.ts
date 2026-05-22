@@ -49,6 +49,11 @@ describe('customer scheduling routes', () => {
       code: 'AbCdEfGhIjK_',
       status: 'active',
     });
+    scheduling.resetUserLink.mockResolvedValue({
+      code: 'ResetCode123',
+      status: 'active',
+    });
+    scheduling.disableUserLink.mockResolvedValue({ count: 1 });
   });
 
   it('requires customer auth before returning a user link', async () => {
@@ -67,6 +72,30 @@ describe('customer scheduling routes', () => {
     expect(res.status).toBe(200);
     expect(auth.verifyCustomerToken).toHaveBeenCalledWith('customer-token');
     expect(scheduling.getOrCreateActiveUserLink).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_123',
+    });
+  });
+
+  it('uses the authenticated customer id for user-link reset', async () => {
+    const res = await createApp().request('/api/customer/scheduling/user-link/reset', {
+      method: 'POST',
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(scheduling.resetUserLink).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_123',
+    });
+  });
+
+  it('uses the authenticated customer id for user-link disable', async () => {
+    const res = await createApp().request('/api/customer/scheduling/user-link/disable', {
+      method: 'POST',
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(scheduling.disableUserLink).toHaveBeenCalledWith(db as never, {
       providerAccountId: 'ck_123',
     });
   });
