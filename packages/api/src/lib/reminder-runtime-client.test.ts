@@ -115,7 +115,7 @@ describe('reminder runtime client', () => {
     });
   });
 
-  it('sends create reminder body fields and conversation hints but never routeKey', async () => {
+  it('sends create reminder body fields, conversation hints, and metadata but never routeKey', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true, data: { id: 'rem-1' } }), {
         status: 200,
@@ -133,6 +133,7 @@ describe('reminder runtime client', () => {
         rrule: 'FREQ=WEEKLY',
         businessConversationKey: 'bc-123',
         gatewayConversationId: 'gw-123',
+        metadata: { shared_reminder_request_id: 'srr_1', projection_role: 'requester' },
         routeKey: 'caller-supplied-route',
       }),
     ).resolves.toEqual({ ok: true, data: { id: 'rem-1' } });
@@ -150,6 +151,7 @@ describe('reminder runtime client', () => {
           rrule: 'FREQ=WEEKLY',
           businessConversationKey: 'bc-123',
           gatewayConversationId: 'gw-123',
+          metadata: { shared_reminder_request_id: 'srr_1', projection_role: 'requester' },
         }),
       }),
     );

@@ -16,7 +16,7 @@ export interface CreateReminderInput {
   rrule?: string | null;
   businessConversationKey?: string | null;
   gatewayConversationId?: string | null;
-  [key: string]: unknown;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateReminderInput {
@@ -154,6 +154,7 @@ export async function createRuntimeReminder(
     ...(input.rrule !== undefined ? { rrule: input.rrule } : {}),
     ...(input.businessConversationKey ? { businessConversationKey: input.businessConversationKey } : {}),
     ...(input.gatewayConversationId ? { gatewayConversationId: input.gatewayConversationId } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {}),
   };
   return writeReminder('/bridge/internal/reminders', 'POST', body);
 }
