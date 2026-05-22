@@ -16,7 +16,6 @@ import {
 import { retryPendingSchedulingNotifications } from '../scheduling/notification-service.js';
 import {
   blockServiceLink,
-  removeServiceLink,
   unblockServiceLink,
 } from '../scheduling/service-link-service.js';
 import {
@@ -71,6 +70,10 @@ function numberField(body: JsonRecord, key: string, fallback: number): number {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+function retiredAppointmentSchedulingTool(c: Context): Response {
+  return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
 }
 
 internalSchedulingRouter.post('/tools/:toolName', async (c) => {
@@ -202,22 +205,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       return c.json({ ok: true, data: result });
     }
     if (toolName === 'remove_service_link') {
-      const otherAccountId = firstStringField(body, ['other_account_id', 'consumer_account_id']);
-      const existing = await db.serviceLink.findFirst({
-        where: {
-          OR: [
-            { providerAccountId: customerId, consumerAccountId: otherAccountId },
-            { providerAccountId: otherAccountId, consumerAccountId: customerId },
-          ],
-        },
-      });
-      if (!existing) {
-        return c.json({ ok: false, error: 'service_link_not_found' }, 404);
-      }
-      const result = await removeServiceLink(db as never, {
-        serviceLinkId: existing.id,
-      });
-      return c.json({ ok: true, data: result });
+      return retiredAppointmentSchedulingTool(c);
     }
 
     return c.json({ ok: false, error: 'unknown_tool' }, 404);

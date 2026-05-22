@@ -19,7 +19,6 @@ import {
 } from '../scheduling/appointment-service.js';
 import {
   blockServiceLink,
-  removeServiceLink,
   unblockServiceLink,
 } from '../scheduling/service-link-service.js';
 import {
@@ -107,6 +106,10 @@ function requestIdempotencyKey(
   return stringField(body, 'idempotencyKey') || `${fallbackPrefix}:${customerId}:${id}`;
 }
 
+function retiredAppointmentSchedulingResponse(c: Context): Response {
+  return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
+}
+
 customerSchedulingRouter.use('*', requireCustomerSchedulingAuth);
 
 customerSchedulingRouter.get('/user-link', async (c) => {
@@ -171,16 +174,7 @@ customerSchedulingRouter.post('/bookable-windows/confirm', async (c) => {
 });
 
 customerSchedulingRouter.get('/bookable-windows', async (c) => {
-  const session = c.get('customerSchedulingAuth');
-  const windows = await db.bookableWindow.findMany({
-    where: {
-      providerAccountId: session.customerId,
-      capability: 'appointment_request',
-      status: 'active',
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-  return c.json({ ok: true, data: windows });
+  return retiredAppointmentSchedulingResponse(c);
 });
 
 customerSchedulingRouter.post('/appointments', async (c) => {
@@ -292,25 +286,5 @@ customerSchedulingRouter.post('/service-links/:otherAccountId/unblock', async (c
 });
 
 customerSchedulingRouter.delete('/service-links/:otherAccountId', async (c) => {
-  const session = c.get('customerSchedulingAuth');
-  const existing = await db.serviceLink.findFirst({
-    where: {
-      OR: [
-        { providerAccountId: session.customerId, consumerAccountId: c.req.param('otherAccountId') },
-        { providerAccountId: c.req.param('otherAccountId'), consumerAccountId: session.customerId },
-      ],
-    },
-  });
-  if (!existing) {
-    return c.json({ ok: false, error: 'service_link_not_found' }, 404);
-  }
-
-  try {
-    const result = await removeServiceLink(db as never, {
-      serviceLinkId: existing.id,
-    });
-    return c.json({ ok: true, data: result });
-  } catch (error) {
-    return c.json({ ok: false, error: errorMessage(error, 'remove_failed') }, 400);
-  }
+  return retiredAppointmentSchedulingResponse(c);
 });

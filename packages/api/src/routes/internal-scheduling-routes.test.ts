@@ -164,10 +164,8 @@ describe('internal scheduling routes', () => {
     });
   });
 
-  it('reads renamed internal appointment and service-link fields with fallback compatibility', async () => {
+  it('reads renamed internal appointment fields and fails closed for retired service-link removal', async () => {
     scheduling.cancelAppointment.mockResolvedValueOnce({ id: 'apt_1', status: 'cancelled' });
-    db.serviceLink.findFirst.mockResolvedValueOnce({ id: 'sl_b_side' });
-    scheduling.removeServiceLink.mockResolvedValueOnce({ id: 'sl_b_side', status: 'removed' });
 
     const cancelled = await createApp().request('/api/internal/scheduling/tools/cancel_appointment', {
       method: 'POST',
@@ -199,18 +197,13 @@ describe('internal scheduling routes', () => {
       requestId: 'apt_1',
       idempotencyKey: 'cancel_1',
     });
-    expect(removed.status).toBe(200);
-    expect(db.serviceLink.findFirst).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { providerAccountId: 'ck_consumer', consumerAccountId: 'ck_provider' },
-          { providerAccountId: 'ck_provider', consumerAccountId: 'ck_consumer' },
-        ],
-      },
+    await expect(removed.json()).resolves.toEqual({
+      ok: false,
+      error: 'appointment_scheduling_retired',
     });
-    expect(scheduling.removeServiceLink).toHaveBeenCalledWith(db as never, {
-      serviceLinkId: 'sl_b_side',
-    });
+    expect(removed.status).toBe(410);
+    expect(db.serviceLink.findFirst).not.toHaveBeenCalled();
+    expect(scheduling.removeServiceLink).not.toHaveBeenCalled();
   });
 
   it('protects notification retry with the same bearer token', async () => {

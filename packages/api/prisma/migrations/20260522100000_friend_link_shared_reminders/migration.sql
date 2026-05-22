@@ -16,6 +16,20 @@ CREATE TYPE "SharedReminderActorRole" AS ENUM ('requester', 'invitee', 'system')
 -- CreateEnum
 CREATE TYPE "ProductNotificationStatus" AS ENUM ('pending_delivery', 'delivered', 'failed');
 
+-- Preflight
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "service_links")
+    OR EXISTS (SELECT 1 FROM "bookable_windows")
+    OR EXISTS (SELECT 1 FROM "bookable_window_exclusions")
+    OR EXISTS (SELECT 1 FROM "appointment_requests")
+    OR EXISTS (SELECT 1 FROM "appointment_events")
+    OR EXISTS (SELECT 1 FROM "scheduling_notifications")
+  THEN
+    RAISE EXCEPTION 'Existing appointment scheduling rows block migration; clear retired scheduling tables before applying friend-link shared-reminder schema.';
+  END IF;
+END $$;
+
 -- DropForeignKey
 ALTER TABLE "service_links" DROP CONSTRAINT "service_links_provider_account_id_fkey";
 
@@ -195,6 +209,12 @@ CREATE TABLE "product_notifications" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "product_notifications_pkey" PRIMARY KEY ("id")
+);
+
+-- AddConstraint
+ALTER TABLE "product_notifications" ADD CONSTRAINT "product_notifications_one_parent_request_chk" CHECK (
+    (("shared_reminder_request_id" IS NOT NULL) AND ("friend_request_id" IS NULL))
+    OR (("shared_reminder_request_id" IS NULL) AND ("friend_request_id" IS NOT NULL))
 );
 
 -- CreateIndex

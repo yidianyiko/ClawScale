@@ -43,4 +43,22 @@ describe('friend-link and shared-reminder schema contract', () => {
     expect(sql).toContain("WHERE status = 'active'");
     expect(sql).toContain('CREATE UNIQUE INDEX "account_blocks_direction_uniq"');
   });
+
+  it('guards destructive appointment-state retirement', () => {
+    const sql = readFileSync(migrationPath, 'utf8');
+    expect(sql).toContain('Existing appointment scheduling rows block migration');
+    expect(sql).toContain('SELECT 1 FROM "service_links"');
+    expect(sql).toContain('SELECT 1 FROM "bookable_windows"');
+    expect(sql).toContain('SELECT 1 FROM "bookable_window_exclusions"');
+    expect(sql).toContain('SELECT 1 FROM "appointment_requests"');
+    expect(sql).toContain('SELECT 1 FROM "appointment_events"');
+    expect(sql).toContain('SELECT 1 FROM "scheduling_notifications"');
+  });
+
+  it('requires product notifications to belong to exactly one request type', () => {
+    const sql = readFileSync(migrationPath, 'utf8');
+    expect(sql).toContain('product_notifications_one_parent_request_chk');
+    expect(sql).toContain('"shared_reminder_request_id" IS NOT NULL');
+    expect(sql).toContain('"friend_request_id" IS NOT NULL');
+  });
 });
