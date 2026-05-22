@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
@@ -17,6 +18,11 @@ export const publicUserLinkRouter = new Hono();
 export const publicLinkSessionRouter = new Hono();
 
 type JsonRecord = Record<string, unknown>;
+type PublicFriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+type PublicFriendRequestResult = {
+  id: string;
+  status: PublicFriendRequestStatus;
+};
 
 function readBearerToken(c: Context): string | null {
   const header = c.req.header('Authorization');
@@ -65,12 +71,34 @@ function errorMessage(error: unknown, fallback: string): string {
   return isKnownFriendRequestError(message) ? message : fallback;
 }
 
-function requestIdempotencyKey(body: JsonRecord, prefix: string, customerId: string, token: string): string {
-  const explicit = body['idempotencyKey'] ?? body['idempotency_key'];
-  if (typeof explicit === 'string' && explicit.trim()) {
-    return explicit.trim();
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function requestIdempotencyKey(prefix: string, customerId: string, token: string): string {
+  return `${prefix}:${customerId}:${sha256Hex(token)}`;
+}
+
+function readFriendRequestMessage(body: JsonRecord): { ok: true; message: string | null } | { ok: false } {
+  const raw = body['message'];
+  if (raw === undefined || raw === null) {
+    return { ok: true, message: null };
   }
-  return `${prefix}:${customerId}:${token}`;
+  if (typeof raw !== 'string') {
+    return { ok: false };
+  }
+  const message = raw.trim();
+  if (message.length > 500) {
+    return { ok: false };
+  }
+  return { ok: true, message: message || null };
+}
+
+function publicFriendRequestResult(result: Record<string, unknown>): PublicFriendRequestResult {
+  return {
+    id: String(result['id']),
+    status: result['status'] as PublicFriendRequestStatus,
+  };
 }
 
 function isKnownFriendRequestError(error: string): boolean {
@@ -136,16 +164,20 @@ publicLinkSessionRouter.post('/:token/friend-requests', async (c) => {
   if (!body) {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
+  const message = readFriendRequestMessage(body);
+  if (!message.ok) {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
 
   try {
     const token = c.req.param('token');
     const result = await sendFriendRequestFromLinkSession(db as never, {
       token,
       requesterAccountId: session.customerId,
-      message: typeof body['message'] === 'string' ? body['message'] : null,
-      idempotencyKey: requestIdempotencyKey(body, 'friend-request', session.customerId, token),
+      message: message.message,
+      idempotencyKey: requestIdempotencyKey('friend-request', session.customerId, token),
     });
-    return c.json({ ok: true, data: result }, 201);
+    return c.json({ ok: true, data: publicFriendRequestResult(result) }, 201);
   } catch (error) {
     return c.json({ ok: false, error: errorMessage(error, 'friend_request_failed') }, 400);
   }

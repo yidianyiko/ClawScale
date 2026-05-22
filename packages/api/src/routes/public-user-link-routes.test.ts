@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,6 +30,10 @@ function createApp(): Hono {
   app.route('/api/public/user-links', publicUserLinkRouter);
   app.route('/api/public/link-sessions', publicLinkSessionRouter);
   return app;
+}
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 describe('public user link routes', () => {
@@ -149,9 +154,13 @@ describe('public user link routes', () => {
   it('creates a friend request from an authenticated public link session', async () => {
     mocks.sendFriendRequestFromLinkSession.mockResolvedValueOnce({
       id: 'fr_1',
+      linkSessionId: 'ls_1',
       requesterAccountId: 'ck_visitor',
       targetAccountId: 'ck_target',
+      idempotencyKey: 'friend-request:ck_visitor:secret',
       status: 'pending',
+      createdAt: new Date('2026-05-22T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-22T00:00:00.000Z'),
     });
 
     const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
@@ -169,14 +178,12 @@ describe('public user link routes', () => {
       token: 'session-token',
       requesterAccountId: 'ck_visitor',
       message: 'Let us connect',
-      idempotencyKey: 'friend-request:ck_visitor:session-token',
+      idempotencyKey: `friend-request:ck_visitor:${sha256Hex('session-token')}`,
     });
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: {
         id: 'fr_1',
-        requesterAccountId: 'ck_visitor',
-        targetAccountId: 'ck_target',
         status: 'pending',
       },
     });
@@ -209,18 +216,111 @@ describe('public user link routes', () => {
       body: JSON.stringify({ message: 'Let us connect' }),
     });
 
+    const expectedIdempotencyKey = `friend-request:ck_visitor:${sha256Hex('session-token')}`;
     expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenNthCalledWith(1, {} as never, {
       token: 'session-token',
       requesterAccountId: 'ck_visitor',
       message: 'Let us connect',
-      idempotencyKey: 'friend-request:ck_visitor:session-token',
+      idempotencyKey: expectedIdempotencyKey,
     });
     expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenNthCalledWith(2, {} as never, {
       token: 'session-token',
       requesterAccountId: 'ck_visitor',
       message: 'Let us connect',
-      idempotencyKey: 'friend-request:ck_visitor:session-token',
+      idempotencyKey: expectedIdempotencyKey,
     });
+    expect(expectedIdempotencyKey).not.toContain('session-token');
+  });
+
+  it('ignores public idempotency overrides', async () => {
+    mocks.sendFriendRequestFromLinkSession.mockResolvedValueOnce({
+      id: 'fr_1',
+      status: 'pending',
+    });
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: 'Let us connect',
+        idempotencyKey: 'attacker-controlled',
+        idempotency_key: 'attacker-controlled-snake',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenCalledWith({} as never, {
+      token: 'session-token',
+      requesterAccountId: 'ck_visitor',
+      message: 'Let us connect',
+      idempotencyKey: `friend-request:ck_visitor:${sha256Hex('session-token')}`,
+    });
+  });
+
+  it('trims friend request messages before calling the service', async () => {
+    mocks.sendFriendRequestFromLinkSession.mockResolvedValueOnce({
+      id: 'fr_1',
+      status: 'pending',
+    });
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: '  Let us connect  ' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenCalledWith({} as never, {
+      token: 'session-token',
+      requesterAccountId: 'ck_visitor',
+      message: 'Let us connect',
+      idempotencyKey: `friend-request:ck_visitor:${sha256Hex('session-token')}`,
+    });
+  });
+
+  it('treats an empty friend request message as null', async () => {
+    mocks.sendFriendRequestFromLinkSession.mockResolvedValueOnce({
+      id: 'fr_1',
+      status: 'pending',
+    });
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: '   ' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenCalledWith({} as never, {
+      token: 'session-token',
+      requesterAccountId: 'ck_visitor',
+      message: null,
+      idempotencyKey: `friend-request:ck_visitor:${sha256Hex('session-token')}`,
+    });
+  });
+
+  it('rejects overlong friend request messages before calling the service', async () => {
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'x'.repeat(501) }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mocks.sendFriendRequestFromLinkSession).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'invalid_body' });
   });
 
   it('passes known friend-request domain errors through', async () => {
