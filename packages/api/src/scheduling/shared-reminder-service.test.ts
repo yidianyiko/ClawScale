@@ -179,12 +179,30 @@ describe('shared reminder service', () => {
     });
 
     expect(result.status).toBe('accepted');
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: null,
+      },
+      data: { resolvedAt: expect.any(Date) },
+    });
     expect(reminderRuntime.createRuntimeReminder).toHaveBeenCalledWith(
       expect.objectContaining({
         customerId: 'acct_a',
         metadata: expect.objectContaining({ projection_role: 'invitee' }),
       }),
     );
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: expect.any(Date),
+      },
+      data: { status: 'accepted', inviteeReminderId: 'rem_inv_1' },
+    });
   });
 
   it('does not create duplicate invitee runtime reminder when accept loses a race to an accepted request', async () => {
@@ -217,6 +235,33 @@ describe('shared reminder service', () => {
     expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
   });
 
+  it('accept retry returns accepted without creating another runtime reminder', async () => {
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        inviteeReminderId: 'rem_inv_1',
+        title: 'meeting',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'accepted',
+      },
+    });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      acceptSharedReminder(client as never, reminderRuntime, {
+        actorAccountId: 'acct_a',
+        requestId: 'srr_1',
+        now: new Date('2026-05-22T06:00:00.000Z'),
+        idempotencyKey: 'accept-retry-srr-1',
+      }),
+    ).resolves.toEqual({ id: 'srr_1', status: 'accepted' });
+
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+  });
+
   it('rolls back accepted state when invitee projection creation fails', async () => {
     const client = fakeSharedReminderClient({
       sharedReminderRequest: {
@@ -243,12 +288,22 @@ describe('shared reminder service', () => {
     ).rejects.toThrow('reminder_projection_failed');
 
     expect(client.sharedReminderRequest.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: 'srr_1', status: 'pending_invitee_confirmation', inviteeAccountId: 'acct_a' },
-      data: { status: 'accepted', resolvedAt: expect.any(Date) },
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: null,
+      },
+      data: { resolvedAt: expect.any(Date) },
     });
     expect(client.sharedReminderRequest.updateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: 'srr_1', status: 'accepted', inviteeAccountId: 'acct_a', inviteeReminderId: null },
-      data: { status: 'pending_invitee_confirmation', resolvedAt: null },
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: expect.any(Date),
+      },
+      data: { resolvedAt: null },
     });
   });
 
@@ -310,6 +365,34 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('does not cancel requester projection when reject loses the pending claim', async () => {
+    const pendingRequest = {
+      id: 'srr_1',
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      requesterReminderId: 'rem_req_1',
+      fireAt: new Date('2026-05-22T07:00:00.000Z'),
+      status: 'pending_invitee_confirmation',
+    };
+    const client = fakeSharedReminderClient({ sharedReminderRequest: pendingRequest });
+    client.sharedReminderRequest.findFirst
+      .mockResolvedValueOnce(pendingRequest)
+      .mockResolvedValueOnce({ ...pendingRequest, status: 'accepted', inviteeReminderId: 'rem_inv_1' });
+    client.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      rejectSharedReminder(client as never, reminderRuntime, {
+        actorAccountId: 'acct_a',
+        requestId: 'srr_1',
+        now: new Date('2026-05-22T06:00:00.000Z'),
+        idempotencyKey: 'reject-lost-srr-1',
+      }),
+    ).rejects.toThrow('shared_reminder_not_found');
+
+    expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
+  });
+
   it('accepting after fire time marks the request expired and creates no invitee projection', async () => {
     const client = fakeSharedReminderClient({
       sharedReminderRequest: {
@@ -333,7 +416,7 @@ describe('shared reminder service', () => {
 
     expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation', resolvedAt: null },
       data: { status: 'expired', resolvedAt: expect.any(Date) },
     });
   });
@@ -365,6 +448,34 @@ describe('shared reminder service', () => {
       customerId: 'acct_b',
       reminderId: 'rem_req_1',
     });
+  });
+
+  it('does not cancel requester projection when cancel loses the pending claim', async () => {
+    const pendingRequest = {
+      id: 'srr_1',
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      requesterReminderId: 'rem_req_1',
+      fireAt: new Date('2026-05-22T07:00:00.000Z'),
+      status: 'pending_invitee_confirmation',
+    };
+    const client = fakeSharedReminderClient({ sharedReminderRequest: pendingRequest });
+    client.sharedReminderRequest.findFirst
+      .mockResolvedValueOnce(pendingRequest)
+      .mockResolvedValueOnce({ ...pendingRequest, status: 'accepted', inviteeReminderId: 'rem_inv_1' });
+    client.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      cancelSharedReminder(client as never, reminderRuntime, {
+        actorAccountId: 'acct_b',
+        requestId: 'srr_1',
+        now: new Date('2026-05-22T06:00:00.000Z'),
+        idempotencyKey: 'cancel-lost-srr-1',
+      }),
+    ).rejects.toThrow('shared_reminder_not_found');
+
+    expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
   });
 
   it('does not cancel an accepted shared reminder or invitee projection', async () => {

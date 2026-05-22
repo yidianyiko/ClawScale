@@ -35,6 +35,11 @@ interface SharedReminderActionResult {
   status: SharedReminderRequestStatus;
 }
 
+interface PendingClaim {
+  request: SharedReminderRequestRecord;
+  claimedAt: Date;
+}
+
 export interface ReminderRuntimePort {
   createRuntimeReminder(input: CreateReminderInput): Promise<ReminderRuntimeResult<ReminderRuntimeRecord>>;
   cancelRuntimeReminder(input: ReminderCommandInput): Promise<ReminderRuntimeResult<ReminderRuntimeRecord>>;
@@ -89,6 +94,19 @@ function splitInstant(fireAt: string | Date): { localDate: string; localTime: st
 
 function dueOrPast(request: SharedReminderRequestRecord, now: Date): boolean {
   return request.fireAt.getTime() <= now.getTime();
+}
+
+function claimWhere(input: {
+  requestId: string;
+  actorField: 'requesterAccountId' | 'inviteeAccountId';
+  actorAccountId: string;
+}): Record<string, unknown> {
+  return {
+    id: input.requestId,
+    status: 'pending_invitee_confirmation',
+    [input.actorField]: input.actorAccountId,
+    resolvedAt: null,
+  };
 }
 
 async function findActiveFriendship(
@@ -281,15 +299,64 @@ function terminalRetryResult(
   throw new Error('shared_reminder_not_found');
 }
 
+async function claimPendingRequest(
+  client: Pick<SharedReminderClient, 'sharedReminderRequest'>,
+  request: SharedReminderRequestRecord,
+  input: {
+    actorField: 'requesterAccountId' | 'inviteeAccountId';
+    actorAccountId: string;
+    intendedStatus: SharedReminderRequestStatus;
+  },
+): Promise<PendingClaim | SharedReminderActionResult> {
+  const claimedAt = new Date();
+  const transition = await client.sharedReminderRequest.updateMany({
+    where: claimWhere({
+      requestId: request.id,
+      actorField: input.actorField,
+      actorAccountId: input.actorAccountId,
+    }),
+    data: { resolvedAt: claimedAt },
+  });
+  if (transition.count !== 1) {
+    const latest = await readSharedReminderRequest(client, request.id);
+    return terminalRetryResult(latest, {
+      actorAccountId: input.actorAccountId,
+      actorField: input.actorField,
+      intendedStatus: input.intendedStatus,
+    });
+  }
+  return { request, claimedAt };
+}
+
+async function rollbackPendingClaim(
+  client: Pick<SharedReminderClient, 'sharedReminderRequest'>,
+  claim: PendingClaim,
+  actorField: 'requesterAccountId' | 'inviteeAccountId',
+  actorAccountId: string,
+): Promise<void> {
+  await client.sharedReminderRequest.updateMany({
+    where: {
+      id: claim.request.id,
+      status: 'pending_invitee_confirmation',
+      [actorField]: actorAccountId,
+      resolvedAt: claim.claimedAt,
+    },
+    data: { resolvedAt: null },
+  });
+}
+
 async function expirePendingRequest(
   client: Pick<SharedReminderClient, 'sharedReminderRequest' | 'sharedReminderEvent'>,
   request: SharedReminderRequestRecord,
   idempotencyKey: string,
 ): Promise<void> {
-  await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation' },
+  const transition = await client.sharedReminderRequest.updateMany({
+    where: { id: request.id, status: 'pending_invitee_confirmation', resolvedAt: null },
     data: { status: 'expired', resolvedAt: new Date() },
   });
+  if (transition.count !== 1) {
+    return;
+  }
   await recordEvent(client, {
     requestId: request.id,
     fromState: 'pending_invitee_confirmation',
@@ -428,19 +495,14 @@ export async function acceptSharedReminder(
     throw new Error('shared_reminder_due');
   }
 
-  const transition = await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation', inviteeAccountId: actorAccountId },
-    data: { status: 'accepted', resolvedAt: new Date() },
+  const claim = await claimPendingRequest(client, request, {
+    actorAccountId,
+    actorField: 'inviteeAccountId',
+    intendedStatus: 'accepted',
   });
-  if (transition.count !== 1) {
-    const latest = await readSharedReminderRequest(client, request.id);
-    return terminalRetryResult(latest, {
-      actorAccountId,
-      actorField: 'inviteeAccountId',
-      intendedStatus: 'accepted',
-    });
+  if (!('claimedAt' in claim)) {
+    return claim;
   }
-
   let inviteeReminderId: string;
   try {
     inviteeReminderId = await createProjection(client, reminderRuntime, {
@@ -453,16 +515,21 @@ export async function acceptSharedReminder(
       counterpartyAccountId: request.requesterAccountId,
     });
   } catch (error) {
-    await client.sharedReminderRequest.updateMany({
-      where: { id: request.id, status: 'accepted', inviteeAccountId: actorAccountId, inviteeReminderId: null },
-      data: { status: 'pending_invitee_confirmation', resolvedAt: null },
-    });
+    await rollbackPendingClaim(client, claim, 'inviteeAccountId', actorAccountId);
     throw error;
   }
-  await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'accepted', inviteeAccountId: actorAccountId, inviteeReminderId: null },
-    data: { inviteeReminderId },
+  const finalize = await client.sharedReminderRequest.updateMany({
+    where: {
+      id: request.id,
+      status: 'pending_invitee_confirmation',
+      inviteeAccountId: actorAccountId,
+      resolvedAt: claim.claimedAt,
+    },
+    data: { status: 'accepted', inviteeReminderId },
   });
+  if (finalize.count !== 1) {
+    throw new Error('shared_reminder_not_found');
+  }
   await recordEvent(client, {
     requestId: request.id,
     fromState: 'pending_invitee_confirmation',
@@ -502,21 +569,34 @@ export async function rejectSharedReminder(
     throw new Error('shared_reminder_due');
   }
 
-  await cancelProjection(reminderRuntime, {
-    customerId: request.requesterAccountId,
-    reminderId: request.requesterReminderId,
+  const claim = await claimPendingRequest(client, request, {
+    actorAccountId,
+    actorField: 'inviteeAccountId',
+    intendedStatus: 'rejected',
   });
+  if (!('claimedAt' in claim)) {
+    return claim;
+  }
+  try {
+    await cancelProjection(reminderRuntime, {
+      customerId: request.requesterAccountId,
+      reminderId: request.requesterReminderId,
+    });
+  } catch (error) {
+    await rollbackPendingClaim(client, claim, 'inviteeAccountId', actorAccountId);
+    throw error;
+  }
   const transition = await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation', inviteeAccountId: actorAccountId },
-    data: { status: 'rejected', resolvedAt: new Date() },
+    where: {
+      id: request.id,
+      status: 'pending_invitee_confirmation',
+      inviteeAccountId: actorAccountId,
+      resolvedAt: claim.claimedAt,
+    },
+    data: { status: 'rejected' },
   });
   if (transition.count !== 1) {
-    const latest = await readSharedReminderRequest(client, request.id);
-    return terminalRetryResult(latest, {
-      actorAccountId,
-      actorField: 'inviteeAccountId',
-      intendedStatus: 'rejected',
-    });
+    throw new Error('shared_reminder_not_found');
   }
   await recordEvent(client, {
     requestId: request.id,
@@ -557,25 +637,38 @@ export async function cancelSharedReminder(
     throw new Error('shared_reminder_due');
   }
 
-  await cancelProjection(reminderRuntime, {
-    customerId: request.requesterAccountId,
-    reminderId: request.requesterReminderId,
+  const claim = await claimPendingRequest(client, request, {
+    actorAccountId,
+    actorField: 'requesterAccountId',
+    intendedStatus: 'cancelled',
   });
+  if (!('claimedAt' in claim)) {
+    return claim;
+  }
+  try {
+    await cancelProjection(reminderRuntime, {
+      customerId: request.requesterAccountId,
+      reminderId: request.requesterReminderId,
+    });
+  } catch (error) {
+    await rollbackPendingClaim(client, claim, 'requesterAccountId', actorAccountId);
+    throw error;
+  }
   const transition = await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation', requesterAccountId: actorAccountId },
-    data: { status: 'cancelled', resolvedAt: new Date() },
+    where: {
+      id: request.id,
+      status: 'pending_invitee_confirmation',
+      requesterAccountId: actorAccountId,
+      resolvedAt: claim.claimedAt,
+    },
+    data: { status: 'cancelled' },
   });
   if (transition.count !== 1) {
-    const latest = await readSharedReminderRequest(client, request.id);
-    return terminalRetryResult(latest, {
-      actorAccountId,
-      actorField: 'requesterAccountId',
-      intendedStatus: 'cancelled',
-    });
+    throw new Error('shared_reminder_not_found');
   }
   await recordEvent(client, {
     requestId: request.id,
-    fromState: request.status,
+    fromState: 'pending_invitee_confirmation',
     toState: 'cancelled',
     actorAccountId,
     actorRole: 'requester',
@@ -591,15 +684,32 @@ export async function expireDueSharedReminders(
   const requests = await client.sharedReminderRequest.findMany({
     where: {
       status: 'pending_invitee_confirmation',
+      resolvedAt: null,
       fireAt: { lte: input.now },
     },
     orderBy: { fireAt: 'asc' },
   });
   const selected = input.limit ? requests.slice(0, input.limit) : requests;
+  let count = 0;
   for (const request of selected) {
-    await expirePendingRequest(client, request, `expire:${request.id}:${input.now.toISOString()}`);
+    const transition = await client.sharedReminderRequest.updateMany({
+      where: { id: request.id, status: 'pending_invitee_confirmation', resolvedAt: null },
+      data: { status: 'expired', resolvedAt: new Date() },
+    });
+    if (transition.count === 1) {
+      count += 1;
+      await recordEvent(client, {
+        requestId: request.id,
+        fromState: 'pending_invitee_confirmation',
+        toState: 'expired',
+        actorAccountId: null,
+        actorRole: 'system',
+        idempotencyKey: `expire:${request.id}:${input.now.toISOString()}`,
+        reason: 'fire_time_reached',
+      });
+    }
   }
-  return { count: selected.length };
+  return { count };
 }
 
 export async function listPendingSharedReminders(
