@@ -49,6 +49,14 @@ function applyLocaleEffects(locale: Locale) {
   }
 }
 
+function markLocaleReady() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.dataset.localeReady = 'true';
+}
+
 export function LocaleProvider({
   children,
   initialLocale,
@@ -70,13 +78,13 @@ export function LocaleProvider({
       if (clientLocale !== locale) {
         setLocaleState(clientLocale);
         applyLocaleEffects(clientLocale);
-        document.getElementById('locale-splash')?.remove();
+        markLocaleReady();
         return;
       }
     }
 
     applyLocaleEffects(locale);
-    document.getElementById('locale-splash')?.remove();
+    markLocaleReady();
   }, [locale, shouldReconcileClientLocale]);
 
   const setLocale = useCallback((next: Locale) => {

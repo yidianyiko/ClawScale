@@ -1497,6 +1497,9 @@
   z-index: 100;
   font-family: var(--font-inter, 'Inter', system-ui, sans-serif);
 }
+html[data-locale-ready="true"] .coke-site-splash {
+  display: none;
+}
 .coke-site-splash__card {
   display: inline-flex;
   align-items: center;

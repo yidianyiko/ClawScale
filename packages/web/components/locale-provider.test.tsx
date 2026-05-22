@@ -30,6 +30,7 @@ describe('LocaleProvider', () => {
     localStorage.clear();
     document.cookie = 'coke-locale=; path=/; Max-Age=0';
     document.documentElement.lang = 'en';
+    delete document.documentElement.dataset.localeReady;
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -38,6 +39,8 @@ describe('LocaleProvider', () => {
   afterEach(() => {
     root.unmount();
     container.remove();
+    document.getElementById('locale-splash')?.remove();
+    delete document.documentElement.dataset.localeReady;
   });
 
   it('seeds the provided locale and exposes matching messages', () => {
@@ -73,7 +76,8 @@ describe('LocaleProvider', () => {
 
     expect(container.querySelector('[data-testid="locale"]')?.textContent).toBe('zh');
     expect(document.documentElement.lang).toBe('zh');
-    expect(document.getElementById('locale-splash')).toBeNull();
+    expect(document.getElementById('locale-splash')).toBe(splash);
+    expect(document.documentElement.dataset.localeReady).toBe('true');
   });
 
   it('ignores corrupted persisted locales and falls back to the browser language', async () => {
