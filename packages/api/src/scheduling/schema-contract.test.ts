@@ -9,6 +9,8 @@ const migrationPath = join(
 );
 const customerSchedulingRoutesPath = join(process.cwd(), 'src/routes/customer-scheduling-routes.ts');
 const internalSchedulingRoutesPath = join(process.cwd(), 'src/routes/internal-scheduling-routes.ts');
+const publicUserLinkRoutesPath = join(process.cwd(), 'src/routes/public-user-link-routes.ts');
+const userLinkServicePath = join(process.cwd(), 'src/scheduling/user-link-service.ts');
 
 describe('friend-link and shared-reminder schema contract', () => {
   it('declares first-version product-state models', () => {
@@ -69,6 +71,8 @@ describe('friend-link and shared-reminder schema contract', () => {
     const routeSources = [
       readFileSync(customerSchedulingRoutesPath, 'utf8'),
       readFileSync(internalSchedulingRoutesPath, 'utf8'),
+      readFileSync(publicUserLinkRoutesPath, 'utf8'),
+      readFileSync(userLinkServicePath, 'utf8'),
     ];
     const retiredReferences = [
       'availability-service',
@@ -76,6 +80,7 @@ describe('friend-link and shared-reminder schema contract', () => {
       'service-link-service',
       'db.bookableWindow',
       'db.serviceLink',
+      'createOrActivateServiceLink',
       'retryPendingSchedulingNotifications',
     ];
 

@@ -88,6 +88,23 @@ describe('internal scheduling routes', () => {
     });
   });
 
+  it('fails closed for retired tools before parsing the request body', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/request_appointment', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: '{',
+    });
+
+    expect(res.status).toBe(410);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'appointment_scheduling_retired',
+    });
+  });
+
   it('fails closed for retired notification retry after auth', async () => {
     const unauthorized = await createApp().request('/api/internal/scheduling/notifications/retry', {
       method: 'POST',

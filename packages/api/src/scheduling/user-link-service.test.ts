@@ -11,7 +11,6 @@ import {
 const db = {
   userLink: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   linkSession: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
-  serviceLink: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   customer: { findUnique: vi.fn() },
   $transaction: vi.fn(),
 };
@@ -195,176 +194,16 @@ describe('user link service', () => {
     expect(result).not.toHaveProperty('providerAccountId');
   });
 
-  it('claims a link session and creates an active service link in the same transaction', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
-    const claimedSession = {
-      id: 'ls_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: 'ck_b',
-      status: 'claimed',
-      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-    };
-    db.linkSession.findUnique
-      .mockResolvedValueOnce({
-        id: 'ls_1',
-        providerAccountId: 'ck_a',
-        consumerAccountId: null,
-        status: 'opened',
-        expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-      })
-      .mockResolvedValueOnce(claimedSession);
-    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
-    db.serviceLink.findFirst.mockResolvedValueOnce(null);
-    db.serviceLink.create.mockResolvedValueOnce({
-      id: 'sl_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: 'ck_b',
-      status: 'active',
-      capabilities: ['appointment_request'],
-    });
-
-    const result = await claimLinkSession(db as never, {
-      token: 'session-token',
-      consumerAccountId: 'ck_b',
-    });
-
-    expect(db.$transaction).toHaveBeenCalledTimes(1);
-    expect(db.linkSession.updateMany).toHaveBeenCalledWith({
-      where: {
-        tokenHash: expect.any(String),
-        status: 'opened',
-        expiresAt: { gt: new Date('2026-05-21T00:00:00.000Z') },
-      },
-      data: { status: 'claimed', consumerAccountId: 'ck_b', claimedAt: expect.any(Date) },
-    });
-    expect(db.serviceLink.create).toHaveBeenCalledWith({
-      data: {
-        providerAccountId: 'ck_a',
-        consumerAccountId: 'ck_b',
-        status: 'active',
-        capabilities: ['appointment_request'],
-      },
-    });
-    expect(result).toEqual(claimedSession);
-  });
-
-  it('reactivates a removed service link when claiming an opened link session', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
-    db.linkSession.findUnique
-      .mockResolvedValueOnce({
-        id: 'ls_1',
-        providerAccountId: 'ck_a',
-        consumerAccountId: null,
-        status: 'opened',
-        expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-      })
-      .mockResolvedValueOnce({
-        id: 'ls_1',
-        providerAccountId: 'ck_a',
-        consumerAccountId: 'ck_b',
-        status: 'claimed',
-        expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-      });
-    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
-    db.serviceLink.findFirst
-      .mockResolvedValueOnce({
-        id: 'sl_1',
-        providerAccountId: 'ck_a',
-        consumerAccountId: 'ck_b',
-        status: 'removed',
-        capabilities: ['appointment_request'],
-      })
-      .mockResolvedValueOnce({
-        id: 'sl_1',
-        providerAccountId: 'ck_a',
-        consumerAccountId: 'ck_b',
-        status: 'active',
-        capabilities: ['appointment_request'],
-      });
-    db.serviceLink.updateMany.mockResolvedValueOnce({ count: 1 });
-
-    await claimLinkSession(db as never, {
-      token: 'session-token',
-      consumerAccountId: 'ck_b',
-    });
-
-    expect(db.serviceLink.updateMany).toHaveBeenCalledWith({
-      where: { id: 'sl_1', status: 'removed' },
-      data: {
-        status: 'active',
-        removedAt: null,
-        capabilities: ['appointment_request'],
-      },
-    });
-    expect(db.serviceLink.create).not.toHaveBeenCalled();
-  });
-
-  it('ensures an idempotent same-consumer claim has an active service link', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
-    const claimedSession = {
-      id: 'ls_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: 'ck_b',
-      status: 'claimed',
-      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-    };
-    db.linkSession.findUnique.mockResolvedValueOnce(claimedSession);
-    db.serviceLink.findFirst.mockResolvedValueOnce(null);
-    db.serviceLink.create.mockResolvedValueOnce({
-      id: 'sl_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: 'ck_b',
-      status: 'active',
-      capabilities: ['appointment_request'],
-    });
-
-    const result = await claimLinkSession(db as never, {
-      token: 'session-token',
-      consumerAccountId: 'ck_b',
-    });
-
-    expect(result).toEqual(claimedSession);
-    expect(db.serviceLink.create).toHaveBeenCalledWith({
-      data: {
-        providerAccountId: 'ck_a',
-        consumerAccountId: 'ck_b',
-        status: 'active',
-        capabilities: ['appointment_request'],
-      },
-    });
-    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('does not reactivate a blocked service link when claiming a link session', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
-    db.linkSession.findUnique.mockResolvedValueOnce({
-      id: 'ls_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: null,
-      status: 'opened',
-      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-    });
-    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
-    db.serviceLink.findFirst.mockResolvedValueOnce({
-      id: 'sl_1',
-      providerAccountId: 'ck_a',
-      consumerAccountId: 'ck_b',
-      status: 'blocked',
-      capabilities: [],
-    });
-
+  it('fails closed for the retired link-session claim write path', async () => {
     await expect(
       claimLinkSession(db as never, {
         token: 'session-token',
         consumerAccountId: 'ck_b',
       }),
-    ).rejects.toThrow('service_link_blocked');
+    ).rejects.toThrow('appointment_scheduling_retired');
 
-    expect(db.serviceLink.updateMany).not.toHaveBeenCalled();
-    expect(db.serviceLink.create).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.linkSession.findUnique).not.toHaveBeenCalled();
+    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -5,16 +5,9 @@ const mocks = vi.hoisted(() => ({
   readPublicUserLinkByCode: vi.fn(),
   createLinkSession: vi.fn(),
   getLinkSessionStatus: vi.fn(),
-  claimLinkSession: vi.fn(),
-  verifyCustomerToken: vi.fn(),
-  getCustomerSession: vi.fn(),
 }));
 
 vi.mock('../scheduling/user-link-service.js', () => mocks);
-vi.mock('../lib/customer-auth.js', () => ({
-  verifyCustomerToken: mocks.verifyCustomerToken,
-  getCustomerSession: mocks.getCustomerSession,
-}));
 vi.mock('../db/index.js', () => ({ db: {} }));
 
 import { publicLinkSessionRouter, publicUserLinkRouter } from './public-user-link-routes.js';
@@ -29,14 +22,6 @@ function createApp(): Hono {
 describe('public user link routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.verifyCustomerToken.mockReturnValue({ sub: 'ck_consumer', identityId: 'idt_1' });
-    mocks.getCustomerSession.mockResolvedValue({
-      customerId: 'ck_consumer',
-      identityId: 'idt_1',
-      claimStatus: 'active',
-      email: 'b@example.com',
-      membershipRole: 'owner',
-    });
   });
 
   it('returns public profile for an active code without treating it as a provider account id', async () => {
@@ -124,44 +109,17 @@ describe('public user link routes', () => {
     });
   });
 
-  it('requires customer auth before claiming a link session', async () => {
+  it('fails closed for the retired link-session claim path', async () => {
     const res = await createApp().request('/api/public/link-sessions/session-token/claim', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ customer_id: 'ck_attacker' }),
     });
 
-    expect(res.status).toBe(401);
-    expect(mocks.claimLinkSession).not.toHaveBeenCalled();
-  });
-
-  it('claims a link session for the authenticated customer', async () => {
-    mocks.claimLinkSession.mockResolvedValueOnce({
-      status: 'claimed',
-      providerAccountId: 'ck_provider',
-      consumerAccountId: 'ck_consumer',
-      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
-    });
-
-    const res = await createApp().request('/api/public/link-sessions/session-token/claim', {
-      method: 'POST',
-      headers: { authorization: 'Bearer customer-token', 'content-type': 'application/json' },
-      body: JSON.stringify({ customer_id: 'ck_attacker' }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(mocks.verifyCustomerToken).toHaveBeenCalledWith('customer-token');
-    expect(mocks.claimLinkSession).toHaveBeenCalledWith({} as never, {
-      token: 'session-token',
-      consumerAccountId: 'ck_consumer',
-    });
-    await expect(res.json()).resolves.toMatchObject({
-      ok: true,
-      data: {
-        status: 'claimed',
-        providerAccountId: 'ck_provider',
-        consumerAccountId: 'ck_consumer',
-      },
+    expect(res.status).toBe(410);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'appointment_scheduling_retired',
     });
   });
 });

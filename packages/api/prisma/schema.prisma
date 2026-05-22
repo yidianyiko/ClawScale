@@ -163,20 +163,20 @@ enum ProductNotificationStatus {
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id        String     @id
-  slug      String     @unique
+  id        String   @id
+  slug      String   @unique
   name      String
-  settings  Json       @default("{}")
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  members       Member[]
-  sessions      Session[]
-  channels      Channel[]
-  endUsers      EndUser[]
+  members        Member[]
+  sessions       Session[]
+  channels       Channel[]
+  endUsers       EndUser[]
   clawscaleUsers ClawscaleUser[]
-  auditLogs     AuditLog[]
-  aiBackends    AiBackend[]
+  auditLogs      AuditLog[]
+  aiBackends     AiBackend[]
   deliveryRoutes DeliveryRoute[]
 
   @@map("tenants")
@@ -233,31 +233,31 @@ model Session {
 }
 
 model Channel {
-  id                   String        @id
-  tenantId             String        @map("tenant_id")
+  id                   String               @id
+  tenantId             String               @map("tenant_id")
   type                 ChannelType
-  scope                ChannelScope  @default(tenant_shared)
+  scope                ChannelScope         @default(tenant_shared)
   ownershipKind        ChannelOwnershipKind @default(customer) @map("ownership_kind")
-  customerId           String?       @map("customer_id")
-  agentId              String?       @map("agent_id")
-  ownerClawscaleUserId String?       @map("owner_clawscale_user_id")
-  activeLifecycleKey   String?       @unique @map("active_lifecycle_key")
+  customerId           String?              @map("customer_id")
+  agentId              String?              @map("agent_id")
+  ownerClawscaleUserId String?              @map("owner_clawscale_user_id")
+  activeLifecycleKey   String?              @unique @map("active_lifecycle_key")
   name                 String
-  status               ChannelStatus @default(disconnected)
-  config               Json          @default("{}")
-  createdAt            DateTime      @default(now()) @map("created_at")
-  updatedAt            DateTime      @updatedAt @map("updated_at")
+  status               ChannelStatus        @default(disconnected)
+  config               Json                 @default("{}")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
 
-  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sharedAgent        Agent?          @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  ownerClawscaleUser ClawscaleUser? @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
-  externalIdentities ExternalIdentity[]
-  parkedInbounds    ParkedInbound[]
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer               Customer?               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sharedAgent            Agent?                  @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  ownerClawscaleUser     ClawscaleUser?          @relation(fields: [ownerClawscaleUserId], references: [id], onDelete: SetNull)
+  externalIdentities     ExternalIdentity[]
+  parkedInbounds         ParkedInbound[]
   inboundWebhookReceipts InboundWebhookReceipt[]
-  conversations     Conversation[]
-  endUsers          EndUser[]
-  deliveryRoutes    DeliveryRoute[]
+  conversations          Conversation[]
+  endUsers               EndUser[]
+  deliveryRoutes         DeliveryRoute[]
 
   @@index([tenantId])
   @@index([customerId])
@@ -282,18 +282,18 @@ model EndUser {
   updatedAt  DateTime      @updatedAt @map("updated_at")
 
   /// When set, this EndUser defers to the primary EndUser for cross-channel identity.
-  linkedTo      String?   @map("linked_to")
+  linkedTo        String? @map("linked_to")
   clawscaleUserId String? @map("clawscale_user_id")
 
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channel         Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  linkedPrimary   EndUser?       @relation("EndUserLink", fields: [linkedTo], references: [id], onDelete: SetNull)
-  linkedFrom      EndUser[]      @relation("EndUserLink")
-  clawscaleUser   ClawscaleUser? @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
-  conversations   Conversation[]
-  activeBackends  EndUserBackend[]
-  linkCodes       LinkCode[]
-  deliveryRoutes  DeliveryRoute[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel        Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  linkedPrimary  EndUser?         @relation("EndUserLink", fields: [linkedTo], references: [id], onDelete: SetNull)
+  linkedFrom     EndUser[]        @relation("EndUserLink")
+  clawscaleUser  ClawscaleUser?   @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
+  conversations  Conversation[]
+  activeBackends EndUserBackend[]
+  linkCodes      LinkCode[]
+  deliveryRoutes DeliveryRoute[]
 
   @@unique([tenantId, channelId, externalId])
   @@index([clawscaleUserId])
@@ -308,12 +308,12 @@ model ClawscaleUser {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer      Customer    @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
-  channels      Channel[]
-  endUsers      EndUser[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer       Customer        @relation(fields: [cokeAccountId], references: [id], onDelete: Cascade)
+  channels       Channel[]
+  endUsers       EndUser[]
   deliveryRoutes DeliveryRoute[]
-  conversations Conversation[]
+  conversations  Conversation[]
 
   @@unique([tenantId, cokeAccountId])
   @@unique([cokeAccountId])
@@ -331,35 +331,35 @@ model Identity {
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
 
-  memberships Membership[]
+  memberships        Membership[]
   calendarImportRuns CalendarImportRun[]
 
   @@map("identities")
 }
 
 model Customer {
-  id           String       @id
-  kind         CustomerKind @default(personal)
-  displayName  String       @map("display_name")
-  tagline     String?  @db.VarChar(120)
-  avatarUrl   String?  @map("avatar_url")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id          String       @id
+  kind        CustomerKind @default(personal)
+  displayName String       @map("display_name")
+  tagline     String?      @db.VarChar(120)
+  avatarUrl   String?      @map("avatar_url")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
 
-  memberships        Membership[]
-  channels           Channel[]
-  agentBindings      AgentBinding[]
-  externalIdentities ExternalIdentity[]
-  calendarImportRuns CalendarImportRun[]
-  clawscaleUser      ClawscaleUser?
-  subscriptions      Subscription[]
-  userLinksAsProvider UserLink[] @relation("ProviderUserLinks")
-  requesterFriendRequests FriendRequest[] @relation("RequesterFriendRequests")
-  targetFriendRequests    FriendRequest[] @relation("TargetFriendRequests")
-  friendshipsAsA          Friendship[]    @relation("FriendshipAccountA")
-  friendshipsAsB          Friendship[]    @relation("FriendshipAccountB")
-  blocksCreated           AccountBlock[]  @relation("BlockerAccountBlocks")
-  blocksReceived          AccountBlock[]  @relation("BlockedAccountBlocks")
+  memberships              Membership[]
+  channels                 Channel[]
+  agentBindings            AgentBinding[]
+  externalIdentities       ExternalIdentity[]
+  calendarImportRuns       CalendarImportRun[]
+  clawscaleUser            ClawscaleUser?
+  subscriptions            Subscription[]
+  userLinksAsProvider      UserLink[]              @relation("ProviderUserLinks")
+  requesterFriendRequests  FriendRequest[]         @relation("RequesterFriendRequests")
+  targetFriendRequests     FriendRequest[]         @relation("TargetFriendRequests")
+  friendshipsAsA           Friendship[]            @relation("FriendshipAccountA")
+  friendshipsAsB           Friendship[]            @relation("FriendshipAccountB")
+  blocksCreated            AccountBlock[]          @relation("BlockerAccountBlocks")
+  blocksReceived           AccountBlock[]          @relation("BlockedAccountBlocks")
   requesterSharedReminders SharedReminderRequest[] @relation("RequesterSharedReminders")
   inviteeSharedReminders   SharedReminderRequest[] @relation("InviteeSharedReminders")
   reminderProjections      ReminderProjection[]
@@ -386,14 +386,14 @@ model Membership {
 }
 
 model Agent {
-  id         String   @id @default(uuid())
-  slug       String   @unique
-  name       String
-  endpoint   String
-  authToken  String   @map("auth_token")
-  isDefault  Boolean  @default(false) @map("is_default")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  endpoint  String
+  authToken String   @map("auth_token")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   bindings       AgentBinding[]
   sharedChannels Channel[]
@@ -402,15 +402,15 @@ model Agent {
 }
 
 model AgentBinding {
-  id                 String                       @id @default(uuid())
-  customerId         String                       @map("customer_id")
-  agentId            String                       @map("agent_id")
+  id                 String                      @id @default(uuid())
+  customerId         String                      @map("customer_id")
+  agentId            String                      @map("agent_id")
   provisionStatus    AgentBindingProvisionStatus @default(pending) @map("provision_status")
   provisionAttempts  Int                         @default(0) @map("provision_attempts")
-  provisionLastError String?                      @map("provision_last_error")
-  provisionUpdatedAt DateTime                     @default(now()) @map("provision_updated_at")
-  createdAt          DateTime                     @default(now()) @map("created_at")
-  updatedAt          DateTime                     @updatedAt @map("updated_at")
+  provisionLastError String?                     @map("provision_last_error")
+  provisionUpdatedAt DateTime                    @default(now()) @map("provision_updated_at")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  updatedAt          DateTime                    @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Restrict)
@@ -441,18 +441,18 @@ model ExternalIdentity {
 }
 
 model ParkedInbound {
-  id            String             @id @default(uuid())
-  channelId     String             @map("channel_id")
+  id            String              @id @default(uuid())
+  channelId     String              @map("channel_id")
   provider      String
-  identityType  String             @map("identity_type")
-  identityValue String             @map("identity_value")
+  identityType  String              @map("identity_type")
+  identityValue String              @map("identity_value")
   payload       Json
   status        ParkedInboundStatus @default(queued)
-  attempts      Int                @default(0)
-  lastError     String?            @map("last_error")
-  drainedAt     DateTime?          @map("drained_at")
-  createdAt     DateTime           @default(now()) @map("created_at")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
+  attempts      Int                 @default(0)
+  lastError     String?             @map("last_error")
+  drainedAt     DateTime?           @map("drained_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
@@ -501,8 +501,8 @@ model EndUserBackend {
   backendId String   @map("backend_id")
   addedAt   DateTime @default(now()) @map("added_at")
 
-  endUser   EndUser   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
-  backend   AiBackend @relation(fields: [backendId], references: [id], onDelete: Cascade)
+  endUser EndUser   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  backend AiBackend @relation(fields: [backendId], references: [id], onDelete: Cascade)
 
   @@id([endUserId, backendId])
   @@index([endUserId])
@@ -513,25 +513,25 @@ model EndUserBackend {
 model Conversation {
   /// Compatibility survivor: reduced to the route-binding minimum while delivery
   /// route cutover still depends on gateway conversation identifiers.
-  id        String   @id
-  tenantId  String   @map("tenant_id")
-  channelId String   @map("channel_id")
-  endUserId String   @map("end_user_id")
-  clawscaleUserId String? @map("clawscale_user_id")
-  businessConversationKey String? @map("business_conversation_key")
-  metadata  Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                      String   @id
+  tenantId                String   @map("tenant_id")
+  channelId               String   @map("channel_id")
+  endUserId               String   @map("end_user_id")
+  clawscaleUserId         String?  @map("clawscale_user_id")
+  businessConversationKey String?  @map("business_conversation_key")
+  metadata                Json     @default("{}")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
-  channel  Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  endUser  EndUser    @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  channel       Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  endUser       EndUser        @relation(fields: [endUserId], references: [id], onDelete: Cascade)
   clawscaleUser ClawscaleUser? @relation(fields: [clawscaleUserId], references: [id], onDelete: SetNull)
-  messages Message[]
+  messages      Message[]
 
+  @@unique([clawscaleUserId, businessConversationKey])
   @@index([tenantId])
   @@index([endUserId])
   @@index([clawscaleUserId])
-  @@unique([clawscaleUserId, businessConversationKey])
   @@map("conversations")
 }
 
@@ -595,23 +595,23 @@ model OutboundDelivery {
 }
 
 model CalendarImportRun {
-  id                   String   @id @default(cuid())
-  customerId           String   @map("customer_id")
-  identityId           String   @map("identity_id")
-  targetConversationId String   @map("target_conversation_id")
-  targetCharacterId    String   @map("target_character_id")
+  id                   String                         @id @default(cuid())
+  customerId           String                         @map("customer_id")
+  identityId           String                         @map("identity_id")
+  targetConversationId String                         @map("target_conversation_id")
+  targetCharacterId    String                         @map("target_character_id")
   provider             CalendarImportRunProvider
   triggerSource        CalendarImportRunTriggerSource @map("trigger_source")
   status               CalendarImportRunStatus
-  providerAccountEmail String?  @map("provider_account_email")
-  importedCount        Int      @default(0) @map("imported_count")
-  skippedCount         Int      @default(0) @map("skipped_count")
-  failedCount          Int      @default(0) @map("failed_count")
-  errorSummary         String?  @map("error_summary")
-  startedAt            DateTime @default(now()) @map("started_at")
-  finishedAt           DateTime? @map("finished_at")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  providerAccountEmail String?                        @map("provider_account_email")
+  importedCount        Int                            @default(0) @map("imported_count")
+  skippedCount         Int                            @default(0) @map("skipped_count")
+  failedCount          Int                            @default(0) @map("failed_count")
+  errorSummary         String?                        @map("error_summary")
+  startedAt            DateTime                       @default(now()) @map("started_at")
+  finishedAt           DateTime?                      @map("finished_at")
+  createdAt            DateTime                       @default(now()) @map("created_at")
+  updatedAt            DateTime                       @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
@@ -623,28 +623,28 @@ model CalendarImportRun {
 }
 
 model CalendarImportHandoffSession {
-  id                      String   @id @default(cuid())
-  tokenHash               String   @unique @map("token_hash")
-  status                  String   @default("pending")
-  sourceCustomerId        String   @map("source_customer_id")
-  targetCustomerId        String?  @map("target_customer_id")
-  targetIdentityId        String?  @map("target_identity_id")
+  id                      String    @id @default(cuid())
+  tokenHash               String    @unique @map("token_hash")
+  status                  String    @default("pending")
+  sourceCustomerId        String    @map("source_customer_id")
+  targetCustomerId        String?   @map("target_customer_id")
+  targetIdentityId        String?   @map("target_identity_id")
   provider                String
-  identityType            String   @map("identity_type")
-  identityValue           String   @map("identity_value")
-  tenantId                String   @map("tenant_id")
-  channelId               String   @map("channel_id")
-  endUserId               String   @map("end_user_id")
-  externalId              String   @map("external_id")
-  gatewayConversationId   String   @map("gateway_conversation_id")
-  businessConversationKey String   @map("business_conversation_key")
-  targetConversationId    String?  @map("target_conversation_id")
-  targetCharacterId       String?  @map("target_character_id")
-  expiresAt               DateTime @map("expires_at")
+  identityType            String    @map("identity_type")
+  identityValue           String    @map("identity_value")
+  tenantId                String    @map("tenant_id")
+  channelId               String    @map("channel_id")
+  endUserId               String    @map("end_user_id")
+  externalId              String    @map("external_id")
+  gatewayConversationId   String    @map("gateway_conversation_id")
+  businessConversationKey String    @map("business_conversation_key")
+  targetConversationId    String?   @map("target_conversation_id")
+  targetCharacterId       String?   @map("target_character_id")
+  expiresAt               DateTime  @map("expires_at")
   claimedAt               DateTime? @map("claimed_at")
   consumedAt              DateTime? @map("consumed_at")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
   @@index([status, expiresAt])
   @@index([sourceCustomerId])
@@ -684,7 +684,7 @@ model LinkSession {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  userLink UserLink @relation(fields: [userLinkId, providerAccountId], references: [id, providerAccountId], onDelete: Cascade)
+  userLink       UserLink        @relation(fields: [userLinkId, providerAccountId], references: [id, providerAccountId], onDelete: Cascade)
   friendRequests FriendRequest[]
 
   @@index([providerAccountId, status])
@@ -705,15 +705,15 @@ model FriendRequest {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  requester   Customer     @relation("RequesterFriendRequests", fields: [requesterAccountId], references: [id], onDelete: Cascade)
-  target      Customer     @relation("TargetFriendRequests", fields: [targetAccountId], references: [id], onDelete: Cascade)
-  linkSession LinkSession? @relation(fields: [linkSessionId], references: [id], onDelete: SetNull)
-  friendships Friendship[]
+  requester     Customer              @relation("RequesterFriendRequests", fields: [requesterAccountId], references: [id], onDelete: Cascade)
+  target        Customer              @relation("TargetFriendRequests", fields: [targetAccountId], references: [id], onDelete: Cascade)
+  linkSession   LinkSession?          @relation(fields: [linkSessionId], references: [id], onDelete: SetNull)
+  friendships   Friendship[]
   notifications ProductNotification[]
 
+  @@unique([requesterAccountId, targetAccountId, idempotencyKey])
   @@index([requesterAccountId, status])
   @@index([targetAccountId, status])
-  @@unique([requesterAccountId, targetAccountId, idempotencyKey])
   @@map("friend_requests")
 }
 
@@ -727,9 +727,9 @@ model Friendship {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  accountA      Customer       @relation("FriendshipAccountA", fields: [accountAId], references: [id], onDelete: Cascade)
-  accountB      Customer       @relation("FriendshipAccountB", fields: [accountBId], references: [id], onDelete: Cascade)
-  friendRequest FriendRequest? @relation(fields: [friendRequestId], references: [id], onDelete: SetNull)
+  accountA               Customer                @relation("FriendshipAccountA", fields: [accountAId], references: [id], onDelete: Cascade)
+  accountB               Customer                @relation("FriendshipAccountB", fields: [accountBId], references: [id], onDelete: Cascade)
+  friendRequest          FriendRequest?          @relation(fields: [friendRequestId], references: [id], onDelete: SetNull)
   sharedReminderRequests SharedReminderRequest[]
 
   @@index([accountAId, status])
@@ -752,32 +752,32 @@ model AccountBlock {
 }
 
 model SharedReminderRequest {
-  id                    String                      @id @default(cuid())
-  requesterAccountId    String                      @map("requester_account_id")
-  inviteeAccountId      String                      @map("invitee_account_id")
-  friendshipId          String                      @map("friendship_id")
-  title                 String                      @db.VarChar(200)
-  fireAt                DateTime                    @map("fire_at")
-  timezone              String
-  idempotencyKey        String?                     @map("idempotency_key")
-  status                SharedReminderRequestStatus @default(pending_invitee_confirmation)
-  requesterReminderId   String?                     @map("requester_reminder_id")
-  inviteeReminderId     String?                     @map("invitee_reminder_id")
-  resolvedAt            DateTime?                   @map("resolved_at")
-  createdAt             DateTime                    @default(now()) @map("created_at")
-  updatedAt             DateTime                    @updatedAt @map("updated_at")
+  id                  String                      @id @default(cuid())
+  requesterAccountId  String                      @map("requester_account_id")
+  inviteeAccountId    String                      @map("invitee_account_id")
+  friendshipId        String                      @map("friendship_id")
+  title               String                      @db.VarChar(200)
+  fireAt              DateTime                    @map("fire_at")
+  timezone            String
+  idempotencyKey      String?                     @map("idempotency_key")
+  status              SharedReminderRequestStatus @default(pending_invitee_confirmation)
+  requesterReminderId String?                     @map("requester_reminder_id")
+  inviteeReminderId   String?                     @map("invitee_reminder_id")
+  resolvedAt          DateTime?                   @map("resolved_at")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
 
-  requester Customer     @relation("RequesterSharedReminders", fields: [requesterAccountId], references: [id], onDelete: Cascade)
-  invitee   Customer     @relation("InviteeSharedReminders", fields: [inviteeAccountId], references: [id], onDelete: Cascade)
-  friendship Friendship  @relation(fields: [friendshipId], references: [id], onDelete: Restrict)
-  events    SharedReminderEvent[]
-  projections ReminderProjection[]
+  requester     Customer              @relation("RequesterSharedReminders", fields: [requesterAccountId], references: [id], onDelete: Cascade)
+  invitee       Customer              @relation("InviteeSharedReminders", fields: [inviteeAccountId], references: [id], onDelete: Cascade)
+  friendship    Friendship            @relation(fields: [friendshipId], references: [id], onDelete: Restrict)
+  events        SharedReminderEvent[]
+  projections   ReminderProjection[]
   notifications ProductNotification[]
 
+  @@unique([requesterAccountId, inviteeAccountId, idempotencyKey])
   @@index([requesterAccountId, status])
   @@index([inviteeAccountId, status])
   @@index([fireAt, status])
-  @@unique([requesterAccountId, inviteeAccountId, idempotencyKey])
   @@map("shared_reminder_requests")
 }
 
@@ -854,11 +854,11 @@ model AiBackend {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// True for the built-in ClawScale default agent (one per tenant, cannot be deleted)
-  isDefault     Boolean  @default(false) @map("is_default")
+  isDefault Boolean @default(false) @map("is_default")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  endUsers      EndUserBackend[]
-  messages      Message[]
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  endUsers EndUserBackend[]
+  messages Message[]
 
   @@index([tenantId])
   @@map("ai_backends")
