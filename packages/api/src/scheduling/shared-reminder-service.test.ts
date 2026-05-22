@@ -335,6 +335,44 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('rejecting tolerates already-terminal requester projection cancellation', async () => {
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        requesterReminderId: 'rem_req_1',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        status: 'pending_invitee_confirmation',
+      },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      cancel: { ok: false, error: 'invalid_reminder' },
+    });
+
+    const result = await rejectSharedReminder(client as never, reminderRuntime, {
+      actorAccountId: 'acct_a',
+      requestId: 'srr_1',
+      now: new Date('2026-05-22T06:00:00.000Z'),
+      idempotencyKey: 'reject-terminal-srr-1',
+    });
+
+    expect(result.status).toBe('rejected');
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'acct_b',
+      reminderId: 'rem_req_1',
+    });
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: expect.any(Date),
+      },
+      data: { status: 'rejected' },
+    });
+  });
+
   it('does not mark rejected when requester projection cancellation fails', async () => {
     const client = fakeSharedReminderClient({
       sharedReminderRequest: {
@@ -447,6 +485,44 @@ describe('shared reminder service', () => {
     expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
       customerId: 'acct_b',
       reminderId: 'rem_req_1',
+    });
+  });
+
+  it('canceling tolerates already-terminal requester projection cancellation', async () => {
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        requesterReminderId: 'rem_req_1',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        status: 'pending_invitee_confirmation',
+      },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      cancel: { ok: false, error: 'invalid_reminder' },
+    });
+
+    const result = await cancelSharedReminder(client as never, reminderRuntime, {
+      actorAccountId: 'acct_b',
+      requestId: 'srr_1',
+      now: new Date('2026-05-22T06:00:00.000Z'),
+      idempotencyKey: 'cancel-terminal-srr-1',
+    });
+
+    expect(result.status).toBe('cancelled');
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'acct_b',
+      reminderId: 'rem_req_1',
+    });
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        requesterAccountId: 'acct_b',
+        resolvedAt: expect.any(Date),
+      },
+      data: { status: 'cancelled' },
     });
   });
 

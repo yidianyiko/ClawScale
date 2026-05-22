@@ -278,6 +278,9 @@ async function cancelProjection(
     reminderId: input.reminderId,
   });
   if (!result.ok) {
+    if (result.error === 'invalid_reminder') {
+      return;
+    }
     throw new Error('reminder_projection_failed');
   }
 }
