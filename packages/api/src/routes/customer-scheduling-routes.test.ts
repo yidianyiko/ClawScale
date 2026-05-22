@@ -23,6 +23,10 @@ const friendships = vi.hoisted(() => ({
   unblockAccount: vi.fn(),
 }));
 
+const reminderRuntime = vi.hoisted(() => ({
+  cancelRuntimeReminder: vi.fn(),
+}));
+
 const db = vi.hoisted(() => ({}));
 
 vi.mock('../db/index.js', () => ({ db }));
@@ -33,6 +37,7 @@ vi.mock('../scheduling/user-link-service.js', () => ({
   disableUserLink: scheduling.disableUserLink,
 }));
 vi.mock('../scheduling/friendship-service.js', () => friendships);
+vi.mock('../lib/reminder-runtime-client.js', () => reminderRuntime);
 
 import { customerSchedulingRouter } from './customer-scheduling-routes.js';
 
@@ -111,6 +116,7 @@ describe('customer scheduling routes', () => {
     });
     friendships.blockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
     friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
+    reminderRuntime.cancelRuntimeReminder.mockResolvedValue({ ok: true, data: { id: 'rem_1' } });
   });
 
   it('requires customer auth before returning a user link', async () => {
@@ -245,10 +251,14 @@ describe('customer scheduling routes', () => {
     expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
       accountId: 'ck_123',
     });
-    expect(friendships.removeFriendship).toHaveBeenCalledWith(db as never, {
-      actorAccountId: 'ck_123',
-      friendshipId: 'fs_1',
-    });
+    expect(friendships.removeFriendship).toHaveBeenCalledWith(
+      db as never,
+      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
+      {
+        actorAccountId: 'ck_123',
+        friendshipId: 'fs_1',
+      },
+    );
   });
 
   it('uses the authenticated customer id for block ownership and ignores body actor ids', async () => {
@@ -262,10 +272,14 @@ describe('customer scheduling routes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(friendships.blockAccount).toHaveBeenCalledWith(db as never, {
-      blockerAccountId: 'ck_123',
-      blockedAccountId: 'ck_other',
-    });
+    expect(friendships.blockAccount).toHaveBeenCalledWith(
+      db as never,
+      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
+      {
+        blockerAccountId: 'ck_123',
+        blockedAccountId: 'ck_other',
+      },
+    );
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: { blockedAccountId: 'ck_other' },

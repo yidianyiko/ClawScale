@@ -6,6 +6,7 @@ import {
   verifyCustomerToken,
   type CustomerSession,
 } from '../lib/customer-auth.js';
+import { cancelRuntimeReminder } from '../lib/reminder-runtime-client.js';
 import {
   disableUserLink,
   getOrCreateActiveUserLink,
@@ -92,6 +93,7 @@ function isKnownSchedulingError(error: string): boolean {
     error === 'friend_request_not_found' ||
     error === 'friend_request_blocked' ||
     error === 'friendship_not_found' ||
+    error === 'reminder_projection_failed' ||
     error === 'cannot_friend_self' ||
     error === 'not_allowed'
   );
@@ -253,10 +255,14 @@ customerSchedulingRouter.get('/friends', async (c) => {
 customerSchedulingRouter.delete('/friends/:friendshipId', async (c) => {
   const session = c.get('customerSchedulingAuth');
   try {
-    const result = await removeFriendship(db as never, {
-      actorAccountId: session.customerId,
-      friendshipId: c.req.param('friendshipId'),
-    });
+    const result = await removeFriendship(
+      db as never,
+      { cancelRuntimeReminder },
+      {
+        actorAccountId: session.customerId,
+        friendshipId: c.req.param('friendshipId'),
+      },
+    );
     return c.json({ ok: true, data: friendRequestActionDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friendship_failed') }, 400);
@@ -270,10 +276,14 @@ customerSchedulingRouter.post('/blocks', async (c) => {
     return c.json({ ok: false, error: 'invalid_body' }, 400);
   }
   try {
-    const result = await blockAccount(db as never, {
-      blockerAccountId: session.customerId,
-      blockedAccountId: body['blockedAccountId'].trim(),
-    });
+    const result = await blockAccount(
+      db as never,
+      { cancelRuntimeReminder },
+      {
+        blockerAccountId: session.customerId,
+        blockedAccountId: body['blockedAccountId'].trim(),
+      },
+    );
     return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);

@@ -49,6 +49,13 @@ interface ReminderProjectionRecord {
   [key: string]: unknown;
 }
 
+interface ProjectionCreationResult {
+  runtimeReminderId: string;
+  created: boolean;
+  ownerAccountId: string;
+  role: SharedReminderProjectionRole;
+}
+
 const STALE_PENDING_CLAIM_MS = 5 * 60 * 1000;
 
 export interface ReminderRuntimePort {
@@ -74,6 +81,7 @@ export interface SharedReminderClient {
   };
   reminderProjection: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
     findFirst(args: { where: Record<string, unknown> }): Promise<ReminderProjectionRecord | null>;
   };
   productNotification: {
@@ -315,6 +323,77 @@ async function reconcileRequesterReminderId(
   return { ...request, requesterReminderId: runtimeReminderId };
 }
 
+async function finalizeRequesterProjection(
+  client: SharedReminderClient,
+  reminderRuntime: ReminderRuntimePort,
+  input: {
+    request: SharedReminderRequestRecord;
+    projection: ProjectionCreationResult;
+    idempotencyKey: string;
+  },
+): Promise<Record<string, unknown>> {
+  const transition = await client.sharedReminderRequest.updateMany({
+    where: { id: input.request.id, status: 'pending_invitee_confirmation' },
+    data: { requesterReminderId: input.projection.runtimeReminderId },
+  });
+  if (transition.count !== 1) {
+    if (input.projection.created) {
+      await cleanupCreatedProjection(client, reminderRuntime, {
+        requestId: input.request.id,
+        ownerAccountId: input.projection.ownerAccountId,
+        runtimeReminderId: input.projection.runtimeReminderId,
+        role: input.projection.role,
+      });
+    }
+    throw new Error('shared_reminder_not_found');
+  }
+  await recordEvent(client, {
+    requestId: input.request.id,
+    fromState: null,
+    toState: 'pending_invitee_confirmation',
+    actorAccountId: input.request.requesterAccountId,
+    actorRole: 'requester',
+    idempotencyKey: input.idempotencyKey,
+  });
+  await enqueueSharedReminderNotification(client, {
+    requestId: input.request.id,
+    recipientAccountId: input.request.inviteeAccountId,
+    kind: 'shared_reminder_request',
+    text: '你有一个共享提醒请求，请确认或拒绝。',
+    allowedActions: ['accept', 'reject'],
+  });
+  return { ...input.request, requesterReminderId: input.projection.runtimeReminderId };
+}
+
+async function reconcileOrResumeRequesterProjection(
+  client: SharedReminderClient,
+  reminderRuntime: ReminderRuntimePort,
+  request: SharedReminderRequestRecord,
+  idempotencyKey: string,
+): Promise<Record<string, unknown>> {
+  const reconciled = await reconcileRequesterReminderId(client, request);
+  if (
+    reconciled.requesterReminderId ||
+    reconciled.status !== 'pending_invitee_confirmation'
+  ) {
+    return reconciled;
+  }
+  const projection = await createProjection(client, reminderRuntime, {
+    request,
+    ownerAccountId: request.requesterAccountId,
+    title: request.title,
+    fireAt: request.fireAt,
+    timezone: request.timezone,
+    role: 'requester',
+    counterpartyAccountId: request.inviteeAccountId,
+  });
+  return finalizeRequesterProjection(client, reminderRuntime, {
+    request,
+    projection,
+    idempotencyKey,
+  });
+}
+
 async function resolveRequesterReminderId(
   client: Pick<SharedReminderClient, 'reminderProjection'>,
   request: SharedReminderRequestRecord,
@@ -369,6 +448,29 @@ async function reconcileInviteeProjectionAsAccepted(
   throw new Error('shared_reminder_not_found');
 }
 
+async function cleanupCreatedProjection(
+  client: Pick<SharedReminderClient, 'reminderProjection'>,
+  reminderRuntime: ReminderRuntimePort,
+  input: {
+    requestId: string;
+    ownerAccountId: string;
+    runtimeReminderId: string;
+    role: SharedReminderProjectionRole;
+  },
+): Promise<void> {
+  await client.reminderProjection.deleteMany({
+    where: {
+      sharedReminderRequestId: input.requestId,
+      role: input.role,
+      runtimeReminderId: input.runtimeReminderId,
+    },
+  });
+  await cancelProjection(reminderRuntime, {
+    customerId: input.ownerAccountId,
+    reminderId: input.runtimeReminderId,
+  });
+}
+
 async function createProjection(
   client: Pick<SharedReminderClient, 'reminderProjection'>,
   reminderRuntime: ReminderRuntimePort,
@@ -381,7 +483,7 @@ async function createProjection(
     role: SharedReminderProjectionRole;
     counterpartyAccountId: string;
   },
-): Promise<string> {
+): Promise<ProjectionCreationResult> {
   const when = splitInstant(input.fireAt, input.timezone);
   const projection = await reminderRuntime.createRuntimeReminder({
     customerId: input.ownerAccountId,
@@ -419,7 +521,12 @@ async function createProjection(
           customerId: input.ownerAccountId,
           reminderId: runtimeReminderId,
         });
-        return existing.runtimeReminderId;
+        return {
+          runtimeReminderId: existing.runtimeReminderId,
+          created: false,
+          ownerAccountId: input.ownerAccountId,
+          role: input.role,
+        };
       }
     }
     try {
@@ -432,7 +539,12 @@ async function createProjection(
     }
     throw new Error('reminder_projection_failed');
   }
-  return runtimeReminderId;
+  return {
+    runtimeReminderId,
+    created: true,
+    ownerAccountId: input.ownerAccountId,
+    role: input.role,
+  };
 }
 
 async function cancelProjection(
@@ -606,12 +718,12 @@ export async function createSharedReminder(
     if (!existing) {
       throw error;
     }
-    return reconcileRequesterReminderId(client, existing);
+    return reconcileOrResumeRequesterProjection(client, reminderRuntime, existing, idempotencyKey);
   }
 
-  let runtimeReminderId: string;
+  let projection: ProjectionCreationResult;
   try {
-    runtimeReminderId = await createProjection(client, reminderRuntime, {
+    projection = await createProjection(client, reminderRuntime, {
       request,
       ownerAccountId: requesterAccountId,
       title,
@@ -628,26 +740,11 @@ export async function createSharedReminder(
     throw error;
   }
 
-  await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation' },
-    data: { requesterReminderId: runtimeReminderId },
-  });
-  await recordEvent(client, {
-    requestId: request.id,
-    fromState: null,
-    toState: 'pending_invitee_confirmation',
-    actorAccountId: requesterAccountId,
-    actorRole: 'requester',
+  return finalizeRequesterProjection(client, reminderRuntime, {
+    request,
+    projection,
     idempotencyKey,
   });
-  await enqueueSharedReminderNotification(client, {
-    requestId: request.id,
-    recipientAccountId: inviteeAccountId,
-    kind: 'shared_reminder_request',
-    text: '你有一个共享提醒请求，请确认或拒绝。',
-    allowedActions: ['accept', 'reject'],
-  });
-  return { ...request, requesterReminderId: runtimeReminderId };
 }
 
 export async function acceptSharedReminder(
@@ -691,10 +788,15 @@ export async function acceptSharedReminder(
   if (!('claimedAt' in claim)) {
     return claim;
   }
-  let inviteeReminderId: string;
+  let inviteeProjection: ProjectionCreationResult;
   try {
-    inviteeReminderId = existingInviteeProjection
-      ? existingInviteeProjection.runtimeReminderId
+    inviteeProjection = existingInviteeProjection
+      ? {
+          runtimeReminderId: existingInviteeProjection.runtimeReminderId,
+          created: false,
+          ownerAccountId: actorAccountId,
+          role: 'invitee',
+        }
       : await createProjection(client, reminderRuntime, {
           request,
           ownerAccountId: actorAccountId,
@@ -715,9 +817,22 @@ export async function acceptSharedReminder(
       inviteeAccountId: actorAccountId,
       resolvedAt: claim.claimedAt,
     },
-    data: { status: 'accepted', inviteeReminderId },
+    data: { status: 'accepted', inviteeReminderId: inviteeProjection.runtimeReminderId },
   });
   if (finalize.count !== 1) {
+    const latest = await readSharedReminderRequest(client, request.id);
+    if (latest.status === 'accepted') {
+      return { id: latest.id, status: 'accepted' };
+    }
+    if (inviteeProjection.created) {
+      await cleanupCreatedProjection(client, reminderRuntime, {
+        requestId: request.id,
+        ownerAccountId: inviteeProjection.ownerAccountId,
+        runtimeReminderId: inviteeProjection.runtimeReminderId,
+        role: inviteeProjection.role,
+      });
+    }
+    await rollbackPendingClaim(client, claim, 'inviteeAccountId', actorAccountId);
     throw new Error('shared_reminder_not_found');
   }
   await recordEvent(client, {

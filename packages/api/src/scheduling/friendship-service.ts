@@ -27,6 +27,29 @@ interface FriendshipRecord {
   status: FriendshipStatus;
 }
 
+interface SharedReminderRequestRecord {
+  id: string;
+  requesterAccountId: string;
+  inviteeAccountId: string;
+  requesterReminderId?: string | null;
+  status: SharedReminderRequestStatus;
+}
+
+interface ReminderProjectionRecord {
+  id: string;
+  sharedReminderRequestId: string;
+  ownerAccountId: string;
+  runtimeReminderId: string;
+  role: 'requester' | 'invitee';
+}
+
+interface ReminderRuntimePort {
+  cancelRuntimeReminder(input: {
+    customerId: string;
+    reminderId: string;
+  }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }>;
+}
+
 interface FriendshipClient {
   friendRequest: {
     findMany(args: {
@@ -63,6 +86,10 @@ interface FriendshipClient {
     deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
   };
   sharedReminderRequest: {
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy?: Record<string, unknown> | Record<string, unknown>[];
+    }): Promise<SharedReminderRequestRecord[]>;
     updateMany(args: {
       where: Record<string, unknown>;
       data: {
@@ -70,6 +97,9 @@ interface FriendshipClient {
         resolvedAt: Date;
       };
     }): Promise<{ count: number }>;
+  };
+  reminderProjection: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<ReminderProjectionRecord | null>;
   };
   productNotification: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
@@ -234,10 +264,55 @@ function terminalRetryResult(
   throw new Error('friend_request_not_found');
 }
 
+async function resolveRequesterReminderId(
+  client: Pick<FriendshipClient, 'reminderProjection'>,
+  request: SharedReminderRequestRecord,
+): Promise<string | null | undefined> {
+  if (request.requesterReminderId) {
+    return request.requesterReminderId;
+  }
+  const projection = await client.reminderProjection.findFirst({
+    where: {
+      sharedReminderRequestId: request.id,
+      role: 'requester',
+    },
+  });
+  return projection?.runtimeReminderId;
+}
+
+async function cancelRequesterProjection(
+  reminderRuntime: ReminderRuntimePort | null,
+  request: SharedReminderRequestRecord,
+  reminderId: string | null | undefined,
+): Promise<void> {
+  if (!reminderId) {
+    return;
+  }
+  if (!reminderRuntime) {
+    throw new Error('reminder_projection_failed');
+  }
+  const result = await reminderRuntime.cancelRuntimeReminder({
+    customerId: request.requesterAccountId,
+    reminderId,
+  });
+  if (!result.ok && result.error !== 'invalid_reminder') {
+    throw new Error('reminder_projection_failed');
+  }
+}
+
 async function invalidatePendingSharedReminders(
-  client: Pick<FriendshipClient, 'sharedReminderRequest'>,
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  reminderRuntime: ReminderRuntimePort | null,
   where: Record<string, unknown>,
 ): Promise<{ count: number }> {
+  const pendingRequests = await client.sharedReminderRequest.findMany({
+    where,
+    orderBy: { createdAt: 'asc' },
+  });
+  for (const request of pendingRequests) {
+    const requesterReminderId = await resolveRequesterReminderId(client, request);
+    await cancelRequesterProjection(reminderRuntime, request, requesterReminderId);
+  }
   return client.sharedReminderRequest.updateMany({
     where,
     data: { status: 'invalidated', resolvedAt: new Date() },
@@ -358,8 +433,11 @@ export async function listFriends(
 
 export async function removeFriendship(
   client: FriendshipClient,
-  input: { actorAccountId: string; friendshipId: string },
+  runtimeOrInput: ReminderRuntimePort | { actorAccountId: string; friendshipId: string },
+  maybeInput?: { actorAccountId: string; friendshipId: string },
 ): Promise<{ id: string; status: FriendshipStatus }> {
+  const reminderRuntime = maybeInput ? (runtimeOrInput as ReminderRuntimePort) : null;
+  const input = maybeInput ?? (runtimeOrInput as { actorAccountId: string; friendshipId: string });
   const actorAccountId = nonEmpty(input.actorAccountId, 'invalid_account');
   const friendshipId = nonEmpty(input.friendshipId, 'friendship_not_found');
 
@@ -379,18 +457,25 @@ export async function removeFriendship(
       where: { id: friendship.id, status: 'active' },
       data: { status: 'removed', removedAt: new Date() },
     });
-    await invalidatePendingSharedReminders(writeClient, {
-      friendshipId: friendship.id,
-      status: 'pending_invitee_confirmation',
-    });
+    await invalidatePendingSharedReminders(
+      writeClient,
+      reminderRuntime,
+      {
+        friendshipId: friendship.id,
+        status: 'pending_invitee_confirmation',
+      },
+    );
     return { id: friendship.id, status: 'removed' };
   });
 }
 
 export async function blockAccount(
   client: FriendshipClient,
-  input: { blockerAccountId: string; blockedAccountId: string },
+  runtimeOrInput: ReminderRuntimePort | { blockerAccountId: string; blockedAccountId: string },
+  maybeInput?: { blockerAccountId: string; blockedAccountId: string },
 ): Promise<{ blockerAccountId: string; blockedAccountId: string }> {
+  const reminderRuntime = maybeInput ? (runtimeOrInput as ReminderRuntimePort) : null;
+  const input = maybeInput ?? (runtimeOrInput as { blockerAccountId: string; blockedAccountId: string });
   const blockerAccountId = nonEmpty(input.blockerAccountId, 'invalid_account');
   const blockedAccountId = nonEmpty(input.blockedAccountId, 'invalid_account');
   if (blockerAccountId === blockedAccountId) {
@@ -429,6 +514,7 @@ export async function blockAccount(
     }
     await invalidatePendingSharedReminders(
       writeClient,
+      reminderRuntime,
       sharedReminderPairWhere({
         friendshipId: friendship?.id ?? null,
         blockerAccountId,
