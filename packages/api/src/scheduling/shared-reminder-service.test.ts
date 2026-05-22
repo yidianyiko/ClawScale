@@ -341,6 +341,58 @@ describe('shared reminder service', () => {
     expect(client.productNotification.create).not.toHaveBeenCalled();
   });
 
+  it('does not return stale pending success when duplicate requester reconciliation loses a race', async () => {
+    const existingRequest = {
+      id: 'srr_existing',
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      requesterReminderId: null,
+      title: 'meeting',
+      fireAt: new Date('2026-05-22T07:00:00.000Z'),
+      timezone: 'Asia/Shanghai',
+      status: 'pending_invitee_confirmation',
+      idempotencyKey: 'shared:retry-reconcile-race',
+    };
+    const latestRequest = {
+      ...existingRequest,
+      status: 'invalidated',
+      resolvedAt: new Date('2026-05-22T06:00:00.000Z'),
+    };
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+      sharedReminderRequest: existingRequest,
+      reminderProjection: {
+        id: 'rp_req_1',
+        sharedReminderRequestId: 'srr_existing',
+        ownerAccountId: 'acct_b',
+        runtimeReminderId: 'rem_req_existing',
+        role: 'requester',
+      },
+    });
+    client.sharedReminderRequest.create.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+    );
+    client.sharedReminderRequest.findFirst
+      .mockResolvedValueOnce(existingRequest)
+      .mockResolvedValueOnce(latestRequest);
+    client.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'shared:retry-reconcile-race',
+      }),
+    ).resolves.toMatchObject({ id: 'srr_existing', status: 'invalidated' });
+
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+    expect(client.productNotification.create).not.toHaveBeenCalled();
+  });
+
   it('resumes requester projection creation on duplicate create when the pending row has no projection', async () => {
     const existingRequest = {
       id: 'srr_existing',

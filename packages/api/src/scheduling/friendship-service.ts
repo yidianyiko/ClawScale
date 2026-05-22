@@ -44,6 +44,7 @@ interface ReminderProjectionRecord {
 }
 
 interface RequesterProjectionCancellation {
+  requestId: string;
   customerId: string;
   reminderId: string;
 }
@@ -97,14 +98,12 @@ interface FriendshipClient {
     }): Promise<SharedReminderRequestRecord[]>;
     updateMany(args: {
       where: Record<string, unknown>;
-      data: {
-        status: SharedReminderRequestStatus;
-        resolvedAt: Date;
-      };
+      data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
   reminderProjection: {
     findFirst(args: { where: Record<string, unknown> }): Promise<ReminderProjectionRecord | null>;
+    deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
   };
   productNotification: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
@@ -303,12 +302,35 @@ async function cancelRequesterProjection(
 }
 
 async function cancelRequesterProjections(
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
   reminderRuntime: ReminderRuntimePort | null,
   cancellations: RequesterProjectionCancellation[],
 ): Promise<void> {
   for (const cancellation of dedupeRequesterProjectionCancellations(cancellations)) {
     await cancelRequesterProjection(reminderRuntime, cancellation);
+    await markRequesterProjectionCleanupComplete(client, cancellation);
   }
+}
+
+async function markRequesterProjectionCleanupComplete(
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  cancellation: RequesterProjectionCancellation,
+): Promise<void> {
+  await client.reminderProjection.deleteMany({
+    where: {
+      sharedReminderRequestId: cancellation.requestId,
+      role: 'requester',
+      runtimeReminderId: cancellation.reminderId,
+    },
+  });
+  await client.sharedReminderRequest.updateMany({
+    where: {
+      id: cancellation.requestId,
+      status: 'invalidated',
+      requesterReminderId: cancellation.reminderId,
+    },
+    data: { requesterReminderId: null },
+  });
 }
 
 function dedupeRequesterProjectionCancellations(
@@ -338,6 +360,7 @@ async function collectRequesterProjectionCancellations(
     const requesterReminderId = await resolveRequesterReminderId(client, request);
     if (requesterReminderId) {
       requesterProjections.push({
+        requestId: request.id,
         customerId: request.requesterAccountId,
         reminderId: requesterReminderId,
       });
@@ -368,6 +391,7 @@ async function invalidatePendingSharedReminders(
     const requesterReminderId = await resolveRequesterReminderId(client, request);
     if (requesterReminderId) {
       requesterProjections.push({
+        requestId: request.id,
         customerId: request.requesterAccountId,
         reminderId: requesterReminderId,
       });
@@ -563,7 +587,7 @@ export async function removeFriendship(
       ],
     };
   });
-  await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
+  await cancelRequesterProjections(client, reminderRuntime, result.requesterProjections);
   return result.friendship;
 }
 
@@ -636,7 +660,7 @@ export async function blockAccount(
       ],
     };
   });
-  await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
+  await cancelRequesterProjections(client, reminderRuntime, result.requesterProjections);
   return result.block;
 }
 

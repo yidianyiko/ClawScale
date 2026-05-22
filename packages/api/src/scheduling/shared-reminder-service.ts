@@ -312,7 +312,7 @@ async function reconcileRequesterReminderId(
     return request;
   }
   const runtimeReminderId = projection.runtimeReminderId;
-  await client.sharedReminderRequest.updateMany({
+  const transition = await client.sharedReminderRequest.updateMany({
     where: {
       id: request.id,
       status: 'pending_invitee_confirmation',
@@ -320,7 +320,17 @@ async function reconcileRequesterReminderId(
     },
     data: { requesterReminderId: runtimeReminderId },
   });
-  return { ...request, requesterReminderId: runtimeReminderId };
+  if (transition.count === 1) {
+    return { ...request, requesterReminderId: runtimeReminderId };
+  }
+  const latest = await readSharedReminderRequest(client, request.id);
+  if (latest.status !== 'pending_invitee_confirmation') {
+    return latest;
+  }
+  if (latest.requesterReminderId) {
+    return latest;
+  }
+  throw new Error('shared_reminder_not_found');
 }
 
 async function invalidateRequestForMissingFriendship(
