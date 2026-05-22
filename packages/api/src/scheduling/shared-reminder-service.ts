@@ -815,6 +815,7 @@ export async function acceptSharedReminder(
   if (!('claimedAt' in claim)) {
     return claim;
   }
+  await ensureRequestFriendshipStillActive(client, request);
   let inviteeProjection: ProjectionCreationResult;
   try {
     inviteeProjection = existingInviteeProjection
@@ -919,6 +920,7 @@ export async function rejectSharedReminder(
   if (!('claimedAt' in claim)) {
     return claim;
   }
+  await ensureRequestFriendshipStillActive(client, request);
   try {
     const requesterReminderId = await resolveRequesterReminderId(client, request);
     await cancelProjection(reminderRuntime, {
@@ -998,6 +1000,7 @@ export async function cancelSharedReminder(
   if (!('claimedAt' in claim)) {
     return claim;
   }
+  await ensureRequestFriendshipStillActive(client, request);
   try {
     const requesterReminderId = await resolveRequesterReminderId(client, request);
     await cancelProjection(reminderRuntime, {

@@ -43,6 +43,11 @@ interface ReminderProjectionRecord {
   role: 'requester' | 'invitee';
 }
 
+interface RequesterProjectionCancellation {
+  customerId: string;
+  reminderId: string;
+}
+
 interface ReminderRuntimePort {
   cancelRuntimeReminder(input: {
     customerId: string;
@@ -282,41 +287,52 @@ async function resolveRequesterReminderId(
 
 async function cancelRequesterProjection(
   reminderRuntime: ReminderRuntimePort | null,
-  request: SharedReminderRequestRecord,
-  reminderId: string | null | undefined,
+  input: RequesterProjectionCancellation,
 ): Promise<void> {
-  if (!reminderId) {
-    return;
-  }
   if (!reminderRuntime) {
     throw new Error('reminder_projection_failed');
   }
   const result = await reminderRuntime.cancelRuntimeReminder({
-    customerId: request.requesterAccountId,
-    reminderId,
+    customerId: input.customerId,
+    reminderId: input.reminderId,
   });
   if (!result.ok && result.error !== 'invalid_reminder') {
     throw new Error('reminder_projection_failed');
   }
 }
 
+async function cancelRequesterProjections(
+  reminderRuntime: ReminderRuntimePort | null,
+  cancellations: RequesterProjectionCancellation[],
+): Promise<void> {
+  for (const cancellation of cancellations) {
+    await cancelRequesterProjection(reminderRuntime, cancellation);
+  }
+}
+
 async function invalidatePendingSharedReminders(
   client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
-  reminderRuntime: ReminderRuntimePort | null,
   where: Record<string, unknown>,
-): Promise<{ count: number }> {
+): Promise<{ count: number; requesterProjections: RequesterProjectionCancellation[] }> {
   const pendingRequests = await client.sharedReminderRequest.findMany({
     where,
     orderBy: { createdAt: 'asc' },
   });
+  const requesterProjections: RequesterProjectionCancellation[] = [];
   for (const request of pendingRequests) {
     const requesterReminderId = await resolveRequesterReminderId(client, request);
-    await cancelRequesterProjection(reminderRuntime, request, requesterReminderId);
+    if (requesterReminderId) {
+      requesterProjections.push({
+        customerId: request.requesterAccountId,
+        reminderId: requesterReminderId,
+      });
+    }
   }
-  return client.sharedReminderRequest.updateMany({
+  const result = await client.sharedReminderRequest.updateMany({
     where,
     data: { status: 'invalidated', resolvedAt: new Date() },
   });
+  return { count: result.count, requesterProjections };
 }
 
 export async function listFriendRequests(
@@ -441,7 +457,7 @@ export async function removeFriendship(
   const actorAccountId = nonEmpty(input.actorAccountId, 'invalid_account');
   const friendshipId = nonEmpty(input.friendshipId, 'friendship_not_found');
 
-  return runWrite(client, async (writeClient) => {
+  const result = await runWrite(client, async (writeClient) => {
     const friendship = await writeClient.friendship.findFirst({
       where: {
         id: friendshipId,
@@ -457,16 +473,20 @@ export async function removeFriendship(
       where: { id: friendship.id, status: 'active' },
       data: { status: 'removed', removedAt: new Date() },
     });
-    await invalidatePendingSharedReminders(
+    const invalidation = await invalidatePendingSharedReminders(
       writeClient,
-      reminderRuntime,
       {
         friendshipId: friendship.id,
         status: 'pending_invitee_confirmation',
       },
     );
-    return { id: friendship.id, status: 'removed' };
+    return {
+      friendship: { id: friendship.id, status: 'removed' as const },
+      requesterProjections: invalidation.requesterProjections,
+    };
   });
+  await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
+  return result.friendship;
 }
 
 export async function blockAccount(
@@ -482,7 +502,7 @@ export async function blockAccount(
     throw new Error('cannot_friend_self');
   }
 
-  return runWrite(client, async (writeClient) => {
+  const result = await runWrite(client, async (writeClient) => {
     await writeClient.friendRequest.updateMany({
       where: {
         status: 'pending',
@@ -512,9 +532,8 @@ export async function blockAccount(
         data: { status: 'removed', removedAt: new Date() },
       });
     }
-    await invalidatePendingSharedReminders(
+    const invalidation = await invalidatePendingSharedReminders(
       writeClient,
-      reminderRuntime,
       sharedReminderPairWhere({
         friendshipId: friendship?.id ?? null,
         blockerAccountId,
@@ -522,8 +541,13 @@ export async function blockAccount(
       }),
     );
 
-    return { blockerAccountId, blockedAccountId };
+    return {
+      block: { blockerAccountId, blockedAccountId },
+      requesterProjections: invalidation.requesterProjections,
+    };
   });
+  await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
+  return result.block;
 }
 
 export async function unblockAccount(
