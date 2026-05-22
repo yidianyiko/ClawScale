@@ -67,13 +67,48 @@ describe('customer scheduling routes', () => {
     });
     scheduling.disableUserLink.mockResolvedValue({ count: 1 });
     friendships.listFriendRequests.mockResolvedValue([
-      { id: 'fr_1', requesterAccountId: 'ck_other', targetAccountId: 'ck_123', status: 'pending' },
+      {
+        id: 'fr_1',
+        requesterAccountId: 'ck_other',
+        targetAccountId: 'ck_123',
+        linkSessionId: 'ls_internal',
+        idempotencyKey: 'idem_internal',
+        status: 'pending',
+        createdAt: new Date('2026-05-22T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-22T00:00:00.000Z'),
+      },
     ]);
-    friendships.acceptFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'accepted' });
-    friendships.rejectFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'rejected' });
-    friendships.cancelFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'cancelled' });
-    friendships.listFriends.mockResolvedValue([{ id: 'fs_1', accountAId: 'ck_123', accountBId: 'ck_other' }]);
-    friendships.removeFriendship.mockResolvedValue({ id: 'fs_1', status: 'removed' });
+    friendships.acceptFriendRequest.mockResolvedValue({
+      id: 'fr_1',
+      requesterAccountId: 'ck_other',
+      targetAccountId: 'ck_123',
+      linkSessionId: 'ls_internal',
+      idempotencyKey: 'idem_internal',
+      status: 'accepted',
+      resolvedAt: new Date('2026-05-22T00:00:00.000Z'),
+    });
+    friendships.rejectFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'rejected', idempotencyKey: 'idem_internal' });
+    friendships.cancelFriendRequest.mockResolvedValue({
+      id: 'fr_1',
+      status: 'cancelled',
+      linkSessionId: 'ls_internal',
+    });
+    friendships.listFriends.mockResolvedValue([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_123',
+        accountBId: 'ck_other',
+        friendRequestId: 'fr_1',
+        status: 'active',
+        createdAt: new Date('2026-05-22T00:00:00.000Z'),
+      },
+    ]);
+    friendships.removeFriendship.mockResolvedValue({
+      id: 'fs_1',
+      status: 'removed',
+      accountAId: 'ck_123',
+      accountBId: 'ck_other',
+    });
     friendships.blockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
     friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
   });
@@ -133,8 +168,35 @@ describe('customer scheduling routes', () => {
     });
     await expect(res.json()).resolves.toEqual({
       ok: true,
-      data: [{ id: 'fr_1', requesterAccountId: 'ck_other', targetAccountId: 'ck_123', status: 'pending' }],
+      data: [{ id: 'fr_1', status: 'pending', direction: 'incoming', counterpartAccountId: 'ck_other' }],
     });
+  });
+
+  it('does not expose internal friend request fields in customer responses', async () => {
+    const listRes = await createApp().request('/api/customer/scheduling/friend-requests', {
+      headers: { authorization: 'Bearer customer-token' },
+    });
+    const actionRes = await createApp().request('/api/customer/scheduling/friend-requests/fr_1/accept', {
+      method: 'POST',
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    const listBody = await listRes.json();
+    const actionBody = await actionRes.json();
+
+    expect(listBody.data[0]).toEqual({
+      id: 'fr_1',
+      status: 'pending',
+      direction: 'incoming',
+      counterpartAccountId: 'ck_other',
+    });
+    expect(actionBody.data).toEqual({ id: 'fr_1', status: 'accepted' });
+    expect(listBody.data[0]).not.toHaveProperty('linkSessionId');
+    expect(listBody.data[0]).not.toHaveProperty('idempotencyKey');
+    expect(listBody.data[0]).not.toHaveProperty('createdAt');
+    expect(actionBody.data).not.toHaveProperty('requesterAccountId');
+    expect(actionBody.data).not.toHaveProperty('targetAccountId');
+    expect(actionBody.data).not.toHaveProperty('resolvedAt');
   });
 
   it('accepts, rejects, and cancels friend requests as the authenticated customer', async () => {
@@ -149,6 +211,10 @@ describe('customer scheduling routes', () => {
       });
 
       expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({
+        ok: true,
+        data: { id: 'fr_1', status: action === 'accept' ? 'accepted' : action === 'reject' ? 'rejected' : 'cancelled' },
+      });
       expect(service).toHaveBeenCalledWith(db as never, {
         actorAccountId: 'ck_123',
         requestId: 'fr_1',
@@ -168,6 +234,14 @@ describe('customer scheduling routes', () => {
 
     expect(listRes.status).toBe(200);
     expect(deleteRes.status).toBe(200);
+    await expect(listRes.json()).resolves.toEqual({
+      ok: true,
+      data: [{ id: 'fs_1', status: 'active', counterpartAccountId: 'ck_other' }],
+    });
+    await expect(deleteRes.json()).resolves.toEqual({
+      ok: true,
+      data: { id: 'fs_1', status: 'removed' },
+    });
     expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
       accountId: 'ck_123',
     });
@@ -192,6 +266,10 @@ describe('customer scheduling routes', () => {
       blockerAccountId: 'ck_123',
       blockedAccountId: 'ck_other',
     });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: { blockedAccountId: 'ck_other' },
+    });
   });
 
   it('unblocks as the authenticated customer', async () => {
@@ -204,6 +282,10 @@ describe('customer scheduling routes', () => {
     expect(friendships.unblockAccount).toHaveBeenCalledWith(db as never, {
       blockerAccountId: 'ck_123',
       blockedAccountId: 'ck_other',
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: { blockedAccountId: 'ck_other' },
     });
   });
 

@@ -105,6 +105,47 @@ function actionIdempotencyKey(action: string, actorAccountId: string, requestId:
   return `${action}:${actorAccountId}:${requestId}`;
 }
 
+function stringField(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function friendRequestDto(row: Record<string, unknown>, accountId: string): Record<string, string> {
+  const requesterAccountId = stringField(row, 'requesterAccountId');
+  const targetAccountId = stringField(row, 'targetAccountId');
+  const direction = targetAccountId === accountId ? 'incoming' : 'outgoing';
+  const counterpartAccountId = targetAccountId === accountId ? requesterAccountId : targetAccountId;
+  return {
+    id: stringField(row, 'id'),
+    status: stringField(row, 'status'),
+    direction,
+    counterpartAccountId,
+  };
+}
+
+function friendRequestActionDto(row: Record<string, unknown>): Record<string, string> {
+  return {
+    id: stringField(row, 'id'),
+    status: stringField(row, 'status'),
+  };
+}
+
+function friendDto(row: Record<string, unknown>, accountId: string): Record<string, string> {
+  const accountAId = stringField(row, 'accountAId');
+  const accountBId = stringField(row, 'accountBId');
+  return {
+    id: stringField(row, 'id'),
+    status: stringField(row, 'status'),
+    counterpartAccountId: accountAId === accountId ? accountBId : accountAId,
+  };
+}
+
+function blockDto(row: Record<string, unknown>): Record<string, string> {
+  return {
+    blockedAccountId: stringField(row, 'blockedAccountId'),
+  };
+}
+
 customerSchedulingRouter.use('*', requireCustomerSchedulingAuth);
 
 customerSchedulingRouter.get('/user-link', async (c) => {
@@ -137,7 +178,12 @@ customerSchedulingRouter.get('/friend-requests', async (c) => {
     const result = await listFriendRequests(db as never, {
       accountId: session.customerId,
     });
-    return c.json({ ok: true, data: result });
+    return c.json({
+      ok: true,
+      data: result.map((row) =>
+        friendRequestDto(row as unknown as Record<string, unknown>, session.customerId),
+      ),
+    });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friend_request_failed') }, 400);
   }
@@ -152,7 +198,7 @@ customerSchedulingRouter.post('/friend-requests/:id/accept', async (c) => {
       requestId,
       idempotencyKey: actionIdempotencyKey('accept', session.customerId, requestId),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friend_request_failed') }, 400);
   }
@@ -167,7 +213,7 @@ customerSchedulingRouter.post('/friend-requests/:id/reject', async (c) => {
       requestId,
       idempotencyKey: actionIdempotencyKey('reject', session.customerId, requestId),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friend_request_failed') }, 400);
   }
@@ -182,7 +228,7 @@ customerSchedulingRouter.post('/friend-requests/:id/cancel', async (c) => {
       requestId,
       idempotencyKey: actionIdempotencyKey('cancel', session.customerId, requestId),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friend_request_failed') }, 400);
   }
@@ -194,7 +240,10 @@ customerSchedulingRouter.get('/friends', async (c) => {
     const result = await listFriends(db as never, {
       accountId: session.customerId,
     });
-    return c.json({ ok: true, data: result });
+    return c.json({
+      ok: true,
+      data: result.map((row) => friendDto(row as unknown as Record<string, unknown>, session.customerId)),
+    });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friendship_failed') }, 400);
   }
@@ -207,7 +256,7 @@ customerSchedulingRouter.delete('/friends/:friendshipId', async (c) => {
       actorAccountId: session.customerId,
       friendshipId: c.req.param('friendshipId'),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: friendRequestActionDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friendship_failed') }, 400);
   }
@@ -224,7 +273,7 @@ customerSchedulingRouter.post('/blocks', async (c) => {
       blockerAccountId: session.customerId,
       blockedAccountId: body['blockedAccountId'].trim(),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);
   }
@@ -237,7 +286,7 @@ customerSchedulingRouter.delete('/blocks/:blockedAccountId', async (c) => {
       blockerAccountId: session.customerId,
       blockedAccountId: c.req.param('blockedAccountId'),
     });
-    return c.json({ ok: true, data: result });
+    return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);
   }

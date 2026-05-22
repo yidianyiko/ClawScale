@@ -15,6 +15,11 @@ interface FriendRequestRecord {
   status: FriendRequestStatus;
 }
 
+interface FriendRequestActionResult {
+  id: string;
+  status: FriendRequestStatus;
+}
+
 interface FriendshipRecord {
   id: string;
   accountAId: string;
@@ -35,6 +40,10 @@ interface FriendshipClient {
       where: { id: string };
       data: Record<string, unknown>;
     }): Promise<FriendRequestRecord>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   friendship: {
     findMany(args: {
@@ -49,6 +58,7 @@ interface FriendshipClient {
     }): Promise<{ count: number }>;
   };
   accountBlock: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
     deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
   };
@@ -104,24 +114,6 @@ async function readFriendRequest(
     throw new Error('friend_request_not_found');
   }
   return request;
-}
-
-function assertPendingRequest(request: FriendRequestRecord): void {
-  if (request.status !== 'pending') {
-    throw new Error('friend_request_not_found');
-  }
-}
-
-function assertTargetActor(request: FriendRequestRecord, actorAccountId: string): void {
-  if (request.targetAccountId !== actorAccountId) {
-    throw new Error('not_allowed');
-  }
-}
-
-function assertRequesterActor(request: FriendRequestRecord, actorAccountId: string): void {
-  if (request.requesterAccountId !== actorAccountId) {
-    throw new Error('not_allowed');
-  }
 }
 
 async function findActiveFriendship(
@@ -195,17 +187,6 @@ async function createAcceptedNotification(
   }
 }
 
-async function updateRequestStatus(
-  client: Pick<FriendshipClient, 'friendRequest'>,
-  requestId: string,
-  status: FriendRequestStatus,
-): Promise<FriendRequestRecord> {
-  return client.friendRequest.update({
-    where: { id: requestId },
-    data: { status, resolvedAt: new Date() },
-  });
-}
-
 function sharedReminderPairWhere(input: {
   friendshipId: string | null;
   blockerAccountId: string;
@@ -219,6 +200,38 @@ function sharedReminderPairWhere(input: {
     status: 'pending_invitee_confirmation',
     OR: input.friendshipId ? [{ friendshipId: input.friendshipId }, ...pair] : pair,
   };
+}
+
+async function ensureAcceptNotBlocked(
+  client: Pick<FriendshipClient, 'accountBlock'>,
+  request: FriendRequestRecord,
+): Promise<void> {
+  const block = await client.accountBlock.findFirst({
+    where: {
+      blockerAccountId: request.targetAccountId,
+      blockedAccountId: request.requesterAccountId,
+    },
+  });
+  if (block) {
+    throw new Error('friend_request_blocked');
+  }
+}
+
+function terminalRetryResult(
+  request: FriendRequestRecord,
+  input: {
+    actorAccountId: string;
+    actorField: 'requesterAccountId' | 'targetAccountId';
+    intendedStatus: FriendRequestStatus;
+  },
+): { id: string; status: FriendRequestStatus } {
+  if (
+    request[input.actorField] === input.actorAccountId &&
+    request.status === input.intendedStatus
+  ) {
+    return { id: request.id, status: request.status };
+  }
+  throw new Error('friend_request_not_found');
 }
 
 async function invalidatePendingSharedReminders(
@@ -253,52 +266,72 @@ export async function acceptFriendRequest(
   const idempotencyKey = nonEmpty(input.idempotencyKey, 'invalid_idempotency_key');
 
   return runWrite(client, async (writeClient) => {
+    const transition = await writeClient.friendRequest.updateMany({
+      where: { id: requestId, status: 'pending', targetAccountId: actorAccountId },
+      data: { status: 'accepted', resolvedAt: new Date() },
+    });
     const request = await readFriendRequest(writeClient, requestId);
-    if (request.status === 'accepted' && request.targetAccountId === actorAccountId) {
-      const pair = canonicalPair(request.requesterAccountId, request.targetAccountId);
-      await ensureActiveFriendship(writeClient, { ...pair, friendRequestId: request.id });
-      return request;
+    if (transition.count !== 1) {
+      if (request.targetAccountId !== actorAccountId || request.status !== 'accepted') {
+        throw new Error('friend_request_not_found');
+      }
     }
-    assertPendingRequest(request);
-    assertTargetActor(request, actorAccountId);
 
+    await ensureAcceptNotBlocked(writeClient, request);
     const pair = canonicalPair(request.requesterAccountId, request.targetAccountId);
     await ensureActiveFriendship(writeClient, { ...pair, friendRequestId: request.id });
-    const updated = await updateRequestStatus(writeClient, request.id, 'accepted');
     await createAcceptedNotification(writeClient, { request, idempotencyKey });
-    return updated;
+    return request;
   });
 }
 
 export async function rejectFriendRequest(
   client: FriendshipClient,
   input: { actorAccountId: string; requestId: string; idempotencyKey: string },
-): Promise<FriendRequestRecord> {
+): Promise<FriendRequestActionResult> {
   const actorAccountId = nonEmpty(input.actorAccountId, 'invalid_account');
   const requestId = nonEmpty(input.requestId, 'friend_request_not_found');
   nonEmpty(input.idempotencyKey, 'invalid_idempotency_key');
 
   return runWrite(client, async (writeClient) => {
+    const transition = await writeClient.friendRequest.updateMany({
+      where: { id: requestId, status: 'pending', targetAccountId: actorAccountId },
+      data: { status: 'rejected', resolvedAt: new Date() },
+    });
+    if (transition.count === 1) {
+      return { id: requestId, status: 'rejected' };
+    }
     const request = await readFriendRequest(writeClient, requestId);
-    assertPendingRequest(request);
-    assertTargetActor(request, actorAccountId);
-    return updateRequestStatus(writeClient, request.id, 'rejected');
+    return terminalRetryResult(request, {
+      actorAccountId,
+      actorField: 'targetAccountId',
+      intendedStatus: 'rejected',
+    });
   });
 }
 
 export async function cancelFriendRequest(
   client: FriendshipClient,
   input: { actorAccountId: string; requestId: string; idempotencyKey: string },
-): Promise<FriendRequestRecord> {
+): Promise<FriendRequestActionResult> {
   const actorAccountId = nonEmpty(input.actorAccountId, 'invalid_account');
   const requestId = nonEmpty(input.requestId, 'friend_request_not_found');
   nonEmpty(input.idempotencyKey, 'invalid_idempotency_key');
 
   return runWrite(client, async (writeClient) => {
+    const transition = await writeClient.friendRequest.updateMany({
+      where: { id: requestId, status: 'pending', requesterAccountId: actorAccountId },
+      data: { status: 'cancelled', resolvedAt: new Date() },
+    });
+    if (transition.count === 1) {
+      return { id: requestId, status: 'cancelled' };
+    }
     const request = await readFriendRequest(writeClient, requestId);
-    assertPendingRequest(request);
-    assertRequesterActor(request, actorAccountId);
-    return updateRequestStatus(writeClient, request.id, 'cancelled');
+    return terminalRetryResult(request, {
+      actorAccountId,
+      actorField: 'requesterAccountId',
+      intendedStatus: 'cancelled',
+    });
   });
 }
 
@@ -358,6 +391,17 @@ export async function blockAccount(
   }
 
   return runWrite(client, async (writeClient) => {
+    await writeClient.friendRequest.updateMany({
+      where: {
+        status: 'pending',
+        OR: [
+          { requesterAccountId: blockedAccountId, targetAccountId: blockerAccountId },
+          { requesterAccountId: blockerAccountId, targetAccountId: blockedAccountId },
+        ],
+      },
+      data: { status: 'cancelled', resolvedAt: new Date() },
+    });
+
     try {
       await writeClient.accountBlock.create({
         data: { blockerAccountId, blockedAccountId },
