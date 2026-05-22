@@ -10,26 +10,9 @@ const scheduling = vi.hoisted(() => ({
   getOrCreateActiveUserLink: vi.fn(),
   resetUserLink: vi.fn(),
   disableUserLink: vi.fn(),
-  previewBookableWindows: vi.fn(),
-  confirmBookableWindowPreview: vi.fn(),
-  requestAppointment: vi.fn(),
-  listPendingRequests: vi.fn(),
-  confirmAppointment: vi.fn(),
-  rejectAppointment: vi.fn(),
-  cancelAppointment: vi.fn(),
-  blockServiceLink: vi.fn(),
-  unblockServiceLink: vi.fn(),
-  removeServiceLink: vi.fn(),
 }));
 
-const db = vi.hoisted(() => ({
-  bookableWindow: {
-    findMany: vi.fn(),
-  },
-  serviceLink: {
-    findFirst: vi.fn(),
-  },
-}));
+const db = vi.hoisted(() => ({}));
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../lib/customer-auth.js', () => auth);
@@ -37,22 +20,6 @@ vi.mock('../scheduling/user-link-service.js', () => ({
   getOrCreateActiveUserLink: scheduling.getOrCreateActiveUserLink,
   resetUserLink: scheduling.resetUserLink,
   disableUserLink: scheduling.disableUserLink,
-}));
-vi.mock('../scheduling/availability-service.js', () => ({
-  previewBookableWindows: scheduling.previewBookableWindows,
-  confirmBookableWindowPreview: scheduling.confirmBookableWindowPreview,
-}));
-vi.mock('../scheduling/appointment-service.js', () => ({
-  requestAppointment: scheduling.requestAppointment,
-  listPendingRequests: scheduling.listPendingRequests,
-  confirmAppointment: scheduling.confirmAppointment,
-  rejectAppointment: scheduling.rejectAppointment,
-  cancelAppointment: scheduling.cancelAppointment,
-}));
-vi.mock('../scheduling/service-link-service.js', () => ({
-  blockServiceLink: scheduling.blockServiceLink,
-  unblockServiceLink: scheduling.unblockServiceLink,
-  removeServiceLink: scheduling.removeServiceLink,
 }));
 
 import { customerSchedulingRouter } from './customer-scheduling-routes.js';
@@ -82,9 +49,6 @@ describe('customer scheduling routes', () => {
       code: 'AbCdEfGhIjK_',
       status: 'active',
     });
-    scheduling.requestAppointment.mockResolvedValue({ id: 'apt_1' });
-    scheduling.confirmAppointment.mockResolvedValue({ id: 'apt_1', status: 'confirmed_shared' });
-    scheduling.blockServiceLink.mockResolvedValue({ id: 'sl_1', status: 'blocked' });
   });
 
   it('requires customer auth before returning a user link', async () => {
@@ -107,79 +71,32 @@ describe('customer scheduling routes', () => {
     });
   });
 
-  it('uses the authenticated customer as appointment consumer and ignores caller consumer ids', async () => {
-    const res = await createApp().request('/api/customer/scheduling/appointments', {
-      method: 'POST',
+  it.each([
+    ['POST', '/bookable-windows/preview'],
+    ['POST', '/bookable-windows/confirm'],
+    ['GET', '/bookable-windows'],
+    ['POST', '/appointments'],
+    ['GET', '/appointments/pending'],
+    ['POST', '/appointments/apt_1/confirm'],
+    ['POST', '/appointments/apt_1/reject'],
+    ['POST', '/appointments/apt_1/cancel'],
+    ['POST', '/service-links/ck_other/block'],
+    ['POST', '/service-links/ck_other/unblock'],
+    ['DELETE', '/service-links/ck_other'],
+  ])('fails closed for retired %s %s', async (method, path) => {
+    const res = await createApp().request(`/api/customer/scheduling${path}`, {
+      method,
       headers: {
         authorization: 'Bearer customer-token',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({
-        providerAccountId: 'ck_provider',
-        consumerAccountId: 'ck_attacker',
-        bookableWindowId: 'bw_1',
-        instanceStart: '2026-05-22T01:00:00.000Z',
-        instanceEnd: '2026-05-22T02:00:00.000Z',
-        timezone: 'Asia/Tokyo',
-        idempotencyKey: 'idem_1',
-      }),
+      body: method === 'GET' ? undefined : JSON.stringify({ preview: {}, idempotencyKey: 'idem_1' }),
     });
 
-    expect(res.status).toBe(201);
-    expect(scheduling.requestAppointment).toHaveBeenCalledWith(db as never, {
-      providerAccountId: 'ck_provider',
-      consumerAccountId: 'ck_123',
-      bookableWindowId: 'bw_1',
-      instanceStart: '2026-05-22T01:00:00.000Z',
-      instanceEnd: '2026-05-22T02:00:00.000Z',
-      timezone: 'Asia/Tokyo',
-      idempotencyKey: 'idem_1',
-    });
-  });
-
-  it('uses the authenticated customer as provider actor for provider appointment actions', async () => {
-    const res = await createApp().request('/api/customer/scheduling/appointments/apt_1/confirm', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer customer-token',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ actorAccountId: 'ck_attacker', idempotencyKey: 'confirm_1' }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(scheduling.confirmAppointment).toHaveBeenCalledWith(db as never, {
-      actorAccountId: 'ck_123',
-      requestId: 'apt_1',
-      idempotencyKey: 'confirm_1',
-    });
-  });
-
-  it('uses the authenticated customer as service-link provider', async () => {
-    const res = await createApp().request('/api/customer/scheduling/service-links/ck_other/block', {
-      method: 'POST',
-      headers: { authorization: 'Bearer customer-token' },
-    });
-
-    expect(res.status).toBe(200);
-    expect(scheduling.blockServiceLink).toHaveBeenCalledWith(db as never, {
-      providerAccountId: 'ck_123',
-      consumerAccountId: 'ck_other',
-    });
-  });
-
-  it('fails closed for retired service-link deletion', async () => {
-    const res = await createApp().request('/api/customer/scheduling/service-links/ck_provider', {
-      method: 'DELETE',
-      headers: { authorization: 'Bearer customer-token' },
-    });
-
+    expect(res.status).toBe(410);
     await expect(res.json()).resolves.toEqual({
       ok: false,
       error: 'appointment_scheduling_retired',
     });
-    expect(res.status).toBe(410);
-    expect(db.serviceLink.findFirst).not.toHaveBeenCalled();
-    expect(scheduling.removeServiceLink).not.toHaveBeenCalled();
   });
 });

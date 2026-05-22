@@ -7,6 +7,8 @@ const migrationPath = join(
   process.cwd(),
   'prisma/migrations/20260522100000_friend_link_shared_reminders/migration.sql',
 );
+const customerSchedulingRoutesPath = join(process.cwd(), 'src/routes/customer-scheduling-routes.ts');
+const internalSchedulingRoutesPath = join(process.cwd(), 'src/routes/internal-scheduling-routes.ts');
 
 describe('friend-link and shared-reminder schema contract', () => {
   it('declares first-version product-state models', () => {
@@ -57,8 +59,30 @@ describe('friend-link and shared-reminder schema contract', () => {
 
   it('requires product notifications to belong to exactly one request type', () => {
     const sql = readFileSync(migrationPath, 'utf8');
-    expect(sql).toContain('product_notifications_one_parent_request_chk');
+    expect(sql).toContain('product_notifications_exactly_one_parent');
+    expect(sql).toContain('Prisma cannot represent this cross-column check');
     expect(sql).toContain('"shared_reminder_request_id" IS NOT NULL');
     expect(sql).toContain('"friend_request_id" IS NOT NULL');
+  });
+
+  it('keeps retired route files detached from deleted scheduling storage', () => {
+    const routeSources = [
+      readFileSync(customerSchedulingRoutesPath, 'utf8'),
+      readFileSync(internalSchedulingRoutesPath, 'utf8'),
+    ];
+    const retiredReferences = [
+      'availability-service',
+      'appointment-service',
+      'service-link-service',
+      'db.bookableWindow',
+      'db.serviceLink',
+      'retryPendingSchedulingNotifications',
+    ];
+
+    for (const source of routeSources) {
+      for (const retiredReference of retiredReferences) {
+        expect(source).not.toContain(retiredReference);
+      }
+    }
   });
 });

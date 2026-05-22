@@ -2,28 +2,10 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import {
-  confirmBookableWindowPreview,
-  previewBookableWindows,
-} from '../scheduling/availability-service.js';
-import {
-  cancelAppointment,
-  confirmAppointment,
-  listPendingRequests,
-  queryBookableWindows,
-  rejectAppointment,
-  requestAppointment,
-} from '../scheduling/appointment-service.js';
-import { retryPendingSchedulingNotifications } from '../scheduling/notification-service.js';
-import {
-  blockServiceLink,
-  unblockServiceLink,
-} from '../scheduling/service-link-service.js';
-import {
   disableUserLink,
   getOrCreateActiveUserLink,
   resetUserLink,
 } from '../scheduling/user-link-service.js';
-import { decodeWindowInstanceId } from '../scheduling/time.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -50,28 +32,6 @@ function stringField(body: JsonRecord, key: string, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
-function optionalStringField(body: JsonRecord, key: string): string | undefined {
-  const value = body[key];
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
-function firstStringField(body: JsonRecord, keys: string[], fallback = ''): string {
-  for (const key of keys) {
-    const value = optionalStringField(body, key);
-    if (value) return value;
-  }
-  return fallback;
-}
-
-function numberField(body: JsonRecord, key: string, fallback: number): number {
-  const value = body[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
-}
-
 function retiredAppointmentSchedulingTool(c: Context): Response {
   return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
 }
@@ -88,130 +48,42 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
 
   const toolName = c.req.param('toolName');
   const customerId = stringField(body, 'customer_id');
-  const consumerAccountId = stringField(body, 'consumer_account_id');
-  const targetAccountId = optionalStringField(body, 'target_account_id');
-  const logicalProviderAccountId = targetAccountId ?? customerId;
-  const logicalConsumerAccountId = targetAccountId ? customerId : consumerAccountId;
 
-  try {
-    if (toolName === 'get_user_link') {
-      const result = await getOrCreateActiveUserLink(db as never, {
-        providerAccountId: customerId,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'reset_user_link') {
-      const result = await resetUserLink(db as never, {
-        providerAccountId: customerId,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'disable_user_link') {
-      const result = await disableUserLink(db as never, {
-        providerAccountId: customerId,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'open_bookable_windows') {
-      const result = await previewBookableWindows({
-        providerAccountId: customerId,
-        instruction: stringField(body, 'instruction'),
-        timezone: stringField(body, 'timezone', 'UTC'),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'confirm_bookable_windows') {
-      if (typeof body['preview'] !== 'object' || body['preview'] === null) {
-        return c.json({ ok: false, error: 'invalid_body' }, 400);
-      }
-      const result = await confirmBookableWindowPreview(db as never, {
-        providerAccountId: customerId,
-        preview: body['preview'] as never,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'list_pending_requests') {
-      const result = await listPendingRequests(db as never, {
-        providerAccountId: customerId,
-        now: new Date(),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'query_bookable_windows') {
-      const result = await queryBookableWindows(db as never, {
-        providerAccountId: logicalProviderAccountId,
-        consumerAccountId: logicalConsumerAccountId,
-        dateFrom: stringField(body, 'date_from'),
-        dateTo: optionalStringField(body, 'date_to'),
-        viewerTimezone: optionalStringField(body, 'viewer_timezone'),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'request_appointment') {
-      const decoded = optionalStringField(body, 'window_instance_id')
-        ? decodeWindowInstanceId(stringField(body, 'window_instance_id'))
-        : {
-            bookableWindowId: stringField(body, 'bookable_window_id'),
-            instanceStart: stringField(body, 'instance_start'),
-            instanceEnd: stringField(body, 'instance_end'),
-          };
-      const result = await requestAppointment(db as never, {
-        providerAccountId: logicalProviderAccountId,
-        consumerAccountId: logicalConsumerAccountId,
-        bookableWindowId: decoded.bookableWindowId,
-        instanceStart: decoded.instanceStart,
-        instanceEnd: decoded.instanceEnd,
-        timezone: stringField(body, 'timezone', 'UTC'),
-        idempotencyKey: stringField(body, 'idempotency_key'),
-      });
-      return c.json({ ok: true, data: result }, 201);
-    }
-    if (toolName === 'confirm_appointment') {
-      const result = await confirmAppointment(db as never, {
-        actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
-        idempotencyKey: stringField(body, 'idempotency_key'),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'reject_appointment') {
-      const result = await rejectAppointment(db as never, {
-        actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
-        idempotencyKey: stringField(body, 'idempotency_key'),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'cancel_appointment') {
-      const result = await cancelAppointment(db as never, {
-        actorAccountId: customerId,
-        requestId: firstStringField(body, ['appointment_or_request_id', 'request_id']),
-        idempotencyKey: stringField(body, 'idempotency_key'),
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'block_service_link') {
-      const result = await blockServiceLink(db as never, {
-        providerAccountId: customerId,
-        consumerAccountId,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'unblock_service_link') {
-      const result = await unblockServiceLink(db as never, {
-        providerAccountId: customerId,
-        consumerAccountId,
-      });
-      return c.json({ ok: true, data: result });
-    }
-    if (toolName === 'remove_service_link') {
-      return retiredAppointmentSchedulingTool(c);
-    }
-
-    return c.json({ ok: false, error: 'unknown_tool' }, 404);
-  } catch (error) {
-    return c.json({ ok: false, error: errorMessage(error, 'scheduling_failed') }, 400);
+  if (toolName === 'get_user_link') {
+    const result = await getOrCreateActiveUserLink(db as never, {
+      providerAccountId: customerId,
+    });
+    return c.json({ ok: true, data: result });
   }
+  if (toolName === 'reset_user_link') {
+    const result = await resetUserLink(db as never, {
+      providerAccountId: customerId,
+    });
+    return c.json({ ok: true, data: result });
+  }
+  if (toolName === 'disable_user_link') {
+    const result = await disableUserLink(db as never, {
+      providerAccountId: customerId,
+    });
+    return c.json({ ok: true, data: result });
+  }
+  if (
+    toolName === 'open_bookable_windows' ||
+    toolName === 'confirm_bookable_windows' ||
+    toolName === 'list_pending_requests' ||
+    toolName === 'query_bookable_windows' ||
+    toolName === 'request_appointment' ||
+    toolName === 'confirm_appointment' ||
+    toolName === 'reject_appointment' ||
+    toolName === 'cancel_appointment' ||
+    toolName === 'block_service_link' ||
+    toolName === 'unblock_service_link' ||
+    toolName === 'remove_service_link'
+  ) {
+    return retiredAppointmentSchedulingTool(c);
+  }
+
+  return c.json({ ok: false, error: 'unknown_tool' }, 404);
 });
 
 internalSchedulingRouter.post('/notifications/retry', async (c) => {
@@ -219,13 +91,5 @@ internalSchedulingRouter.post('/notifications/retry', async (c) => {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  const body = (await readJsonObject(c)) ?? {};
-  try {
-    const result = await retryPendingSchedulingNotifications(db as never, {
-      limit: numberField(body, 'limit', 10),
-    });
-    return c.json({ ok: true, data: result });
-  } catch (error) {
-    return c.json({ ok: false, error: errorMessage(error, 'retry_failed') }, 400);
-  }
+  return retiredAppointmentSchedulingTool(c);
 });
