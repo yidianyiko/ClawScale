@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const scheduling = vi.hoisted(() => ({
   getOrCreateActiveUserLink: vi.fn(),
   resetUserLink: vi.fn(),
+  disableUserLink: vi.fn(),
 }));
 
 const db = vi.hoisted(() => ({}));
@@ -12,6 +13,7 @@ vi.mock('../db/index.js', () => ({ db }));
 vi.mock('../scheduling/user-link-service.js', () => ({
   getOrCreateActiveUserLink: scheduling.getOrCreateActiveUserLink,
   resetUserLink: scheduling.resetUserLink,
+  disableUserLink: scheduling.disableUserLink,
 }));
 
 import { internalSchedulingRouter } from './internal-scheduling-routes.js';
@@ -27,6 +29,8 @@ describe('internal scheduling routes', () => {
     vi.clearAllMocks();
     process.env.CLAWSCALE_IDENTITY_API_KEY = 'internal-key';
     scheduling.getOrCreateActiveUserLink.mockResolvedValue({ code: 'AbCdEfGhIjK_' });
+    scheduling.resetUserLink.mockResolvedValue({ code: 'ResetCode123' });
+    scheduling.disableUserLink.mockResolvedValue({ count: 1 });
   });
 
   it('requires the internal bearer token for tools', async () => {
@@ -52,6 +56,42 @@ describe('internal scheduling routes', () => {
 
     expect(res.status).toBe(200);
     expect(scheduling.getOrCreateActiveUserLink).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_provider',
+    });
+  });
+
+  it('wires active reset_user_link tool to resetUserLink', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/reset_user_link', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(scheduling.resetUserLink).toHaveBeenCalledWith(db as never, {
+      providerAccountId: 'ck_provider',
+    });
+  });
+
+  it('wires active disable_user_link tool to disableUserLink', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/disable_user_link', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(scheduling.disableUserLink).toHaveBeenCalledWith(db as never, {
       providerAccountId: 'ck_provider',
     });
   });

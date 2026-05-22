@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const schemaPath = join(process.cwd(), 'prisma/schema.prisma');
@@ -11,6 +11,12 @@ const customerSchedulingRoutesPath = join(process.cwd(), 'src/routes/customer-sc
 const internalSchedulingRoutesPath = join(process.cwd(), 'src/routes/internal-scheduling-routes.ts');
 const publicUserLinkRoutesPath = join(process.cwd(), 'src/routes/public-user-link-routes.ts');
 const userLinkServicePath = join(process.cwd(), 'src/scheduling/user-link-service.ts');
+const retiredSchedulingImplementationPaths = [
+  join(process.cwd(), 'src/scheduling/availability-service.ts'),
+  join(process.cwd(), 'src/scheduling/service-link-service.ts'),
+  join(process.cwd(), 'src/scheduling/appointment-service.ts'),
+  join(process.cwd(), 'src/scheduling/notification-service.ts'),
+];
 
 describe('friend-link and shared-reminder schema contract', () => {
   it('declares first-version product-state models', () => {
@@ -88,6 +94,12 @@ describe('friend-link and shared-reminder schema contract', () => {
       for (const retiredReference of retiredReferences) {
         expect(source).not.toContain(retiredReference);
       }
+    }
+  });
+
+  it('removes retired scheduling implementation files that reference deleted delegates', () => {
+    for (const retiredPath of retiredSchedulingImplementationPaths) {
+      expect(existsSync(retiredPath)).toBe(false);
     }
   });
 });
