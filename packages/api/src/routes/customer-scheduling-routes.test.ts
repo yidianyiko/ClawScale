@@ -301,6 +301,18 @@ describe('customer scheduling routes', () => {
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'not_allowed' });
   });
 
+  it('preserves the friend request blocked error for accept after block', async () => {
+    friendships.acceptFriendRequest.mockRejectedValueOnce(new Error('friend_request_blocked'));
+
+    const res = await createApp().request('/api/customer/scheduling/friend-requests/fr_1/accept', {
+      method: 'POST',
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'friend_request_blocked' });
+  });
+
   it.each([
     ['POST', '/bookable-windows/preview'],
     ['POST', '/bookable-windows/confirm'],

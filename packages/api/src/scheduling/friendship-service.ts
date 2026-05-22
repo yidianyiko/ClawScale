@@ -279,7 +279,14 @@ export async function acceptFriendRequest(
 
     await ensureAcceptNotBlocked(writeClient, request);
     const pair = canonicalPair(request.requesterAccountId, request.targetAccountId);
-    await ensureActiveFriendship(writeClient, { ...pair, friendRequestId: request.id });
+    if (transition.count === 1) {
+      await ensureActiveFriendship(writeClient, { ...pair, friendRequestId: request.id });
+    } else {
+      const friendship = await findActiveFriendship(writeClient, pair.accountAId, pair.accountBId);
+      if (!friendship) {
+        throw new Error('friendship_not_found');
+      }
+    }
     await createAcceptedNotification(writeClient, { request, idempotencyKey });
     return request;
   });

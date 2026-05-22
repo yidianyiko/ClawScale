@@ -212,7 +212,7 @@ describe('friendship service', () => {
       status: 'accepted',
     });
     db.accountBlock.findFirst.mockResolvedValueOnce(null);
-    db.friendship.create.mockResolvedValueOnce({
+    db.friendship.findFirst.mockResolvedValueOnce({
       id: 'fs_1',
       accountAId: 'ck_a',
       accountBId: 'ck_z',
@@ -227,13 +227,42 @@ describe('friendship service', () => {
       }),
     ).resolves.toMatchObject({ id: 'fr_1', status: 'accepted' });
 
-    expect(db.friendship.create).toHaveBeenCalled();
+    expect(db.friendship.findFirst).toHaveBeenCalledWith({
+      where: { accountAId: 'ck_a', accountBId: 'ck_z', status: 'active' },
+    });
+    expect(db.friendship.create).not.toHaveBeenCalled();
     expect(db.productNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         idempotencyKey: 'friend-request:fr_1:accepted:idem_accept_retry',
         kind: 'friend_request_accepted',
       }),
     });
+  });
+
+  it('does not resurrect a removed friendship on accepted request retry', async () => {
+    db.friendRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    db.friendRequest.findUnique.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'ck_z',
+      targetAccountId: 'ck_a',
+      status: 'accepted',
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendship.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      acceptFriendRequest(db as never, {
+        actorAccountId: 'ck_a',
+        requestId: 'fr_1',
+        idempotencyKey: 'idem_accept_removed_retry',
+      }),
+    ).rejects.toThrow('friendship_not_found');
+
+    expect(db.friendship.findFirst).toHaveBeenCalledWith({
+      where: { accountAId: 'ck_a', accountBId: 'ck_z', status: 'active' },
+    });
+    expect(db.friendship.create).not.toHaveBeenCalled();
+    expect(db.productNotification.create).not.toHaveBeenCalled();
   });
 
   it('fails closed when accepting a stale pending request after the target blocked the requester', async () => {

@@ -90,6 +90,7 @@ function isKnownSchedulingError(error: string): boolean {
     error === 'invalid_account' ||
     error === 'invalid_body' ||
     error === 'friend_request_not_found' ||
+    error === 'friend_request_blocked' ||
     error === 'friendship_not_found' ||
     error === 'cannot_friend_self' ||
     error === 'not_allowed'
