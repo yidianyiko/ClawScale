@@ -15,7 +15,7 @@ const db = {
   customer: { findUnique: vi.fn() },
   friendRequest: { findFirst: vi.fn(), create: vi.fn() },
   accountBlock: { findFirst: vi.fn() },
-  productNotification: { create: vi.fn() },
+  productNotification: { findFirst: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
 };
 
@@ -211,6 +211,7 @@ describe('user link service', () => {
     });
     db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst.mockResolvedValueOnce(null);
+    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
     db.friendRequest.create.mockResolvedValueOnce({
       id: 'fr_1',
       requesterAccountId: 'acct_b',
@@ -218,6 +219,7 @@ describe('user link service', () => {
       linkSessionId: 'ls_1',
       status: 'pending',
     });
+    db.productNotification.findFirst.mockResolvedValueOnce(null);
 
     const result = await sendFriendRequestFromLinkSession(db as never, {
       token: 'session-token',
@@ -245,6 +247,9 @@ describe('user link service', () => {
         claimedAt: expect.any(Date),
       },
     });
+    expect(db.productNotification.findFirst).toHaveBeenCalledWith({
+      where: { idempotencyKey: 'friend-request:fr_1:target' },
+    });
     expect(db.productNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         friendRequestId: 'fr_1',
@@ -262,6 +267,208 @@ describe('user link service', () => {
         status: 'pending_delivery',
       }),
     });
+  });
+
+  it('returns the existing pending request when the same requester retries after claiming', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: 'acct_b',
+      status: 'claimed',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.friendRequest.findFirst.mockResolvedValueOnce({
+      id: 'fr_existing',
+      requesterAccountId: 'acct_b',
+      targetAccountId: 'acct_a',
+      status: 'pending',
+    });
+    db.productNotification.findFirst.mockResolvedValueOnce({ id: 'pn_existing' });
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: null,
+      idempotencyKey: 'friend:req:retry',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_existing', status: 'pending' });
+    expect(db.friendRequest.create).not.toHaveBeenCalled();
+    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
+    expect(db.productNotification.findFirst).toHaveBeenCalledWith({
+      where: { idempotencyKey: 'friend-request:fr_existing:target' },
+    });
+    expect(db.productNotification.create).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when another requester already claimed the link session', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: 'acct_c',
+      status: 'claimed',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+
+    await expect(
+      sendFriendRequestFromLinkSession(db as never, {
+        token: 'session-token',
+        requesterAccountId: 'acct_b',
+        message: null,
+        idempotencyKey: 'friend:req:claimed',
+      }),
+    ).rejects.toThrow('invalid_link_session');
+
+    expect(db.friendRequest.findFirst).not.toHaveBeenCalled();
+    expect(db.friendRequest.create).not.toHaveBeenCalled();
+    expect(db.productNotification.create).not.toHaveBeenCalled();
+  });
+
+  it('re-reads the pending request when conditional session claim loses a race', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'fr_existing',
+        requesterAccountId: 'acct_b',
+        targetAccountId: 'acct_a',
+        status: 'pending',
+      });
+    db.linkSession.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: null,
+      idempotencyKey: 'friend:req:race',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_existing', status: 'pending' });
+    expect(db.friendRequest.create).not.toHaveBeenCalled();
+    expect(db.productNotification.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects friend requests when the target blocked the requester', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce({ id: 'blk_1' });
+
+    await expect(
+      sendFriendRequestFromLinkSession(db as never, {
+        token: 'session-token',
+        requesterAccountId: 'acct_b',
+        message: null,
+        idempotencyKey: 'friend:req:block',
+      }),
+    ).rejects.toThrow('friend_request_blocked');
+
+    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
+    expect(db.friendRequest.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired link sessions', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
+    });
+
+    await expect(
+      sendFriendRequestFromLinkSession(db as never, {
+        token: 'session-token',
+        requesterAccountId: 'acct_b',
+        message: null,
+        idempotencyKey: 'friend:req:expired',
+      }),
+    ).rejects.toThrow('link_session_expired');
+
+    expect(db.accountBlock.findFirst).not.toHaveBeenCalled();
+    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('recovers from friend request unique races by reading the existing pending request', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'fr_existing',
+        requesterAccountId: 'acct_b',
+        targetAccountId: 'acct_a',
+        status: 'pending',
+      });
+    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.friendRequest.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    db.productNotification.findFirst.mockResolvedValueOnce(null);
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: null,
+      idempotencyKey: 'friend:req:unique',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_existing', status: 'pending' });
+    expect(db.productNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        friendRequestId: 'fr_existing',
+        idempotencyKey: 'friend-request:fr_existing:target',
+      }),
+    });
+  });
+
+  it('treats duplicate product notifications as successful request creation', async () => {
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.findFirst.mockResolvedValueOnce(null);
+    db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.friendRequest.create.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'acct_b',
+      targetAccountId: 'acct_a',
+      status: 'pending',
+    });
+    db.productNotification.findFirst.mockResolvedValueOnce(null);
+    db.productNotification.create.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+    );
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: null,
+      idempotencyKey: 'friend:req:notification',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_1', status: 'pending' });
   });
 
   it('rejects self-claiming a user link session', async () => {

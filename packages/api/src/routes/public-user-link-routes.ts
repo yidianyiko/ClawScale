@@ -61,7 +61,8 @@ async function readJsonObject(c: Context): Promise<JsonRecord | null> {
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+  const message = error instanceof Error ? error.message.trim() : '';
+  return isKnownFriendRequestError(message) ? message : fallback;
 }
 
 function requestIdempotencyKey(body: JsonRecord, prefix: string, customerId: string, token: string): string {
@@ -69,7 +70,20 @@ function requestIdempotencyKey(body: JsonRecord, prefix: string, customerId: str
   if (typeof explicit === 'string' && explicit.trim()) {
     return explicit.trim();
   }
-  return `${prefix}:${customerId}:${token}:${Date.now()}`;
+  return `${prefix}:${customerId}:${token}`;
+}
+
+function isKnownFriendRequestError(error: string): boolean {
+  return (
+    error === 'invalid_body' ||
+    error === 'invalid_account' ||
+    error === 'invalid_link_session' ||
+    error === 'link_session_expired' ||
+    error === 'cannot_friend_self' ||
+    error === 'friend_request_blocked' ||
+    error === 'friend_request_not_found' ||
+    error === 'not_allowed'
+  );
 }
 
 publicUserLinkRouter.get('/:code', async (c) => {

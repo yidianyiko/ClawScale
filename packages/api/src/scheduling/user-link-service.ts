@@ -56,13 +56,21 @@ interface UserLinkClient {
     findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
   };
   productNotification: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   };
   $transaction?<T>(fn: (client: UserLinkTransactionClient) => Promise<T>): Promise<T>;
 }
 
 type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
-type UserLinkTransactionClient = Pick<UserLinkClient, 'userLink' | 'linkSession'>;
+type FriendRequestWriteClient = Pick<
+  UserLinkClient,
+  'linkSession' | 'friendRequest' | 'accountBlock' | 'productNotification'
+>;
+type UserLinkTransactionClient = Pick<
+  UserLinkClient,
+  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock' | 'productNotification'
+>;
 
 interface UserLinkInput {
   providerAccountId: string;
@@ -223,6 +231,16 @@ async function runUserLinkWrite<T>(
   return fn(client);
 }
 
+async function runFriendRequestWrite<T>(
+  client: UserLinkClient,
+  fn: (writeClient: FriendRequestWriteClient) => Promise<T>,
+): Promise<T> {
+  if (client.$transaction) {
+    return client.$transaction(fn);
+  }
+  return fn(client);
+}
+
 export async function getOrCreateActiveUserLink(
   client: UserLinkClient,
   input: UserLinkInput,
@@ -360,75 +378,185 @@ export async function sendFriendRequestFromLinkSession(
   },
 ): Promise<Record<string, unknown>> {
   const requesterAccountId = nonEmpty(input.requesterAccountId, 'invalid_account');
-  const session = await client.linkSession.findUnique({
-    where: { tokenHash: tokenHash(input.token) },
-  });
-  if (!session || session.status !== 'opened') {
-    throw new Error('invalid_link_session');
-  }
-  if (new Date(session.expiresAt).getTime() <= Date.now()) {
-    throw new Error('link_session_expired');
-  }
-  if (session.providerAccountId === requesterAccountId) {
-    throw new Error('cannot_friend_self');
-  }
+  const sessionTokenHash = tokenHash(input.token);
 
-  const block = await client.accountBlock.findFirst({
-    where: {
-      blockerAccountId: session.providerAccountId,
-      blockedAccountId: requesterAccountId,
-    },
-  });
-  if (block) {
-    throw new Error('friend_request_blocked');
-  }
+  return runFriendRequestWrite(client, async (writeClient) => {
+    const session = await writeClient.linkSession.findUnique({
+      where: { tokenHash: sessionTokenHash },
+    });
+    if (!session) {
+      throw new Error('invalid_link_session');
+    }
+    if (session.providerAccountId === requesterAccountId) {
+      throw new Error('cannot_friend_self');
+    }
 
-  const existing = await client.friendRequest.findFirst({
-    where: {
+    if (session.status === 'claimed') {
+      if (session.consumerAccountId !== requesterAccountId) {
+        throw new Error('invalid_link_session');
+      }
+      const existing = await findPendingFriendRequest(
+        writeClient,
+        requesterAccountId,
+        session.providerAccountId,
+      );
+      if (!existing) {
+        throw new Error('invalid_link_session');
+      }
+      await ensureFriendRequestNotification(writeClient, {
+        request: existing,
+        requesterAccountId,
+        targetAccountId: session.providerAccountId,
+      });
+      return existing;
+    }
+    if (session.status !== 'opened') {
+      throw new Error('invalid_link_session');
+    }
+    if (new Date(session.expiresAt).getTime() <= Date.now()) {
+      throw new Error('link_session_expired');
+    }
+    const block = await writeClient.accountBlock.findFirst({
+      where: {
+        blockerAccountId: session.providerAccountId,
+        blockedAccountId: requesterAccountId,
+      },
+    });
+    if (block) {
+      throw new Error('friend_request_blocked');
+    }
+
+    const existing = await findPendingFriendRequest(
+      writeClient,
       requesterAccountId,
-      targetAccountId: session.providerAccountId,
-      status: 'pending',
-    },
-  });
-  if (existing) {
-    return existing;
-  }
+      session.providerAccountId,
+    );
+    const claim = await writeClient.linkSession.updateMany({
+      where: { id: session.id, status: 'opened' },
+      data: {
+        status: 'claimed',
+        consumerAccountId: requesterAccountId,
+        claimedAt: new Date(),
+      },
+    });
+    if (claim.count !== 1) {
+      const raced = await findPendingFriendRequest(
+        writeClient,
+        requesterAccountId,
+        session.providerAccountId,
+      );
+      if (raced) {
+        return raced;
+      }
+      throw new Error('invalid_link_session');
+    }
 
-  const request = await client.friendRequest.create({
-    data: {
+    const request = existing ?? (await createFriendRequestWithConflictRead(writeClient, {
       requesterAccountId,
       targetAccountId: session.providerAccountId,
       linkSessionId: session.id,
       message: input.message,
       idempotencyKey: input.idempotencyKey,
+    }));
+    await ensureFriendRequestNotification(writeClient, {
+      request,
+      requesterAccountId,
+      targetAccountId: session.providerAccountId,
+    });
+    return request;
+  });
+}
+
+async function findPendingFriendRequest(
+  client: Pick<UserLinkClient, 'friendRequest'>,
+  requesterAccountId: string,
+  targetAccountId: string,
+): Promise<Record<string, unknown> | null> {
+  return client.friendRequest.findFirst({
+    where: {
+      requesterAccountId,
+      targetAccountId,
       status: 'pending',
     },
   });
-  await client.linkSession.updateMany({
-    where: { id: session.id, status: 'opened' },
-    data: {
-      status: 'claimed',
-      consumerAccountId: requesterAccountId,
-      claimedAt: new Date(),
-    },
-  });
-  await client.productNotification.create({
-    data: {
-      friendRequestId: request['id'],
-      recipientAccountId: session.providerAccountId,
-      idempotencyKey: `friend-request:${request['id']}:target`,
-      kind: 'friend_request',
-      payload: {
-        text: '你有一个新的好友请求，请确认或拒绝。',
-        metadata: {
-          request_id: request['id'],
-          request_type: 'friend_request',
-          actor_account_id: requesterAccountId,
-          allowed_actions: ['accept', 'reject'],
-        },
+}
+
+async function createFriendRequestWithConflictRead(
+  client: Pick<UserLinkClient, 'friendRequest'>,
+  input: {
+    requesterAccountId: string;
+    targetAccountId: string;
+    linkSessionId: string;
+    message: string | null;
+    idempotencyKey: string;
+  },
+): Promise<Record<string, unknown>> {
+  try {
+    return await client.friendRequest.create({
+      data: {
+        requesterAccountId: input.requesterAccountId,
+        targetAccountId: input.targetAccountId,
+        linkSessionId: input.linkSessionId,
+        message: input.message,
+        idempotencyKey: input.idempotencyKey,
+        status: 'pending',
       },
-      status: 'pending_delivery',
-    },
+    });
+  } catch (error) {
+    if (!isUniqueConflict(error)) {
+      throw error;
+    }
+    const existing = await findPendingFriendRequest(
+      client,
+      input.requesterAccountId,
+      input.targetAccountId,
+    );
+    if (!existing) {
+      throw error;
+    }
+    return existing;
+  }
+}
+
+async function ensureFriendRequestNotification(
+  client: Pick<UserLinkClient, 'productNotification'>,
+  input: {
+    request: Record<string, unknown>;
+    requesterAccountId: string;
+    targetAccountId: string;
+  },
+): Promise<void> {
+  const requestId = nonEmpty(String(input.request['id'] ?? ''), 'friend_request_not_found');
+  const idempotencyKey = `friend-request:${requestId}:target`;
+  const existing = await client.productNotification.findFirst({
+    where: { idempotencyKey },
   });
-  return request;
+  if (existing) {
+    return;
+  }
+
+  try {
+    await client.productNotification.create({
+      data: {
+        friendRequestId: requestId,
+        recipientAccountId: input.targetAccountId,
+        idempotencyKey,
+        kind: 'friend_request',
+        payload: {
+          text: '你有一个新的好友请求，请确认或拒绝。',
+          metadata: {
+            request_id: requestId,
+            request_type: 'friend_request',
+            actor_account_id: input.requesterAccountId,
+            allowed_actions: ['accept', 'reject'],
+          },
+        },
+        status: 'pending_delivery',
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConflict(error)) {
+      throw error;
+    }
+  }
 }

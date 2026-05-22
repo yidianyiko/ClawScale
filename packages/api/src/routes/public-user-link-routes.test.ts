@@ -169,7 +169,7 @@ describe('public user link routes', () => {
       token: 'session-token',
       requesterAccountId: 'ck_visitor',
       message: 'Let us connect',
-      idempotencyKey: expect.stringContaining('friend-request:ck_visitor:session-token:'),
+      idempotencyKey: 'friend-request:ck_visitor:session-token',
     });
     await expect(res.json()).resolves.toEqual({
       ok: true,
@@ -180,6 +180,79 @@ describe('public user link routes', () => {
         status: 'pending',
       },
     });
+  });
+
+  it('uses a stable route-generated idempotency key', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(111).mockReturnValueOnce(222);
+    mocks.sendFriendRequestFromLinkSession.mockResolvedValue({
+      id: 'fr_1',
+      requesterAccountId: 'ck_visitor',
+      targetAccountId: 'ck_target',
+      status: 'pending',
+    });
+
+    const app = createApp();
+    await app.request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'Let us connect' }),
+    });
+    await app.request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'Let us connect' }),
+    });
+
+    expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenNthCalledWith(1, {} as never, {
+      token: 'session-token',
+      requesterAccountId: 'ck_visitor',
+      message: 'Let us connect',
+      idempotencyKey: 'friend-request:ck_visitor:session-token',
+    });
+    expect(mocks.sendFriendRequestFromLinkSession).toHaveBeenNthCalledWith(2, {} as never, {
+      token: 'session-token',
+      requesterAccountId: 'ck_visitor',
+      message: 'Let us connect',
+      idempotencyKey: 'friend-request:ck_visitor:session-token',
+    });
+  });
+
+  it('passes known friend-request domain errors through', async () => {
+    mocks.sendFriendRequestFromLinkSession.mockRejectedValueOnce(new Error('cannot_friend_self'));
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'Let us connect' }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'cannot_friend_self' });
+  });
+
+  it('maps unknown friend-request errors to a public failure code', async () => {
+    mocks.sendFriendRequestFromLinkSession.mockRejectedValueOnce(new Error('database exploded'));
+
+    const res = await createApp().request('/api/public/link-sessions/session-token/friend-requests', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: 'Let us connect' }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ ok: false, error: 'friend_request_failed' });
   });
 
   it('fails closed for the retired link-session claim path', async () => {
