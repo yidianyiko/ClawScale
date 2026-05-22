@@ -16,6 +16,7 @@ const CUSTOMER_NAV = {
     { href: '/account/subscription', label: 'Renewal' },
     { href: '/account/calendar-import', label: 'Calendar' },
     { href: '/account/reminders', label: 'Reminders' },
+    { href: '/account/my-agent', label: 'My Agent' },
   ],
   zh: [
     { href: '/channels', label: '通道' },
@@ -23,6 +24,7 @@ const CUSTOMER_NAV = {
     { href: '/account/subscription', label: '续费' },
     { href: '/account/calendar-import', label: '日历' },
     { href: '/account/reminders', label: '提醒' },
+    { href: '/account/my-agent', label: '我的智能体' },
   ],
 } satisfies Record<Locale, ReadonlyArray<{ href: string; label: string }>>;
 

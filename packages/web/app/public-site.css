@@ -3897,6 +3897,100 @@ html[data-locale-ready="true"] .coke-site-splash {
   padding: 10px 12px;
 }
 
+.coke-site .my-agent-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.coke-site .my-agent-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.coke-site .my-agent-summary span,
+.coke-site .my-agent-summary strong {
+  min-width: 0;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink-700);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.coke-site .my-agent-summary strong {
+  color: var(--ink-1000);
+}
+
+.coke-site .my-agent-form {
+  display: grid;
+  gap: 18px;
+}
+
+.coke-site .my-agent-form fieldset {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.coke-site .my-agent-form legend {
+  padding: 0 8px;
+  font-weight: 700;
+  color: var(--ink-1000);
+}
+
+.coke-site .my-agent-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-700);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.coke-site .my-agent-form input,
+.coke-site .my-agent-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(27, 20, 16, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink-900);
+  background: #fff;
+}
+
+.coke-site .my-agent-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.coke-site .my-agent-form__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coke-site .my-agent-form__grid legend,
+.coke-site .my-agent-toggle-list legend {
+  grid-column: 1 / -1;
+}
+
+.coke-site .my-agent-toggle-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.coke-site .my-agent-toggle-list input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
 @media (max-width: 1080px) {
   .coke-site .hero-grid,
   .coke-site .customer-shell__grid,
@@ -3994,6 +4088,11 @@ html[data-locale-ready="true"] .coke-site-splash {
   .coke-site .customer-shell__workspace-bar {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .coke-site .my-agent-summary,
+  .coke-site .my-agent-form__grid {
+    grid-template-columns: 1fr;
   }
 
   .coke-site .customer-action-row {

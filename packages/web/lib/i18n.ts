@@ -188,6 +188,23 @@ type CustomerPagesMessages = {
     wechatPersonalTitle: string;
     wechatPersonalDescription: string;
   };
+  myAgent: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    configured: string;
+    loadFailure: string;
+    saveFailure: string;
+    resetFailure: string;
+    saved: string;
+    reset: string;
+    save: string;
+    saving: string;
+    basicIdentity: string;
+    agentProfile: string;
+    proactiveMessages: string;
+    memoryPersonalization: string;
+  };
   bindWechat: {
     blocked: {
       accessEyebrow: string;
@@ -628,6 +645,23 @@ export const messages: MessagesCatalog = {
         wechatPersonalTitle: 'Personal WeChat',
         wechatPersonalDescription: 'Connect, reconnect, or archive your personal WeChat channel.',
       },
+      myAgent: {
+        eyebrow: 'Agent settings',
+        title: 'My Agent',
+        description: 'Customize the visible identity and profile Kap uses with you.',
+        configured: 'configured',
+        loadFailure: 'Unable to load agent settings right now.',
+        saveFailure: 'Unable to save agent settings right now.',
+        resetFailure: 'Unable to reset agent settings right now.',
+        saved: 'Agent settings saved.',
+        reset: 'Reset',
+        save: 'Save',
+        saving: 'Saving...',
+        basicIdentity: 'Basic identity',
+        agentProfile: 'Agent profile',
+        proactiveMessages: 'Proactive messages',
+        memoryPersonalization: 'Memory and personalization',
+      },
       bindWechat: {
         blocked: {
           accessEyebrow: 'Account access',
@@ -1016,6 +1050,23 @@ export const messages: MessagesCatalog = {
         description: '管理当前已经迁移到中立 ClawScale 客户壳层中的通道入口。',
         wechatPersonalTitle: '个人微信',
         wechatPersonalDescription: '连接、重新连接或归档你的个人微信通道。',
+      },
+      myAgent: {
+        eyebrow: '智能体设置',
+        title: '我的智能体',
+        description: '自定义 Kap 和你互动时展示的人设、称呼和表达方式。',
+        configured: '已配置',
+        loadFailure: '暂时无法加载智能体设置。',
+        saveFailure: '暂时无法保存智能体设置。',
+        resetFailure: '暂时无法重置智能体设置。',
+        saved: '智能体设置已保存。',
+        reset: '重置',
+        save: '保存',
+        saving: '保存中...',
+        basicIdentity: '基础身份',
+        agentProfile: '智能体资料',
+        proactiveMessages: '主动消息',
+        memoryPersonalization: '记忆与个性化',
       },
       bindWechat: {
         blocked: {
