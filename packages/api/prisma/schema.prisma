@@ -122,45 +122,39 @@ enum LinkSessionStatus {
   abandoned
 }
 
-enum ServiceLinkStatus {
+enum FriendRequestStatus {
+  pending
+  accepted
+  rejected
+  cancelled
+}
+
+enum FriendshipStatus {
   active
-  blocked
   removed
 }
 
-enum SchedulingCapability {
-  appointment_request
+enum SharedReminderRequestStatus {
+  pending_invitee_confirmation
+  accepted
+  rejected
+  expired
+  cancelled
+  invalidated
 }
 
-enum BookableWindowStatus {
-  active
-  closed
+enum SharedReminderProjectionRole {
+  requester
+  invitee
 }
 
-enum BookableWindowType {
-  weekly
-  once
-}
-
-enum AppointmentRequestStatus {
-  pending_held
-  confirmed_shared
-  released
-}
-
-enum AppointmentReleaseReason {
-  rejected_by_a
-  cancelled_by_a
-  cancelled_by_b
-}
-
-enum AppointmentActorRole {
-  provider
-  consumer
+enum SharedReminderActorRole {
+  requester
+  invitee
   system
 }
 
-enum SchedulingNotificationStatus {
+enum ProductNotificationStatus {
   pending_delivery
   delivered
   failed
@@ -360,12 +354,16 @@ model Customer {
   clawscaleUser      ClawscaleUser?
   subscriptions      Subscription[]
   userLinksAsProvider UserLink[] @relation("ProviderUserLinks")
-  serviceLinksAsProvider ServiceLink[] @relation("ProviderServiceLinks")
-  serviceLinksAsConsumer ServiceLink[] @relation("ConsumerServiceLinks")
-  bookableWindows BookableWindow[] @relation("ProviderBookableWindows")
-  appointmentRequestsAsProvider AppointmentRequest[] @relation("ProviderAppointmentRequests")
-  appointmentRequestsAsConsumer AppointmentRequest[] @relation("ConsumerAppointmentRequests")
-  schedulingNotifications SchedulingNotification[]
+  requesterFriendRequests FriendRequest[] @relation("RequesterFriendRequests")
+  targetFriendRequests    FriendRequest[] @relation("TargetFriendRequests")
+  friendshipsAsA          Friendship[]    @relation("FriendshipAccountA")
+  friendshipsAsB          Friendship[]    @relation("FriendshipAccountB")
+  blocksCreated           AccountBlock[]  @relation("BlockerAccountBlocks")
+  blocksReceived          AccountBlock[]  @relation("BlockedAccountBlocks")
+  requesterSharedReminders SharedReminderRequest[] @relation("RequesterSharedReminders")
+  inviteeSharedReminders   SharedReminderRequest[] @relation("InviteeSharedReminders")
+  reminderProjections      ReminderProjection[]
+  productNotifications     ProductNotification[]
 
   @@map("customers")
 }
@@ -687,6 +685,7 @@ model LinkSession {
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
   userLink UserLink @relation(fields: [userLinkId, providerAccountId], references: [id, providerAccountId], onDelete: Cascade)
+  friendRequests FriendRequest[]
 
   @@index([providerAccountId, status])
   @@index([consumerAccountId])
@@ -694,130 +693,149 @@ model LinkSession {
   @@map("link_sessions")
 }
 
-model ServiceLink {
-  id                String                 @id @default(cuid())
-  providerAccountId String                 @map("provider_account_id")
-  consumerAccountId String                 @map("consumer_account_id")
-  status            ServiceLinkStatus      @default(active)
-  capabilities      SchedulingCapability[]
-  createdAt         DateTime               @default(now()) @map("created_at")
-  removedAt         DateTime?              @map("removed_at")
-  blockedAt         DateTime?              @map("blocked_at")
-  updatedAt         DateTime               @updatedAt @map("updated_at")
+model FriendRequest {
+  id                 String              @id @default(cuid())
+  requesterAccountId String              @map("requester_account_id")
+  targetAccountId    String              @map("target_account_id")
+  linkSessionId      String?             @map("link_session_id")
+  message            String?             @db.VarChar(500)
+  idempotencyKey     String?             @map("idempotency_key")
+  status             FriendRequestStatus @default(pending)
+  resolvedAt         DateTime?           @map("resolved_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  provider Customer @relation("ProviderServiceLinks", fields: [providerAccountId], references: [id], onDelete: Cascade)
-  consumer Customer @relation("ConsumerServiceLinks", fields: [consumerAccountId], references: [id], onDelete: Cascade)
-  appointmentRequests AppointmentRequest[]
+  requester   Customer     @relation("RequesterFriendRequests", fields: [requesterAccountId], references: [id], onDelete: Cascade)
+  target      Customer     @relation("TargetFriendRequests", fields: [targetAccountId], references: [id], onDelete: Cascade)
+  linkSession LinkSession? @relation(fields: [linkSessionId], references: [id], onDelete: SetNull)
+  friendships Friendship[]
+  notifications ProductNotification[]
 
-  @@unique([id, providerAccountId, consumerAccountId])
-  @@index([providerAccountId, status])
-  @@index([consumerAccountId, status])
-  @@map("service_links")
+  @@index([requesterAccountId, status])
+  @@index([targetAccountId, status])
+  @@unique([requesterAccountId, targetAccountId, idempotencyKey])
+  @@map("friend_requests")
 }
 
-model BookableWindow {
-  id                String                 @id @default(cuid())
-  providerAccountId String                 @map("provider_account_id")
-  capability        SchedulingCapability   @default(appointment_request)
-  type              BookableWindowType
-  rule              Json
-  ruleFingerprint   String                 @map("rule_fingerprint")
-  status            BookableWindowStatus   @default(active)
-  createdAt         DateTime               @default(now()) @map("created_at")
-  closedAt          DateTime?              @map("closed_at")
-  updatedAt         DateTime               @updatedAt @map("updated_at")
+model Friendship {
+  id              String           @id @default(cuid())
+  accountAId      String           @map("account_a_id")
+  accountBId      String           @map("account_b_id")
+  friendRequestId String?          @map("friend_request_id")
+  status          FriendshipStatus @default(active)
+  removedAt       DateTime?        @map("removed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  provider Customer @relation("ProviderBookableWindows", fields: [providerAccountId], references: [id], onDelete: Cascade)
-  exclusions BookableWindowExclusion[]
-  appointmentRequests AppointmentRequest[]
+  accountA      Customer       @relation("FriendshipAccountA", fields: [accountAId], references: [id], onDelete: Cascade)
+  accountB      Customer       @relation("FriendshipAccountB", fields: [accountBId], references: [id], onDelete: Cascade)
+  friendRequest FriendRequest? @relation(fields: [friendRequestId], references: [id], onDelete: SetNull)
+  sharedReminderRequests SharedReminderRequest[]
 
-  @@unique([id, providerAccountId])
-  @@index([providerAccountId, status])
-  @@index([ruleFingerprint])
-  @@map("bookable_windows")
+  @@index([accountAId, status])
+  @@index([accountBId, status])
+  @@map("friendships")
 }
 
-model BookableWindowExclusion {
+model AccountBlock {
   id               String   @id @default(cuid())
-  bookableWindowId String   @map("bookable_window_id")
-  instanceStart    DateTime @map("instance_start")
-  instanceEnd      DateTime @map("instance_end")
+  blockerAccountId String   @map("blocker_account_id")
+  blockedAccountId String   @map("blocked_account_id")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  bookableWindow BookableWindow @relation(fields: [bookableWindowId], references: [id], onDelete: Cascade)
+  blocker Customer @relation("BlockerAccountBlocks", fields: [blockerAccountId], references: [id], onDelete: Cascade)
+  blocked Customer @relation("BlockedAccountBlocks", fields: [blockedAccountId], references: [id], onDelete: Cascade)
 
-  @@unique([bookableWindowId, instanceStart, instanceEnd])
-  @@map("bookable_window_exclusions")
+  @@index([blockerAccountId])
+  @@index([blockedAccountId])
+  @@map("account_blocks")
 }
 
-model AppointmentRequest {
-  id                String                    @id @default(cuid())
-  providerAccountId String                    @map("provider_account_id")
-  consumerAccountId String                    @map("consumer_account_id")
-  serviceLinkId     String                    @map("service_link_id")
-  bookableWindowId  String                    @map("bookable_window_id")
-  instanceStart     DateTime                  @map("instance_start")
-  instanceEnd       DateTime                  @map("instance_end")
-  timezone          String
-  idempotencyKey    String?                   @map("idempotency_key")
-  status            AppointmentRequestStatus  @default(pending_held)
-  releaseReason     AppointmentReleaseReason? @map("release_reason")
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  releasedAt        DateTime?                 @map("released_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
+model SharedReminderRequest {
+  id                    String                      @id @default(cuid())
+  requesterAccountId    String                      @map("requester_account_id")
+  inviteeAccountId      String                      @map("invitee_account_id")
+  friendshipId          String                      @map("friendship_id")
+  title                 String                      @db.VarChar(200)
+  fireAt                DateTime                    @map("fire_at")
+  timezone              String
+  idempotencyKey        String?                     @map("idempotency_key")
+  status                SharedReminderRequestStatus @default(pending_invitee_confirmation)
+  requesterReminderId   String?                     @map("requester_reminder_id")
+  inviteeReminderId     String?                     @map("invitee_reminder_id")
+  resolvedAt            DateTime?                   @map("resolved_at")
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
 
-  provider Customer @relation("ProviderAppointmentRequests", fields: [providerAccountId], references: [id], onDelete: Cascade)
-  consumer Customer @relation("ConsumerAppointmentRequests", fields: [consumerAccountId], references: [id], onDelete: Cascade)
-  serviceLink ServiceLink @relation(fields: [serviceLinkId, providerAccountId, consumerAccountId], references: [id, providerAccountId, consumerAccountId], onDelete: Restrict)
-  bookableWindow BookableWindow @relation(fields: [bookableWindowId, providerAccountId], references: [id, providerAccountId], onDelete: Restrict)
-  events AppointmentEvent[]
-  notifications SchedulingNotification[]
+  requester Customer     @relation("RequesterSharedReminders", fields: [requesterAccountId], references: [id], onDelete: Cascade)
+  invitee   Customer     @relation("InviteeSharedReminders", fields: [inviteeAccountId], references: [id], onDelete: Cascade)
+  friendship Friendship  @relation(fields: [friendshipId], references: [id], onDelete: Restrict)
+  events    SharedReminderEvent[]
+  projections ReminderProjection[]
+  notifications ProductNotification[]
 
-  @@index([providerAccountId, status])
-  @@index([consumerAccountId, status])
-  @@index([bookableWindowId, instanceStart, instanceEnd])
-  @@unique([providerAccountId, consumerAccountId, idempotencyKey])
-  @@map("appointment_requests")
+  @@index([requesterAccountId, status])
+  @@index([inviteeAccountId, status])
+  @@index([fireAt, status])
+  @@unique([requesterAccountId, inviteeAccountId, idempotencyKey])
+  @@map("shared_reminder_requests")
 }
 
-model AppointmentEvent {
-  id             String                    @id @default(cuid())
-  appointmentId  String                    @map("appointment_id")
-  fromState      AppointmentRequestStatus? @map("from_state")
-  toState        AppointmentRequestStatus  @map("to_state")
-  actorAccountId String                    @map("actor_account_id")
-  actorRole      AppointmentActorRole      @map("actor_role")
-  idempotencyKey  String?                   @unique @map("idempotency_key")
-  reason         String?
-  createdAt      DateTime                  @default(now()) @map("created_at")
+model SharedReminderEvent {
+  id                      String                       @id @default(cuid())
+  sharedReminderRequestId String                       @map("shared_reminder_request_id")
+  fromState               SharedReminderRequestStatus? @map("from_state")
+  toState                 SharedReminderRequestStatus  @map("to_state")
+  actorAccountId          String?                      @map("actor_account_id")
+  actorRole               SharedReminderActorRole      @map("actor_role")
+  idempotencyKey          String?                      @unique @map("idempotency_key")
+  reason                  String?
+  createdAt               DateTime                     @default(now()) @map("created_at")
 
-  appointment AppointmentRequest @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  sharedReminderRequest SharedReminderRequest @relation(fields: [sharedReminderRequestId], references: [id], onDelete: Cascade)
 
-  @@index([appointmentId, createdAt])
-  @@index([actorAccountId, createdAt])
-  @@map("appointment_events")
+  @@index([sharedReminderRequestId, createdAt])
+  @@map("shared_reminder_events")
 }
 
-model SchedulingNotification {
-  id                 String                       @id @default(cuid())
-  appointmentId      String                       @map("appointment_id")
-  recipientAccountId String                       @map("recipient_account_id")
-  idempotencyKey     String                       @unique @map("idempotency_key")
-  kind               String
-  payload            Json
-  status             SchedulingNotificationStatus @default(pending_delivery)
-  attempts           Int                          @default(0)
-  lastError          String?                      @map("last_error")
-  deliveredAt        DateTime?                    @map("delivered_at")
-  createdAt          DateTime                     @default(now()) @map("created_at")
-  updatedAt          DateTime                     @updatedAt @map("updated_at")
+model ReminderProjection {
+  id                      String                       @id @default(cuid())
+  sharedReminderRequestId String                       @map("shared_reminder_request_id")
+  ownerAccountId          String                       @map("owner_account_id")
+  runtimeReminderId       String                       @map("runtime_reminder_id")
+  role                    SharedReminderProjectionRole
+  createdAt               DateTime                     @default(now()) @map("created_at")
 
-  appointment AppointmentRequest @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  recipient Customer @relation(fields: [recipientAccountId], references: [id], onDelete: Cascade)
+  sharedReminderRequest SharedReminderRequest @relation(fields: [sharedReminderRequestId], references: [id], onDelete: Cascade)
+  owner                 Customer              @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([sharedReminderRequestId, role])
+  @@index([ownerAccountId])
+  @@map("reminder_projections")
+}
+
+model ProductNotification {
+  id                      String                    @id @default(cuid())
+  sharedReminderRequestId String?                   @map("shared_reminder_request_id")
+  friendRequestId         String?                   @map("friend_request_id")
+  recipientAccountId      String                    @map("recipient_account_id")
+  idempotencyKey          String                    @unique @map("idempotency_key")
+  kind                    String
+  payload                 Json
+  status                  ProductNotificationStatus @default(pending_delivery)
+  attempts                Int                       @default(0)
+  lastError               String?                   @map("last_error")
+  deliveredAt             DateTime?                 @map("delivered_at")
+  createdAt               DateTime                  @default(now()) @map("created_at")
+  updatedAt               DateTime                  @updatedAt @map("updated_at")
+
+  sharedReminderRequest SharedReminderRequest? @relation(fields: [sharedReminderRequestId], references: [id], onDelete: Cascade)
+  friendRequest         FriendRequest?         @relation(fields: [friendRequestId], references: [id], onDelete: Cascade)
+  recipient             Customer               @relation(fields: [recipientAccountId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
   @@index([recipientAccountId, createdAt])
-  @@map("scheduling_notifications")
+  @@map("product_notifications")
 }
 
 model AiBackend {
