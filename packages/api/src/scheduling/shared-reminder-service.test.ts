@@ -18,7 +18,7 @@ function fakeSharedReminderClient(state: {
       findFirst: vi.fn().mockResolvedValue(state.friendship ?? null),
     },
     sharedReminderRequest: {
-      create: vi.fn().mockResolvedValue({
+      create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
         id: 'srr_1',
         requesterAccountId: 'acct_b',
         inviteeAccountId: 'acct_a',
@@ -26,7 +26,8 @@ function fakeSharedReminderClient(state: {
         fireAt: new Date('2026-05-22T07:00:00.000Z'),
         timezone: 'Asia/Shanghai',
         status: 'pending_invitee_confirmation',
-      }),
+        ...data,
+      })),
       findFirst: vi.fn().mockResolvedValue(state.sharedReminderRequest ?? null),
       findMany: vi.fn().mockResolvedValue(state.sharedReminderRequest ? [state.sharedReminderRequest] : []),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -205,6 +206,34 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('invalidates a new request when friendship is removed before requester projection creation', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    client.friendship.findFirst
+      .mockResolvedValueOnce({ id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' })
+      .mockResolvedValueOnce(null);
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'shared:friendship-race',
+      }),
+    ).rejects.toThrow('friendship_required');
+
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
+      data: { status: 'invalidated', resolvedAt: expect.any(Date) },
+    });
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+    expect(client.productNotification.create).not.toHaveBeenCalled();
+  });
+
   it('returns an existing shared reminder request on duplicate create retry without side effects', async () => {
     const existingRequest = {
       id: 'srr_existing',
@@ -315,6 +344,7 @@ describe('shared reminder service', () => {
       fireAt: new Date('2026-05-22T07:00:00.000Z'),
       timezone: 'Asia/Shanghai',
       status: 'pending_invitee_confirmation',
+      friendshipId: 'fs_1',
       idempotencyKey: 'shared:retry-missing-projection',
     };
     const client = fakeSharedReminderClient({
@@ -358,6 +388,51 @@ describe('shared reminder service', () => {
         kind: 'shared_reminder_request',
       }),
     });
+  });
+
+  it('invalidates duplicate create resume when friendship is no longer active', async () => {
+    const existingRequest = {
+      id: 'srr_existing',
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      requesterReminderId: null,
+      title: 'meeting',
+      fireAt: new Date('2026-05-22T07:00:00.000Z'),
+      timezone: 'Asia/Shanghai',
+      status: 'pending_invitee_confirmation',
+      friendshipId: 'fs_1',
+      idempotencyKey: 'shared:retry-inactive-friendship',
+    };
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+      sharedReminderRequest: existingRequest,
+      reminderProjection: null,
+    });
+    client.sharedReminderRequest.create.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+    );
+    client.friendship.findFirst
+      .mockResolvedValueOnce({ id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' })
+      .mockResolvedValueOnce(null);
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'shared:retry-inactive-friendship',
+      }),
+    ).rejects.toThrow('friendship_required');
+
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'srr_existing', status: 'pending_invitee_confirmation' },
+      data: { status: 'invalidated', resolvedAt: expect.any(Date) },
+    });
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+    expect(client.productNotification.create).not.toHaveBeenCalled();
   });
 
   it('does not resume requester projection creation on duplicate create for a non-pending row', async () => {

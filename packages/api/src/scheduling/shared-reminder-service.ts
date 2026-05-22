@@ -323,6 +323,31 @@ async function reconcileRequesterReminderId(
   return { ...request, requesterReminderId: runtimeReminderId };
 }
 
+async function invalidateRequestForMissingFriendship(
+  client: Pick<SharedReminderClient, 'sharedReminderRequest'>,
+  request: SharedReminderRequestRecord,
+): Promise<never> {
+  await client.sharedReminderRequest.updateMany({
+    where: { id: request.id, status: 'pending_invitee_confirmation' },
+    data: { status: 'invalidated', resolvedAt: new Date() },
+  });
+  throw new Error('friendship_required');
+}
+
+async function ensureRequestFriendshipStillActive(
+  client: Pick<SharedReminderClient, 'friendship' | 'sharedReminderRequest'>,
+  request: SharedReminderRequestRecord,
+): Promise<void> {
+  const friendship = await findActiveFriendship(
+    client,
+    request.requesterAccountId,
+    request.inviteeAccountId,
+  );
+  if (!friendship || friendship.id !== request.friendshipId) {
+    await invalidateRequestForMissingFriendship(client, request);
+  }
+}
+
 async function finalizeRequesterProjection(
   client: SharedReminderClient,
   reminderRuntime: ReminderRuntimePort,
@@ -378,6 +403,7 @@ async function reconcileOrResumeRequesterProjection(
   ) {
     return reconciled;
   }
+  await ensureRequestFriendshipStillActive(client, request);
   const projection = await createProjection(client, reminderRuntime, {
     request,
     ownerAccountId: request.requesterAccountId,
@@ -721,6 +747,7 @@ export async function createSharedReminder(
     return reconcileOrResumeRequesterProjection(client, reminderRuntime, existing, idempotencyKey);
   }
 
+  await ensureRequestFriendshipStillActive(client, request);
   let projection: ProjectionCreationResult;
   try {
     projection = await createProjection(client, reminderRuntime, {
