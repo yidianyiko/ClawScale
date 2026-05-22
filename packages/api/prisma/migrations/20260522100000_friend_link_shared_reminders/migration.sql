@@ -35,10 +35,10 @@ ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_provide
 ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_consumer_account_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_service_link_id_provider_account_id_c_fkey";
+ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_service_link_id_provider_account_id_consumer_account_id_fkey";
 
 -- DropForeignKey
-ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_bookable_window_id_provider_account_i_fkey";
+ALTER TABLE "appointment_requests" DROP CONSTRAINT "appointment_requests_bookable_window_id_provider_account_id_fkey";
 
 -- DropForeignKey
 ALTER TABLE "appointment_events" DROP CONSTRAINT "appointment_events_appointment_id_fkey";
