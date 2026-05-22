@@ -53,7 +53,7 @@ export interface CustomerAgentInstanceResult {
   effective_profile: CustomerAgentEffectiveProfile;
 }
 
-export type CustomerAgentInstancePatch = Partial<
+type CustomerAgentInstanceScalarPatch = Partial<
   Pick<
     CustomerAgentInstance,
     | 'display_name'
@@ -63,11 +63,16 @@ export type CustomerAgentInstancePatch = Partial<
     | 'background'
     | 'speaking_style'
     | 'extra_rules'
-    | 'status'
-    | 'proactive'
-    | 'memory'
   >
 >;
+
+type NullableNestedPatch<T extends object> = Partial<T> | null;
+
+export type CustomerAgentInstancePatch = CustomerAgentInstanceScalarPatch & {
+  status?: NullableNestedPatch<CustomerAgentInstance['status']>;
+  proactive?: NullableNestedPatch<CustomerAgentInstance['proactive']>;
+  memory?: NullableNestedPatch<CustomerAgentInstance['memory']>;
+};
 
 export function getCustomerAgentInstance(): Promise<ApiResponse<CustomerAgentInstanceResult>> {
   return customerApi.get<ApiResponse<CustomerAgentInstanceResult>>('/api/customer/agent-instance');

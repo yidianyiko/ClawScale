@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { customerApi } from './customer-api';
 import {
+  type CustomerAgentInstancePatch,
   getCustomerAgentInstance,
   resetCustomerAgentInstance,
   updateCustomerAgentInstance,
@@ -15,6 +16,12 @@ vi.mock('./customer-api', () => ({
 }));
 
 const apiMock = vi.mocked(customerApi);
+
+const partialNestedOverridePatch = {
+  status: { place: '书桌' },
+  proactive: null,
+  memory: {},
+} satisfies CustomerAgentInstancePatch;
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -40,6 +47,18 @@ describe('customer agent instance wrappers', () => {
     expect(apiMock.patch).toHaveBeenCalledWith('/api/customer/agent-instance', {
       display_name: '沈妄',
       proactive: { enabled: false },
+    });
+  });
+
+  it('preserves partial and nullable nested override fields', async () => {
+    apiMock.patch.mockResolvedValueOnce({ ok: true, data: { agent_instance: {}, effective_profile: {} } });
+
+    await updateCustomerAgentInstance(partialNestedOverridePatch);
+
+    expect(apiMock.patch).toHaveBeenCalledWith('/api/customer/agent-instance', {
+      status: { place: '书桌' },
+      proactive: null,
+      memory: {},
     });
   });
 
