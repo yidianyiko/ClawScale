@@ -120,6 +120,7 @@ describe('CustomerMyAgentPage', () => {
     expect(container.textContent).toContain('My Agent');
     expect(container.textContent).toContain('4/7');
     expect((container.querySelector('input[name="display_name"]') as HTMLInputElement).value).toBe('Shen Wang');
+    expect((container.querySelector('input[name="nickname"]') as HTMLInputElement).value).toBe('');
     expect((container.querySelector('input[name="user_address_name"]') as HTMLInputElement).value).toBe('Sister');
     expect((container.querySelector('textarea[name="persona"]') as HTMLTextAreaElement).value).toBe('custom persona');
     expect((container.querySelector('input[name="proactive"]') as HTMLInputElement).checked).toBe(false);
@@ -132,6 +133,17 @@ describe('CustomerMyAgentPage', () => {
     await flushTicks();
 
     expect(replaceMock).toHaveBeenCalledWith('/auth/login?next=/account/my-agent');
+  });
+
+  it('shows a terminal empty state for generic load failures', async () => {
+    getMock.mockResolvedValueOnce({ ok: false, error: 'upstream_unavailable' });
+
+    renderPage();
+    await flushTicks();
+
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Unable to load agent settings right now.');
+    expect(container.textContent).not.toContain('Loading...');
   });
 
   it('saves edited fields through the customer API helper', async () => {
@@ -160,6 +172,64 @@ describe('CustomerMyAgentPage', () => {
       }),
     );
     expect(container.textContent).toContain('Agent settings saved.');
+  });
+
+  it('does not echo inherited defaults into persisted override fields on save', async () => {
+    getMock.mockResolvedValueOnce({
+      ok: true,
+      data: agentPayload({
+        agent_instance: {
+          ...agentPayload().agent_instance,
+          display_name: null,
+          nickname: null,
+          user_address_name: null,
+          persona: null,
+          background: null,
+          speaking_style: null,
+          extra_rules: null,
+          status: { place: null, action: null },
+        },
+        effective_profile: {
+          display_name: 'Default Agent',
+          nickname: 'Default Nickname',
+          user_address_name: 'Friend',
+          persona: 'inherited persona',
+          background: 'inherited background',
+          speaking_style: 'inherited style',
+          extra_rules: 'inherited rules',
+          status: { place: 'inherited place', action: 'inherited action' },
+          proactive: { enabled: false },
+          memory: { enabled: true },
+        },
+      }),
+    });
+
+    renderPage();
+    await flushTicks();
+
+    expect(container.textContent).toContain('Default Agent');
+    expect((container.querySelector('input[name="display_name"]') as HTMLInputElement).value).toBe('');
+    expect((container.querySelector('input[name="nickname"]') as HTMLInputElement).value).toBe('');
+    expect((container.querySelector('input[name="user_address_name"]') as HTMLInputElement).value).toBe('');
+    expect((container.querySelector('textarea[name="persona"]') as HTMLTextAreaElement).value).toBe('');
+
+    (container.querySelector('form') as HTMLFormElement).dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true }),
+    );
+    await flushTicks();
+
+    expect(updateMock).toHaveBeenCalledWith({
+      display_name: '',
+      nickname: null,
+      user_address_name: null,
+      persona: null,
+      background: null,
+      speaking_style: null,
+      extra_rules: null,
+      status: { place: null, action: null },
+      proactive: { enabled: false },
+      memory: { enabled: true },
+    });
   });
 
   it('resets settings and keeps the account data intact', async () => {

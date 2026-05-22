@@ -8,7 +8,6 @@ import {
   getCustomerAgentInstance,
   resetCustomerAgentInstance,
   updateCustomerAgentInstance,
-  type CustomerAgentEffectiveProfile,
   type CustomerAgentInstance,
   type CustomerAgentInstanceResult,
 } from '../../../../lib/customer-agent-instance';
@@ -30,19 +29,22 @@ type FormState = {
   memory_enabled: boolean;
 };
 
-function formFromProfile(profile: CustomerAgentEffectiveProfile): FormState {
+function formFromInstance(
+  instance: CustomerAgentInstance,
+  effective: CustomerAgentInstanceResult['effective_profile'],
+): FormState {
   return {
-    display_name: profile.display_name ?? '',
-    nickname: profile.nickname ?? '',
-    user_address_name: profile.user_address_name ?? '',
-    persona: profile.persona ?? '',
-    background: profile.background ?? '',
-    speaking_style: profile.speaking_style ?? '',
-    extra_rules: profile.extra_rules ?? '',
-    status_place: profile.status.place ?? '',
-    status_action: profile.status.action ?? '',
-    proactive_enabled: profile.proactive.enabled,
-    memory_enabled: profile.memory.enabled,
+    display_name: instance.display_name ?? '',
+    nickname: instance.nickname ?? '',
+    user_address_name: instance.user_address_name ?? '',
+    persona: instance.persona ?? '',
+    background: instance.background ?? '',
+    speaking_style: instance.speaking_style ?? '',
+    extra_rules: instance.extra_rules ?? '',
+    status_place: instance.status.place ?? '',
+    status_action: instance.status.action ?? '',
+    proactive_enabled: instance.proactive.enabled ?? effective.proactive.enabled,
+    memory_enabled: instance.memory.enabled ?? effective.memory.enabled,
   };
 }
 
@@ -76,7 +78,7 @@ export default function CustomerMyAgentPage() {
 
   const applyData = useCallback((next: CustomerAgentInstanceResult) => {
     setData(next);
-    setForm(formFromProfile(next.effective_profile));
+    setForm(formFromInstance(next.agent_instance, next.effective_profile));
   }, []);
 
   useEffect(() => {
@@ -185,12 +187,21 @@ export default function CustomerMyAgentPage() {
     setForm((current) => (current ? { ...current, [key]: value } : current));
   }
 
-  if (loading || !form || !data) {
+  if (loading) {
     return (
       <section className="customer-view customer-view--wide my-agent-page">
         <div className="customer-panel customer-panel--wide">
           <p className="customer-inline-note">Loading...</p>
-          {error ? <p className="customer-inline-note customer-inline-note--error">{error}</p> : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (!form || !data) {
+    return (
+      <section className="customer-view customer-view--wide my-agent-page">
+        <div className="customer-panel customer-panel--wide">
+          <p className="customer-inline-note customer-inline-note--error">{error || copy.loadFailure}</p>
         </div>
       </section>
     );
