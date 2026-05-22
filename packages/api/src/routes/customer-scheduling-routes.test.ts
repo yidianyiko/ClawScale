@@ -23,7 +23,16 @@ const friendships = vi.hoisted(() => ({
   unblockAccount: vi.fn(),
 }));
 
+const sharedReminders = vi.hoisted(() => ({
+  createSharedReminder: vi.fn(),
+  listPendingSharedReminders: vi.fn(),
+  acceptSharedReminder: vi.fn(),
+  rejectSharedReminder: vi.fn(),
+  cancelSharedReminder: vi.fn(),
+}));
+
 const reminderRuntime = vi.hoisted(() => ({
+  createRuntimeReminder: vi.fn(),
   cancelRuntimeReminder: vi.fn(),
 }));
 
@@ -37,6 +46,7 @@ vi.mock('../scheduling/user-link-service.js', () => ({
   disableUserLink: scheduling.disableUserLink,
 }));
 vi.mock('../scheduling/friendship-service.js', () => friendships);
+vi.mock('../scheduling/shared-reminder-service.js', () => sharedReminders);
 vi.mock('../lib/reminder-runtime-client.js', () => reminderRuntime);
 
 import { customerSchedulingRouter } from './customer-scheduling-routes.js';
@@ -105,6 +115,8 @@ describe('customer scheduling routes', () => {
         accountBId: 'ck_other',
         friendRequestId: 'fr_1',
         status: 'active',
+        accountA: { id: 'ck_123', displayName: 'Alice', avatarUrl: null },
+        accountB: { id: 'ck_other', displayName: 'Bob', avatarUrl: 'https://img.example/b.png' },
         createdAt: new Date('2026-05-22T00:00:00.000Z'),
       },
     ]);
@@ -116,6 +128,30 @@ describe('customer scheduling routes', () => {
     });
     friendships.blockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
     friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
+    sharedReminders.createSharedReminder.mockResolvedValue({
+      id: 'srr_1',
+      requesterAccountId: 'ck_123',
+      inviteeAccountId: 'ck_other',
+      title: 'meeting',
+      fireAt: new Date('2026-05-23T07:00:00.000Z'),
+      timezone: 'Asia/Shanghai',
+      status: 'pending_invitee_confirmation',
+    });
+    sharedReminders.listPendingSharedReminders.mockResolvedValue([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'ck_other',
+        inviteeAccountId: 'ck_123',
+        title: 'meeting',
+        fireAt: new Date('2026-05-23T07:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
+    sharedReminders.acceptSharedReminder.mockResolvedValue({ id: 'srr_1', status: 'accepted' });
+    sharedReminders.rejectSharedReminder.mockResolvedValue({ id: 'srr_1', status: 'rejected' });
+    sharedReminders.cancelSharedReminder.mockResolvedValue({ id: 'srr_1', status: 'cancelled' });
+    reminderRuntime.createRuntimeReminder.mockResolvedValue({ ok: true, data: { id: 'rem_1' } });
     reminderRuntime.cancelRuntimeReminder.mockResolvedValue({ ok: true, data: { id: 'rem_1' } });
   });
 
@@ -242,7 +278,17 @@ describe('customer scheduling routes', () => {
     expect(deleteRes.status).toBe(200);
     await expect(listRes.json()).resolves.toEqual({
       ok: true,
-      data: [{ id: 'fs_1', status: 'active', counterpartAccountId: 'ck_other' }],
+      data: [
+        {
+          id: 'fs_1',
+          status: 'active',
+          counterpartAccountId: 'ck_other',
+          counterpartProfile: {
+            displayName: 'Bob',
+            avatarUrl: 'https://img.example/b.png',
+          },
+        },
+      ],
     });
     await expect(deleteRes.json()).resolves.toEqual({
       ok: true,
@@ -301,6 +347,104 @@ describe('customer scheduling routes', () => {
       ok: true,
       data: { blockedAccountId: 'ck_other' },
     });
+  });
+
+  it('creates and lists shared reminder requests as the authenticated customer', async () => {
+    const createRes = await createApp().request('/api/customer/scheduling/shared-reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        requesterAccountId: 'ck_attacker',
+        inviteeAccountId: 'ck_other',
+        title: 'meeting',
+        fireAt: '2026-05-23T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'idem_shared_create',
+      }),
+    });
+    const listRes = await createApp().request('/api/customer/scheduling/shared-reminders/pending', {
+      headers: { authorization: 'Bearer customer-token' },
+    });
+
+    expect(createRes.status).toBe(201);
+    expect(listRes.status).toBe(200);
+    expect(sharedReminders.createSharedReminder).toHaveBeenCalledWith(
+      db as never,
+      {
+        createRuntimeReminder: reminderRuntime.createRuntimeReminder,
+        cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder,
+      },
+      {
+        requesterAccountId: 'ck_123',
+        inviteeAccountId: 'ck_other',
+        title: 'meeting',
+        fireAt: '2026-05-23T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'idem_shared_create',
+      },
+    );
+    expect(sharedReminders.listPendingSharedReminders).toHaveBeenCalledWith(db as never, {
+      inviteeAccountId: 'ck_123',
+    });
+    await expect(createRes.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        counterpartAccountId: 'ck_other',
+        title: 'meeting',
+        fireAt: '2026-05-23T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+      },
+    });
+    await expect(listRes.json()).resolves.toEqual({
+      ok: true,
+      data: [
+        {
+          id: 'srr_1',
+          status: 'pending_invitee_confirmation',
+          counterpartAccountId: 'ck_other',
+          title: 'meeting',
+          fireAt: '2026-05-23T07:00:00.000Z',
+          timezone: 'Asia/Shanghai',
+        },
+      ],
+    });
+  });
+
+  it('accepts, rejects, and cancels shared reminder requests as the authenticated customer', async () => {
+    for (const [action, service, status] of [
+      ['accept', sharedReminders.acceptSharedReminder, 'accepted'],
+      ['reject', sharedReminders.rejectSharedReminder, 'rejected'],
+      ['cancel', sharedReminders.cancelSharedReminder, 'cancelled'],
+    ] as const) {
+      const res = await createApp().request(`/api/customer/scheduling/shared-reminders/srr_1/${action}`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer customer-token' },
+      });
+
+      expect(res.status).toBe(200);
+      expect(service).toHaveBeenCalledWith(
+        db as never,
+        {
+          createRuntimeReminder: reminderRuntime.createRuntimeReminder,
+          cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder,
+        },
+        {
+          actorAccountId: 'ck_123',
+          requestId: 'srr_1',
+          now: expect.any(Date),
+          idempotencyKey: `${action}:ck_123:srr_1`,
+        },
+      );
+      await expect(res.json()).resolves.toEqual({
+        ok: true,
+        data: { id: 'srr_1', status },
+      });
+    }
   });
 
   it('returns a stable JSON error when a friendship service rejects', async () => {

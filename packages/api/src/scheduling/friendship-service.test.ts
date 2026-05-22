@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acceptFriendRequest,
   blockAccount,
   cancelFriendRequest,
+  listFriends,
   rejectFriendRequest,
   removeFriendship,
 } from './friendship-service.js';
@@ -16,6 +17,7 @@ const db = {
     updateMany: vi.fn(),
   },
   friendship: {
+    findMany: vi.fn(),
     findFirst: vi.fn(),
     create: vi.fn(),
     updateMany: vi.fn(),
@@ -35,17 +37,47 @@ const db = {
   },
   productNotification: {
     create: vi.fn(),
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
   },
   $transaction: vi.fn(),
 };
 
 describe('friendship service', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     db.$transaction.mockImplementation(async (fn) => fn(db));
     db.sharedReminderRequest.findMany.mockResolvedValue([]);
     db.reminderProjection.findFirst.mockResolvedValue(null);
     db.reminderProjection.deleteMany.mockResolvedValue({ count: 0 });
+    db.productNotification.create.mockResolvedValue({
+      id: 'pn_1',
+      recipientAccountId: 'ck_z',
+      idempotencyKey: 'friend-request:fr_1:accepted:idem_accept',
+      kind: 'friend_request_accepted',
+      payload: {
+        text: '你的好友请求已通过。',
+        metadata: {
+          request_id: 'fr_1',
+          request_type: 'friend_request',
+          actor_account_id: 'ck_a',
+        },
+      },
+      status: 'pending_delivery',
+    });
+    db.productNotification.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   function fakeReminderRuntime(state: {
@@ -104,6 +136,57 @@ describe('friendship service', () => {
     });
   });
 
+  it('delivers accepted friend-request notifications to the bridge immediately', async () => {
+    db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.friendRequest.findUnique.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'ck_z',
+      targetAccountId: 'ck_a',
+      status: 'accepted',
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendship.create.mockResolvedValueOnce({
+      id: 'fs_1',
+      accountAId: 'ck_a',
+      accountBId: 'ck_z',
+      status: 'active',
+    });
+
+    await acceptFriendRequest(db as never, {
+      actorAccountId: 'ck_a',
+      requestId: 'fr_1',
+      idempotencyKey: 'idem_accept',
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8090/bridge/inbound',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+      }),
+    );
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      customer_id: 'ck_z',
+      inbound_event_id: 'friend-request:fr_1:accepted:idem_accept',
+      message_type: 'product_notification',
+      product_notification: {
+        request_id: 'fr_1',
+        request_type: 'friend_request',
+        actor_account_id: 'ck_a',
+        kind: 'friend_request_accepted',
+      },
+    });
+    expect(db.productNotification.updateMany).toHaveBeenCalledWith({
+      where: { id: 'pn_1', status: { in: ['pending_delivery', 'failed'] } },
+      data: {
+        status: 'delivered',
+        deliveredAt: expect.any(Date),
+        lastError: null,
+      },
+    });
+  });
+
   it('rejecting a pending request marks it rejected without creating a friendship', async () => {
     db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
@@ -118,6 +201,41 @@ describe('friendship service', () => {
     expect(db.friendRequest.updateMany).toHaveBeenCalledWith({
       where: { id: 'fr_1', status: 'pending', targetAccountId: 'ck_a' },
       data: { status: 'rejected', resolvedAt: expect.any(Date) },
+    });
+  });
+
+  it('lists active friendships with account profile data for name resolution', async () => {
+    db.friendship.findMany.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_a',
+        accountBId: 'ck_b',
+        status: 'active',
+        accountA: { id: 'ck_a', displayName: 'Alice', avatarUrl: null },
+        accountB: { id: 'ck_b', displayName: 'Bob', avatarUrl: 'https://img.example/b.png' },
+      },
+    ]);
+
+    await expect(listFriends(db as never, { accountId: 'ck_a' })).resolves.toEqual([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_a',
+        accountBId: 'ck_b',
+        status: 'active',
+        accountA: { id: 'ck_a', displayName: 'Alice', avatarUrl: null },
+        accountB: { id: 'ck_b', displayName: 'Bob', avatarUrl: 'https://img.example/b.png' },
+      },
+    ]);
+    expect(db.friendship.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'active',
+        OR: [{ accountAId: 'ck_a' }, { accountBId: 'ck_a' }],
+      },
+      include: {
+        accountA: { select: { id: true, displayName: true, avatarUrl: true } },
+        accountB: { select: { id: true, displayName: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
     });
   });
 

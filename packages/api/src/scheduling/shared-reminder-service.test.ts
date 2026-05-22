@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acceptSharedReminder,
   cancelSharedReminder,
@@ -56,7 +56,23 @@ function fakeSharedReminderClient(state: {
       }),
     },
     productNotification: {
-      create: vi.fn().mockResolvedValue({ id: 'pn_1' }),
+      create: vi.fn().mockResolvedValue({
+        id: 'pn_1',
+        recipientAccountId: 'acct_a',
+        idempotencyKey: 'shared-reminder:srr_1:shared_reminder_request',
+        kind: 'shared_reminder_request',
+        payload: {
+          text: '你有一个共享提醒请求，请确认或拒绝。',
+          metadata: {
+            request_id: 'srr_1',
+            request_type: 'shared_reminder_request',
+            allowed_actions: ['accept', 'reject'],
+          },
+        },
+        status: 'pending_delivery',
+      }),
+      findMany: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
@@ -72,6 +88,21 @@ function fakeReminderRuntime(state: {
 }
 
 describe('shared reminder service', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it('creates requester projection immediately and notifies invitee', async () => {
     const client = fakeSharedReminderClient({
       friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
@@ -107,6 +138,33 @@ describe('shared reminder service', () => {
         recipientAccountId: 'acct_a',
         kind: 'shared_reminder_request',
       }),
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8090/bridge/inbound',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+      }),
+    );
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      customer_id: 'acct_a',
+      inbound_event_id: 'shared-reminder:srr_1:shared_reminder_request',
+      message_type: 'product_notification',
+      product_notification: {
+        request_id: 'srr_1',
+        request_type: 'shared_reminder_request',
+        allowed_actions: ['accept', 'reject'],
+        kind: 'shared_reminder_request',
+      },
+    });
+    expect(client.productNotification.updateMany).toHaveBeenCalledWith({
+      where: { id: 'pn_1', status: { in: ['pending_delivery', 'failed'] } },
+      data: {
+        status: 'delivered',
+        deliveredAt: expect.any(Date),
+        lastError: null,
+      },
     });
   });
 

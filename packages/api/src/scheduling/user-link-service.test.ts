@@ -15,18 +15,44 @@ const db = {
   customer: { findUnique: vi.fn() },
   friendRequest: { findFirst: vi.fn(), create: vi.fn() },
   accountBlock: { findFirst: vi.fn() },
-  productNotification: { findFirst: vi.fn(), create: vi.fn() },
+  productNotification: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   $transaction: vi.fn(),
 };
 
 describe('user link service', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     db.$transaction.mockImplementation(async (fn) => fn(db));
+    db.productNotification.create.mockResolvedValue({
+      id: 'pn_1',
+      recipientAccountId: 'acct_a',
+      idempotencyKey: 'friend-request:fr_1:target',
+      kind: 'friend_request',
+      payload: {
+        text: '你有一个新的好友请求，请确认或拒绝。',
+        metadata: {
+          request_id: 'fr_1',
+          request_type: 'friend_request',
+          actor_account_id: 'acct_b',
+          allowed_actions: ['accept', 'reject'],
+        },
+      },
+      status: 'pending_delivery',
+    });
+    db.productNotification.updateMany.mockResolvedValue({ count: 1 });
     process.env.DOMAIN_CLIENT = 'https://kap.example';
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     vi.useRealTimers();
   });
 
@@ -270,6 +296,13 @@ describe('user link service', () => {
         status: 'pending_delivery',
       }),
     });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8090/bridge/inbound',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+      }),
+    );
   });
 
   it('returns the existing pending request when the same requester retries after claiming', async () => {

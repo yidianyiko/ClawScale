@@ -1,3 +1,5 @@
+import { enqueueProductNotification } from './notification-service.js';
+
 type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 type FriendshipStatus = 'active' | 'removed';
 type SharedReminderRequestStatus =
@@ -25,6 +27,14 @@ interface FriendshipRecord {
   accountAId: string;
   accountBId: string;
   status: FriendshipStatus;
+  accountA?: CustomerProfileRecord;
+  accountB?: CustomerProfileRecord;
+}
+
+interface CustomerProfileRecord {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 interface SharedReminderRequestRecord {
@@ -41,6 +51,14 @@ interface ReminderProjectionRecord {
   ownerAccountId: string;
   runtimeReminderId: string;
   role: 'requester' | 'invitee';
+}
+
+interface ProductNotificationDeliveryRecord {
+  id: string;
+  recipientAccountId: string;
+  idempotencyKey: string;
+  kind: string;
+  payload: unknown;
 }
 
 interface RequesterProjectionCancellation {
@@ -77,6 +95,7 @@ interface FriendshipClient {
   friendship: {
     findMany(args: {
       where: Record<string, unknown>;
+      include?: Record<string, unknown>;
       orderBy?: Record<string, unknown> | Record<string, unknown>[];
     }): Promise<FriendshipRecord[]>;
     findFirst(args: { where: Record<string, unknown> }): Promise<FriendshipRecord | null>;
@@ -107,6 +126,15 @@ interface FriendshipClient {
   };
   productNotification: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      take: number;
+    }): Promise<ProductNotificationDeliveryRecord[]>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   $transaction?<T>(fn: (client: FriendshipWriteClient) => Promise<T>): Promise<T>;
 }
@@ -196,29 +224,19 @@ async function createAcceptedNotification(
     idempotencyKey: string;
   },
 ): Promise<void> {
-  try {
-    await client.productNotification.create({
-      data: {
-        friendRequestId: input.request.id,
-        recipientAccountId: input.request.requesterAccountId,
-        idempotencyKey: `friend-request:${input.request.id}:accepted:${input.idempotencyKey}`,
-        kind: 'friend_request_accepted',
-        payload: {
-          text: '你的好友请求已通过。',
-          metadata: {
-            request_id: input.request.id,
-            request_type: 'friend_request',
-            actor_account_id: input.request.targetAccountId,
-          },
-        },
-        status: 'pending_delivery',
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConflict(error)) {
-      throw error;
-    }
-  }
+  await enqueueProductNotification(client, {
+    requestId: input.request.id,
+    requestType: 'friend_request',
+    recipientAccountId: input.request.requesterAccountId,
+    idempotencyKey: `friend-request:${input.request.id}:accepted:${input.idempotencyKey}`,
+    kind: 'friend_request_accepted',
+    text: '你的好友请求已通过。',
+    metadata: {
+      request_id: input.request.id,
+      request_type: 'friend_request',
+      actor_account_id: input.request.targetAccountId,
+    },
+  });
 }
 
 function sharedReminderPairWhere(input: {
@@ -523,6 +541,10 @@ export async function listFriends(
     where: {
       status: 'active',
       OR: [{ accountAId: accountId }, { accountBId: accountId }],
+    },
+    include: {
+      accountA: { select: { id: true, displayName: true, avatarUrl: true } },
+      accountB: { select: { id: true, displayName: true, avatarUrl: true } },
     },
     orderBy: { createdAt: 'desc' },
   });

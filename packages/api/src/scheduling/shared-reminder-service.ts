@@ -4,6 +4,7 @@ import type {
   ReminderRuntimeRecord,
   ReminderRuntimeResult,
 } from '../lib/reminder-runtime-client.js';
+import { enqueueProductNotification } from './notification-service.js';
 import type { SharedReminderProjectionRole, SharedReminderRequestStatus } from './types.js';
 
 type SharedReminderActorRole = SharedReminderProjectionRole | 'system';
@@ -56,6 +57,14 @@ interface ProjectionCreationResult {
   role: SharedReminderProjectionRole;
 }
 
+interface ProductNotificationDeliveryRecord {
+  id: string;
+  recipientAccountId: string;
+  idempotencyKey: string;
+  kind: string;
+  payload: unknown;
+}
+
 const STALE_PENDING_CLAIM_MS = 5 * 60 * 1000;
 
 export interface ReminderRuntimePort {
@@ -86,6 +95,15 @@ export interface SharedReminderClient {
   };
   productNotification: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      take: number;
+    }): Promise<ProductNotificationDeliveryRecord[]>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
 }
 
@@ -257,29 +275,19 @@ async function enqueueSharedReminderNotification(
     allowedActions: string[];
   },
 ): Promise<void> {
-  try {
-    await client.productNotification.create({
-      data: {
-        sharedReminderRequestId: input.requestId,
-        recipientAccountId: input.recipientAccountId,
-        idempotencyKey: `shared-reminder:${input.requestId}:${input.kind}`,
-        kind: input.kind,
-        payload: {
-          text: input.text,
-          metadata: {
-            request_id: input.requestId,
-            request_type: 'shared_reminder_request',
-            allowed_actions: input.allowedActions,
-          },
-        },
-        status: 'pending_delivery',
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConflict(error)) {
-      throw error;
-    }
-  }
+  await enqueueProductNotification(client, {
+    requestId: input.requestId,
+    requestType: 'shared_reminder_request',
+    recipientAccountId: input.recipientAccountId,
+    idempotencyKey: `shared-reminder:${input.requestId}:${input.kind}`,
+    kind: input.kind,
+    text: input.text,
+    metadata: {
+      request_id: input.requestId,
+      request_type: 'shared_reminder_request',
+      allowed_actions: input.allowedActions,
+    },
+  });
 }
 
 async function findProjection(

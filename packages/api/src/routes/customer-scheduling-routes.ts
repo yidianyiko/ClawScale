@@ -6,7 +6,7 @@ import {
   verifyCustomerToken,
   type CustomerSession,
 } from '../lib/customer-auth.js';
-import { cancelRuntimeReminder } from '../lib/reminder-runtime-client.js';
+import { cancelRuntimeReminder, createRuntimeReminder } from '../lib/reminder-runtime-client.js';
 import {
   disableUserLink,
   getOrCreateActiveUserLink,
@@ -22,6 +22,13 @@ import {
   removeFriendship,
   unblockAccount,
 } from '../scheduling/friendship-service.js';
+import {
+  acceptSharedReminder,
+  cancelSharedReminder,
+  createSharedReminder,
+  listPendingSharedReminders,
+  rejectSharedReminder,
+} from '../scheduling/shared-reminder-service.js';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -93,7 +100,11 @@ function isKnownSchedulingError(error: string): boolean {
     error === 'friend_request_not_found' ||
     error === 'friend_request_blocked' ||
     error === 'friendship_not_found' ||
+    error === 'friendship_required' ||
     error === 'reminder_projection_failed' ||
+    error === 'shared_reminder_due' ||
+    error === 'shared_reminder_not_found' ||
+    error === 'shared_reminder_not_pending' ||
     error === 'cannot_friend_self' ||
     error === 'not_allowed'
   );
@@ -133,19 +144,59 @@ function friendRequestActionDto(row: Record<string, unknown>): Record<string, st
   };
 }
 
-function friendDto(row: Record<string, unknown>, accountId: string): Record<string, string> {
+function profileDto(value: unknown): Record<string, string | null> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const row = value as Record<string, unknown>;
+  const displayName = stringField(row, 'displayName');
+  if (!displayName) {
+    return undefined;
+  }
+  const avatarUrl = row['avatarUrl'];
+  return {
+    displayName,
+    avatarUrl: typeof avatarUrl === 'string' ? avatarUrl : null,
+  };
+}
+
+function friendDto(row: Record<string, unknown>, accountId: string): Record<string, unknown> {
   const accountAId = stringField(row, 'accountAId');
   const accountBId = stringField(row, 'accountBId');
+  const counterpartIsAccountA = accountBId === accountId;
+  const counterpartProfile = profileDto(row[counterpartIsAccountA ? 'accountA' : 'accountB']);
   return {
     id: stringField(row, 'id'),
     status: stringField(row, 'status'),
-    counterpartAccountId: accountAId === accountId ? accountBId : accountAId,
+    counterpartAccountId: counterpartIsAccountA ? accountAId : accountBId,
+    ...(counterpartProfile ? { counterpartProfile } : {}),
   };
 }
 
 function blockDto(row: Record<string, unknown>): Record<string, string> {
   return {
     blockedAccountId: stringField(row, 'blockedAccountId'),
+  };
+}
+
+function dateStringField(row: Record<string, unknown>, key: string): string {
+  const value = row[key];
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+function sharedReminderDto(row: Record<string, unknown>, accountId: string): Record<string, string> {
+  const requesterAccountId = stringField(row, 'requesterAccountId');
+  const inviteeAccountId = stringField(row, 'inviteeAccountId');
+  return {
+    id: stringField(row, 'id'),
+    status: stringField(row, 'status'),
+    counterpartAccountId: requesterAccountId === accountId ? inviteeAccountId : requesterAccountId,
+    title: stringField(row, 'title'),
+    fireAt: dateStringField(row, 'fireAt'),
+    timezone: stringField(row, 'timezone'),
   };
 }
 
@@ -300,6 +351,111 @@ customerSchedulingRouter.delete('/blocks/:blockedAccountId', async (c) => {
     return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);
+  }
+});
+
+customerSchedulingRouter.post('/shared-reminders', async (c) => {
+  const session = c.get('customerSchedulingAuth');
+  const body = await readJsonObject(c);
+  if (!body) {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
+  try {
+    const result = await createSharedReminder(
+      db as never,
+      { createRuntimeReminder, cancelRuntimeReminder },
+      {
+        requesterAccountId: session.customerId,
+        inviteeAccountId: stringField(body, 'inviteeAccountId'),
+        title: stringField(body, 'title'),
+        fireAt: stringField(body, 'fireAt'),
+        timezone: stringField(body, 'timezone'),
+        idempotencyKey: stringField(body, 'idempotencyKey'),
+      },
+    );
+    return c.json({
+      ok: true,
+      data: sharedReminderDto(result as Record<string, unknown>, session.customerId),
+    }, 201);
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
+  }
+});
+
+customerSchedulingRouter.get('/shared-reminders/pending', async (c) => {
+  const session = c.get('customerSchedulingAuth');
+  try {
+    const result = await listPendingSharedReminders(db as never, {
+      inviteeAccountId: session.customerId,
+    });
+    return c.json({
+      ok: true,
+      data: result.map((row) =>
+        sharedReminderDto(row as unknown as Record<string, unknown>, session.customerId),
+      ),
+    });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
+  }
+});
+
+customerSchedulingRouter.post('/shared-reminders/:id/accept', async (c) => {
+  const session = c.get('customerSchedulingAuth');
+  const requestId = c.req.param('id');
+  try {
+    const result = await acceptSharedReminder(
+      db as never,
+      { createRuntimeReminder, cancelRuntimeReminder },
+      {
+        actorAccountId: session.customerId,
+        requestId,
+        now: new Date(),
+        idempotencyKey: actionIdempotencyKey('accept', session.customerId, requestId),
+      },
+    );
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
+  }
+});
+
+customerSchedulingRouter.post('/shared-reminders/:id/reject', async (c) => {
+  const session = c.get('customerSchedulingAuth');
+  const requestId = c.req.param('id');
+  try {
+    const result = await rejectSharedReminder(
+      db as never,
+      { createRuntimeReminder, cancelRuntimeReminder },
+      {
+        actorAccountId: session.customerId,
+        requestId,
+        now: new Date(),
+        idempotencyKey: actionIdempotencyKey('reject', session.customerId, requestId),
+      },
+    );
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
+  }
+});
+
+customerSchedulingRouter.post('/shared-reminders/:id/cancel', async (c) => {
+  const session = c.get('customerSchedulingAuth');
+  const requestId = c.req.param('id');
+  try {
+    const result = await cancelSharedReminder(
+      db as never,
+      { createRuntimeReminder, cancelRuntimeReminder },
+      {
+        actorAccountId: session.customerId,
+        requestId,
+        now: new Date(),
+        idempotencyKey: actionIdempotencyKey('cancel', session.customerId, requestId),
+      },
+    );
+    return c.json({ ok: true, data: friendRequestActionDto(result as unknown as Record<string, unknown>) });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
   }
 });
 

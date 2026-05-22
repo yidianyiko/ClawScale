@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { enqueueProductNotification } from './notification-service.js';
 
 const USER_LINK_CODE_BYTES = 9;
 const LINK_SESSION_TOKEN_BYTES = 32;
@@ -58,6 +59,15 @@ interface UserLinkClient {
   productNotification: {
     findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      take: number;
+    }): Promise<ProductNotificationDeliveryRecord[]>;
+    updateMany(args: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }): Promise<{ count: number }>;
   };
   $transaction?<T>(fn: (client: UserLinkTransactionClient) => Promise<T>): Promise<T>;
 }
@@ -86,6 +96,14 @@ interface LinkSessionRecord {
   consumerAccountId: string | null;
   status: 'opened' | 'claimed' | 'abandoned';
   expiresAt: Date;
+}
+
+interface ProductNotificationDeliveryRecord {
+  id: string;
+  recipientAccountId: string;
+  idempotencyKey: string;
+  kind: string;
+  payload: unknown;
 }
 
 export interface PublicUserLinkResult {
@@ -537,28 +555,18 @@ async function ensureFriendRequestNotification(
     return;
   }
 
-  try {
-    await client.productNotification.create({
-      data: {
-        friendRequestId: requestId,
-        recipientAccountId: input.targetAccountId,
-        idempotencyKey,
-        kind: 'friend_request',
-        payload: {
-          text: '你有一个新的好友请求，请确认或拒绝。',
-          metadata: {
-            request_id: requestId,
-            request_type: 'friend_request',
-            actor_account_id: input.requesterAccountId,
-            allowed_actions: ['accept', 'reject'],
-          },
-        },
-        status: 'pending_delivery',
-      },
-    });
-  } catch (error) {
-    if (!isUniqueConflict(error)) {
-      throw error;
-    }
-  }
+  await enqueueProductNotification(client, {
+    requestId,
+    requestType: 'friend_request',
+    recipientAccountId: input.targetAccountId,
+    idempotencyKey,
+    kind: 'friend_request',
+    text: '你有一个新的好友请求，请确认或拒绝。',
+    metadata: {
+      request_id: requestId,
+      request_type: 'friend_request',
+      actor_account_id: input.requesterAccountId,
+      allowed_actions: ['accept', 'reject'],
+    },
+  });
 }
