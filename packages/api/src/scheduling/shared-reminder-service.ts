@@ -40,6 +40,8 @@ interface PendingClaim {
   claimedAt: Date;
 }
 
+const STALE_PENDING_CLAIM_MS = 5 * 60 * 1000;
+
 export interface ReminderRuntimePort {
   createRuntimeReminder(input: CreateReminderInput): Promise<ReminderRuntimeResult<ReminderRuntimeRecord>>;
   cancelRuntimeReminder(input: ReminderCommandInput): Promise<ReminderRuntimeResult<ReminderRuntimeRecord>>;
@@ -81,14 +83,37 @@ function isUniqueConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
-function splitInstant(fireAt: string | Date): { localDate: string; localTime: string } {
+function splitInstant(fireAt: string | Date, timezone: string): { localDate: string; localTime: string } {
   const value = fireAt instanceof Date ? fireAt : new Date(fireAt);
   if (Number.isNaN(value.getTime())) {
     throw new Error('invalid_body');
   }
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(value);
+  } catch {
+    throw new Error('invalid_body');
+  }
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  const year = byType.get('year');
+  const month = byType.get('month');
+  const day = byType.get('day');
+  const hour = byType.get('hour');
+  const minute = byType.get('minute');
+  if (!year || !month || !day || !hour || !minute) {
+    throw new Error('invalid_body');
+  }
   return {
-    localDate: value.toISOString().slice(0, 10),
-    localTime: value.toISOString().slice(11, 16),
+    localDate: `${year}-${month}-${day}`,
+    localTime: `${hour}:${minute}`,
   };
 }
 
@@ -96,16 +121,26 @@ function dueOrPast(request: SharedReminderRequestRecord, now: Date): boolean {
   return request.fireAt.getTime() <= now.getTime();
 }
 
+function unclaimedOrStaleClaimWhere(now: Date): Record<string, unknown> {
+  return {
+    OR: [
+      { resolvedAt: null },
+      { resolvedAt: { lt: new Date(now.getTime() - STALE_PENDING_CLAIM_MS) } },
+    ],
+  };
+}
+
 function claimWhere(input: {
   requestId: string;
   actorField: 'requesterAccountId' | 'inviteeAccountId';
   actorAccountId: string;
+  now: Date;
 }): Record<string, unknown> {
   return {
     id: input.requestId,
     status: 'pending_invitee_confirmation',
     [input.actorField]: input.actorAccountId,
-    resolvedAt: null,
+    ...unclaimedOrStaleClaimWhere(input.now),
   };
 }
 
@@ -235,7 +270,7 @@ async function createProjection(
     counterpartyAccountId: string;
   },
 ): Promise<string> {
-  const when = splitInstant(input.fireAt);
+  const when = splitInstant(input.fireAt, input.timezone);
   const projection = await reminderRuntime.createRuntimeReminder({
     customerId: input.ownerAccountId,
     title: input.title,
@@ -252,14 +287,26 @@ async function createProjection(
     throw new Error('reminder_projection_failed');
   }
   const runtimeReminderId = String(projection.data['id']);
-  await client.reminderProjection.create({
-    data: {
-      sharedReminderRequestId: input.request.id,
-      ownerAccountId: input.ownerAccountId,
-      runtimeReminderId,
-      role: input.role,
-    },
-  });
+  try {
+    await client.reminderProjection.create({
+      data: {
+        sharedReminderRequestId: input.request.id,
+        ownerAccountId: input.ownerAccountId,
+        runtimeReminderId,
+        role: input.role,
+      },
+    });
+  } catch {
+    try {
+      await cancelProjection(reminderRuntime, {
+        customerId: input.ownerAccountId,
+        reminderId: runtimeReminderId,
+      });
+    } catch {
+      // Best-effort cleanup only; the persistence failure remains the cause.
+    }
+    throw new Error('reminder_projection_failed');
+  }
   return runtimeReminderId;
 }
 
@@ -309,14 +356,16 @@ async function claimPendingRequest(
     actorField: 'requesterAccountId' | 'inviteeAccountId';
     actorAccountId: string;
     intendedStatus: SharedReminderRequestStatus;
+    now: Date;
   },
 ): Promise<PendingClaim | SharedReminderActionResult> {
-  const claimedAt = new Date();
+  const claimedAt = input.now;
   const transition = await client.sharedReminderRequest.updateMany({
     where: claimWhere({
       requestId: request.id,
       actorField: input.actorField,
       actorAccountId: input.actorAccountId,
+      now: input.now,
     }),
     data: { resolvedAt: claimedAt },
   });
@@ -352,10 +401,15 @@ async function expirePendingRequest(
   client: Pick<SharedReminderClient, 'sharedReminderRequest' | 'sharedReminderEvent'>,
   request: SharedReminderRequestRecord,
   idempotencyKey: string,
+  now: Date,
 ): Promise<void> {
   const transition = await client.sharedReminderRequest.updateMany({
-    where: { id: request.id, status: 'pending_invitee_confirmation', resolvedAt: null },
-    data: { status: 'expired', resolvedAt: new Date() },
+    where: {
+      id: request.id,
+      status: 'pending_invitee_confirmation',
+      ...unclaimedOrStaleClaimWhere(now),
+    },
+    data: { status: 'expired', resolvedAt: now },
   });
   if (transition.count !== 1) {
     return;
@@ -494,7 +548,7 @@ export async function acceptSharedReminder(
     throw new Error('shared_reminder_not_pending');
   }
   if (dueOrPast(request, input.now)) {
-    await expirePendingRequest(client, request, idempotencyKey);
+    await expirePendingRequest(client, request, idempotencyKey, input.now);
     throw new Error('shared_reminder_due');
   }
 
@@ -502,6 +556,7 @@ export async function acceptSharedReminder(
     actorAccountId,
     actorField: 'inviteeAccountId',
     intendedStatus: 'accepted',
+    now: input.now,
   });
   if (!('claimedAt' in claim)) {
     return claim;
@@ -568,7 +623,7 @@ export async function rejectSharedReminder(
     throw new Error('shared_reminder_not_pending');
   }
   if (dueOrPast(request, input.now)) {
-    await expirePendingRequest(client, request, idempotencyKey);
+    await expirePendingRequest(client, request, idempotencyKey, input.now);
     throw new Error('shared_reminder_due');
   }
 
@@ -576,6 +631,7 @@ export async function rejectSharedReminder(
     actorAccountId,
     actorField: 'inviteeAccountId',
     intendedStatus: 'rejected',
+    now: input.now,
   });
   if (!('claimedAt' in claim)) {
     return claim;
@@ -636,7 +692,7 @@ export async function cancelSharedReminder(
     throw new Error('shared_reminder_not_pending');
   }
   if (dueOrPast(request, input.now)) {
-    await expirePendingRequest(client, request, idempotencyKey);
+    await expirePendingRequest(client, request, idempotencyKey, input.now);
     throw new Error('shared_reminder_due');
   }
 
@@ -644,6 +700,7 @@ export async function cancelSharedReminder(
     actorAccountId,
     actorField: 'requesterAccountId',
     intendedStatus: 'cancelled',
+    now: input.now,
   });
   if (!('claimedAt' in claim)) {
     return claim;
@@ -687,8 +744,8 @@ export async function expireDueSharedReminders(
   const requests = await client.sharedReminderRequest.findMany({
     where: {
       status: 'pending_invitee_confirmation',
-      resolvedAt: null,
       fireAt: { lte: input.now },
+      ...unclaimedOrStaleClaimWhere(input.now),
     },
     orderBy: { fireAt: 'asc' },
   });
@@ -696,8 +753,12 @@ export async function expireDueSharedReminders(
   let count = 0;
   for (const request of selected) {
     const transition = await client.sharedReminderRequest.updateMany({
-      where: { id: request.id, status: 'pending_invitee_confirmation', resolvedAt: null },
-      data: { status: 'expired', resolvedAt: new Date() },
+      where: {
+        id: request.id,
+        status: 'pending_invitee_confirmation',
+        ...unclaimedOrStaleClaimWhere(input.now),
+      },
+      data: { status: 'expired', resolvedAt: input.now },
     });
     if (transition.count === 1) {
       count += 1;
