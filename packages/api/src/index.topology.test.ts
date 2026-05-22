@@ -31,6 +31,7 @@ describe('gateway API topology', () => {
 
   it('keeps active customer, admin, shared-channel, and bridge routes mounted', () => {
     expect(indexSource).toContain("app.route('/api/auth', customerAuthRouter)");
+    expect(indexSource).toContain("app.route('/api/customer/agent-instance', customerAgentInstanceRouter)");
     expect(indexSource).toContain("app.route('/api/customer/channels/wechat-personal', customerChannelRouter)");
     expect(indexSource).toContain("app.route('/api/admin', adminAuthRouter)");
     expect(indexSource).toContain("app.route('/api/admin/customers', adminCustomersRouter)");
