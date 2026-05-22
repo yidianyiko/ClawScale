@@ -310,7 +310,16 @@ describe('friendship service', () => {
       status: 'active',
     });
     db.friendship.updateMany.mockResolvedValueOnce({ count: 1 });
-    db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 2 });
+    db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.sharedReminderRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'ck_a',
+        inviteeAccountId: 'ck_b',
+        requesterReminderId: null,
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
     db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
     await blockAccount(db as never, {
@@ -339,14 +348,7 @@ describe('friendship service', () => {
       data: { status: 'removed', removedAt: expect.any(Date) },
     });
     expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: {
-        status: 'pending_invitee_confirmation',
-        OR: [
-          { friendshipId: 'fs_1' },
-          { requesterAccountId: 'ck_b', inviteeAccountId: 'ck_a' },
-          { requesterAccountId: 'ck_a', inviteeAccountId: 'ck_b' },
-        ],
-      },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'invalidated', resolvedAt: expect.any(Date) },
     });
   });
@@ -383,14 +385,7 @@ describe('friendship service', () => {
       reminderId: 'rem_req_1',
     });
     expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: {
-        status: 'pending_invitee_confirmation',
-        OR: [
-          { friendshipId: 'fs_1' },
-          { requesterAccountId: 'ck_b', inviteeAccountId: 'ck_a' },
-          { requesterAccountId: 'ck_a', inviteeAccountId: 'ck_b' },
-        ],
-      },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'invalidated', resolvedAt: expect.any(Date) },
     });
   });
@@ -427,6 +422,40 @@ describe('friendship service', () => {
     );
   });
 
+  it('blocking an account does not cancel requester projection when per-request invalidation loses a race', async () => {
+    db.accountBlock.create.mockResolvedValueOnce({ id: 'blk_1' });
+    db.friendship.findFirst.mockResolvedValueOnce({
+      id: 'fs_1',
+      accountAId: 'ck_a',
+      accountBId: 'ck_b',
+      status: 'active',
+    });
+    db.friendship.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.sharedReminderRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'ck_a',
+        inviteeAccountId: 'ck_b',
+        requesterReminderId: 'rem_req_1',
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
+    db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+    const reminderRuntime = fakeReminderRuntime();
+
+    await blockAccount(db as never, reminderRuntime, {
+      blockerAccountId: 'ck_b',
+      blockedAccountId: 'ck_a',
+    });
+
+    expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
+      data: { status: 'invalidated', resolvedAt: expect.any(Date) },
+    });
+    expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
+  });
+
   it('treats duplicate block creation as a successful retry', async () => {
     db.accountBlock.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
     db.friendship.findFirst.mockResolvedValueOnce(null);
@@ -449,6 +478,15 @@ describe('friendship service', () => {
       status: 'active',
     });
     db.friendship.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.sharedReminderRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'ck_a',
+        inviteeAccountId: 'ck_b',
+        requesterReminderId: null,
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
     db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 
     await removeFriendship(db as never, {
@@ -464,7 +502,7 @@ describe('friendship service', () => {
       },
     });
     expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: { friendshipId: 'fs_1', status: 'pending_invitee_confirmation' },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'invalidated', resolvedAt: expect.any(Date) },
     });
   });
@@ -509,7 +547,7 @@ describe('friendship service', () => {
       reminderId: 'rem_req_from_projection',
     });
     expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: { friendshipId: 'fs_1', status: 'pending_invitee_confirmation' },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'invalidated', resolvedAt: expect.any(Date) },
     });
   });
@@ -544,6 +582,38 @@ describe('friendship service', () => {
     );
   });
 
+  it('removing a friendship does not cancel requester projection when per-request invalidation loses a race', async () => {
+    db.friendship.findFirst.mockResolvedValueOnce({
+      id: 'fs_1',
+      accountAId: 'ck_a',
+      accountBId: 'ck_b',
+      status: 'active',
+    });
+    db.friendship.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.sharedReminderRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'ck_a',
+        inviteeAccountId: 'ck_b',
+        requesterReminderId: 'rem_req_1',
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
+    db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    const reminderRuntime = fakeReminderRuntime();
+
+    await removeFriendship(db as never, reminderRuntime, {
+      actorAccountId: 'ck_b',
+      friendshipId: 'fs_1',
+    });
+
+    expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
+      data: { status: 'invalidated', resolvedAt: expect.any(Date) },
+    });
+    expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
+  });
+
   it('keeps invalidated pending shared reminders when requester projection cancellation fails', async () => {
     db.friendship.findFirst.mockResolvedValueOnce({
       id: 'fs_1',
@@ -574,7 +644,7 @@ describe('friendship service', () => {
     ).rejects.toThrow('reminder_projection_failed');
 
     expect(db.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: { friendshipId: 'fs_1', status: 'pending_invitee_confirmation' },
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'invalidated', resolvedAt: expect.any(Date) },
     });
     expect(db.sharedReminderRequest.updateMany.mock.invocationCallOrder[0]).toBeLessThan(

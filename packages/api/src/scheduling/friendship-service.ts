@@ -319,7 +319,16 @@ async function invalidatePendingSharedReminders(
     orderBy: { createdAt: 'asc' },
   });
   const requesterProjections: RequesterProjectionCancellation[] = [];
+  let count = 0;
   for (const request of pendingRequests) {
+    const result = await client.sharedReminderRequest.updateMany({
+      where: { id: request.id, status: 'pending_invitee_confirmation' },
+      data: { status: 'invalidated', resolvedAt: new Date() },
+    });
+    if (result.count !== 1) {
+      continue;
+    }
+    count += 1;
     const requesterReminderId = await resolveRequesterReminderId(client, request);
     if (requesterReminderId) {
       requesterProjections.push({
@@ -328,11 +337,7 @@ async function invalidatePendingSharedReminders(
       });
     }
   }
-  const result = await client.sharedReminderRequest.updateMany({
-    where,
-    data: { status: 'invalidated', resolvedAt: new Date() },
-  });
-  return { count: result.count, requesterProjections };
+  return { count, requesterProjections };
 }
 
 export async function listFriendRequests(
