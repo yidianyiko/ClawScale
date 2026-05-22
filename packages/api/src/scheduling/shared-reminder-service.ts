@@ -329,6 +329,44 @@ async function resolveRequesterReminderId(
   return projection?.runtimeReminderId;
 }
 
+async function reconcileInviteeProjectionAsAccepted(
+  client: Pick<SharedReminderClient, 'sharedReminderRequest' | 'sharedReminderEvent' | 'reminderProjection'>,
+  request: SharedReminderRequestRecord,
+  idempotencyKey: string,
+): Promise<SharedReminderActionResult | null> {
+  const projection = await findProjection(client, {
+    requestId: request.id,
+    role: 'invitee',
+  });
+  if (!projection) {
+    return null;
+  }
+  const transition = await client.sharedReminderRequest.updateMany({
+    where: { id: request.id, status: 'pending_invitee_confirmation' },
+    data: {
+      status: 'accepted',
+      inviteeReminderId: projection.runtimeReminderId,
+    },
+  });
+  if (transition.count === 1) {
+    await recordEvent(client, {
+      requestId: request.id,
+      fromState: 'pending_invitee_confirmation',
+      toState: 'accepted',
+      actorAccountId: request.inviteeAccountId,
+      actorRole: 'invitee',
+      idempotencyKey,
+      reason: 'invitee_projection_reconciled',
+    });
+    return { id: request.id, status: 'accepted' };
+  }
+  const latest = await readSharedReminderRequest(client, request.id);
+  if (latest.status === 'accepted') {
+    return { id: latest.id, status: 'accepted' };
+  }
+  throw new Error('shared_reminder_not_found');
+}
+
 async function createProjection(
   client: Pick<SharedReminderClient, 'reminderProjection'>,
   reminderRuntime: ReminderRuntimePort,
@@ -718,6 +756,10 @@ export async function rejectSharedReminder(
   if (request.status !== 'pending_invitee_confirmation') {
     throw new Error('shared_reminder_not_pending');
   }
+  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(client, request, idempotencyKey);
+  if (reconciledAccepted) {
+    return reconciledAccepted;
+  }
   if (dueOrPast(request, input.now)) {
     await expirePendingRequest(client, request, idempotencyKey, input.now);
     throw new Error('shared_reminder_due');
@@ -787,6 +829,10 @@ export async function cancelSharedReminder(
   }
   if (request.status !== 'pending_invitee_confirmation') {
     throw new Error('shared_reminder_not_pending');
+  }
+  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(client, request, idempotencyKey);
+  if (reconciledAccepted) {
+    return reconciledAccepted;
   }
   if (dueOrPast(request, input.now)) {
     await expirePendingRequest(client, request, idempotencyKey, input.now);
