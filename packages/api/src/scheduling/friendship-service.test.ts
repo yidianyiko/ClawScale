@@ -470,6 +470,46 @@ describe('friendship service', () => {
     ).resolves.toEqual({ blockedAccountId: 'ck_a', blockerAccountId: 'ck_b' });
   });
 
+  it('cleans up invalidated requester projection on duplicate block retry with no active friendship', async () => {
+    db.friendRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    db.accountBlock.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    db.friendship.findFirst.mockResolvedValueOnce(null);
+    db.sharedReminderRequest.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'srr_1',
+          requesterAccountId: 'ck_a',
+          inviteeAccountId: 'ck_b',
+          requesterReminderId: 'rem_req_invalidated',
+          status: 'invalidated',
+        },
+      ]);
+    const reminderRuntime = fakeReminderRuntime();
+
+    await expect(
+      blockAccount(db as never, reminderRuntime, {
+        blockerAccountId: 'ck_b',
+        blockedAccountId: 'ck_a',
+      }),
+    ).resolves.toEqual({ blockedAccountId: 'ck_a', blockerAccountId: 'ck_b' });
+
+    expect(db.sharedReminderRequest.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'invalidated',
+        OR: [
+          { requesterAccountId: 'ck_b', inviteeAccountId: 'ck_a' },
+          { requesterAccountId: 'ck_a', inviteeAccountId: 'ck_b' },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'ck_a',
+      reminderId: 'rem_req_invalidated',
+    });
+  });
+
   it('removing a friendship invalidates pending shared reminders but not accepted shared reminders', async () => {
     db.friendship.findFirst.mockResolvedValueOnce({
       id: 'fs_1',
@@ -650,5 +690,71 @@ describe('friendship service', () => {
     expect(db.sharedReminderRequest.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
       reminderRuntime.cancelRuntimeReminder.mock.invocationCallOrder[0],
     );
+  });
+
+  it('cleans up invalidated requester projection on removed friendship retry after cancellation failure', async () => {
+    db.friendship.findFirst
+      .mockResolvedValueOnce({
+        id: 'fs_1',
+        accountAId: 'ck_a',
+        accountBId: 'ck_b',
+        status: 'active',
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'fs_1',
+        accountAId: 'ck_a',
+        accountBId: 'ck_b',
+        status: 'removed',
+      });
+    db.friendship.updateMany.mockResolvedValueOnce({ count: 1 });
+    db.sharedReminderRequest.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'srr_1',
+          requesterAccountId: 'ck_a',
+          inviteeAccountId: 'ck_b',
+          requesterReminderId: 'rem_req_1',
+          status: 'pending_invitee_confirmation',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'srr_1',
+          requesterAccountId: 'ck_a',
+          inviteeAccountId: 'ck_b',
+          requesterReminderId: 'rem_req_1',
+          status: 'invalidated',
+        },
+      ]);
+    db.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+    const reminderRuntime = fakeReminderRuntime();
+    reminderRuntime.cancelRuntimeReminder
+      .mockResolvedValueOnce({ ok: false, error: 'reminder_bridge_transport_failed' })
+      .mockResolvedValueOnce({ ok: true, data: { id: 'rem_req_1' } });
+
+    await expect(
+      removeFriendship(db as never, reminderRuntime, {
+        actorAccountId: 'ck_b',
+        friendshipId: 'fs_1',
+      }),
+    ).rejects.toThrow('reminder_projection_failed');
+
+    await expect(
+      removeFriendship(db as never, reminderRuntime, {
+        actorAccountId: 'ck_b',
+        friendshipId: 'fs_1',
+      }),
+    ).resolves.toEqual({ id: 'fs_1', status: 'removed' });
+
+    expect(db.sharedReminderRequest.findMany).toHaveBeenLastCalledWith({
+      where: { friendshipId: 'fs_1', status: 'invalidated' },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenNthCalledWith(2, {
+      customerId: 'ck_a',
+      reminderId: 'rem_req_1',
+    });
   });
 });

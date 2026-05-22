@@ -226,13 +226,14 @@ function sharedReminderPairWhere(input: {
   friendshipId: string | null;
   blockerAccountId: string;
   blockedAccountId: string;
+  status?: SharedReminderRequestStatus;
 }): Record<string, unknown> {
   const pair = [
     { requesterAccountId: input.blockerAccountId, inviteeAccountId: input.blockedAccountId },
     { requesterAccountId: input.blockedAccountId, inviteeAccountId: input.blockerAccountId },
   ];
   return {
-    status: 'pending_invitee_confirmation',
+    status: input.status ?? 'pending_invitee_confirmation',
     OR: input.friendshipId ? [{ friendshipId: input.friendshipId }, ...pair] : pair,
   };
 }
@@ -305,9 +306,44 @@ async function cancelRequesterProjections(
   reminderRuntime: ReminderRuntimePort | null,
   cancellations: RequesterProjectionCancellation[],
 ): Promise<void> {
-  for (const cancellation of cancellations) {
+  for (const cancellation of dedupeRequesterProjectionCancellations(cancellations)) {
     await cancelRequesterProjection(reminderRuntime, cancellation);
   }
+}
+
+function dedupeRequesterProjectionCancellations(
+  cancellations: RequesterProjectionCancellation[],
+): RequesterProjectionCancellation[] {
+  const seen = new Set<string>();
+  return cancellations.filter((cancellation) => {
+    const key = `${cancellation.customerId}:${cancellation.reminderId}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function collectRequesterProjectionCancellations(
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  where: Record<string, unknown>,
+): Promise<RequesterProjectionCancellation[]> {
+  const requests = await client.sharedReminderRequest.findMany({
+    where,
+    orderBy: { createdAt: 'asc' },
+  });
+  const requesterProjections: RequesterProjectionCancellation[] = [];
+  for (const request of requests) {
+    const requesterReminderId = await resolveRequesterReminderId(client, request);
+    if (requesterReminderId) {
+      requesterProjections.push({
+        customerId: request.requesterAccountId,
+        reminderId: requesterReminderId,
+      });
+    }
+  }
+  return requesterProjections;
 }
 
 async function invalidatePendingSharedReminders(
@@ -338,6 +374,13 @@ async function invalidatePendingSharedReminders(
     }
   }
   return { count, requesterProjections };
+}
+
+async function collectInvalidatedSharedReminderCleanup(
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  where: Record<string, unknown>,
+): Promise<RequesterProjectionCancellation[]> {
+  return collectRequesterProjectionCancellations(client, where);
 }
 
 export async function listFriendRequests(
@@ -471,7 +514,27 @@ export async function removeFriendship(
       },
     });
     if (!friendship) {
-      throw new Error('friendship_not_found');
+      const removedFriendship = await writeClient.friendship.findFirst({
+        where: {
+          id: friendshipId,
+          status: 'removed',
+          OR: [{ accountAId: actorAccountId }, { accountBId: actorAccountId }],
+        },
+      });
+      if (!removedFriendship) {
+        throw new Error('friendship_not_found');
+      }
+      const requesterProjections = await collectInvalidatedSharedReminderCleanup(
+        writeClient,
+        {
+          friendshipId: removedFriendship.id,
+          status: 'invalidated',
+        },
+      );
+      return {
+        friendship: { id: removedFriendship.id, status: 'removed' as const },
+        requesterProjections,
+      };
     }
 
     await writeClient.friendship.updateMany({
@@ -485,9 +548,19 @@ export async function removeFriendship(
         status: 'pending_invitee_confirmation',
       },
     );
+    const invalidatedCleanup = await collectInvalidatedSharedReminderCleanup(
+      writeClient,
+      {
+        friendshipId: friendship.id,
+        status: 'invalidated',
+      },
+    );
     return {
       friendship: { id: friendship.id, status: 'removed' as const },
-      requesterProjections: invalidation.requesterProjections,
+      requesterProjections: [
+        ...invalidation.requesterProjections,
+        ...invalidatedCleanup,
+      ],
     };
   });
   await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
@@ -545,10 +618,22 @@ export async function blockAccount(
         blockedAccountId,
       }),
     );
+    const invalidatedCleanup = await collectInvalidatedSharedReminderCleanup(
+      writeClient,
+      sharedReminderPairWhere({
+        friendshipId: friendship?.id ?? null,
+        blockerAccountId,
+        blockedAccountId,
+        status: 'invalidated',
+      }),
+    );
 
     return {
       block: { blockerAccountId, blockedAccountId },
-      requesterProjections: invalidation.requesterProjections,
+      requesterProjections: [
+        ...invalidation.requesterProjections,
+        ...invalidatedCleanup,
+      ],
     };
   });
   await cancelRequesterProjections(reminderRuntime, result.requesterProjections);
