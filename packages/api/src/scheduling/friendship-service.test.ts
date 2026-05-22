@@ -811,6 +811,7 @@ describe('friendship service', () => {
     ).resolves.toEqual({ id: 'fs_1', status: 'removed' });
 
     expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledTimes(1);
+    expect(db.$transaction).toHaveBeenCalledTimes(3);
     expect(db.reminderProjection.deleteMany).toHaveBeenCalledWith({
       where: {
         sharedReminderRequestId: 'srr_1',

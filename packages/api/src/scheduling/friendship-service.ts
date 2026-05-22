@@ -302,7 +302,7 @@ async function cancelRequesterProjection(
 }
 
 async function cancelRequesterProjections(
-  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection' | '$transaction'>,
   reminderRuntime: ReminderRuntimePort | null,
   cancellations: RequesterProjectionCancellation[],
 ): Promise<void> {
@@ -313,24 +313,33 @@ async function cancelRequesterProjections(
 }
 
 async function markRequesterProjectionCleanupComplete(
-  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  client: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection' | '$transaction'>,
   cancellation: RequesterProjectionCancellation,
 ): Promise<void> {
-  await client.reminderProjection.deleteMany({
-    where: {
-      sharedReminderRequestId: cancellation.requestId,
-      role: 'requester',
-      runtimeReminderId: cancellation.reminderId,
-    },
-  });
-  await client.sharedReminderRequest.updateMany({
-    where: {
-      id: cancellation.requestId,
-      status: 'invalidated',
-      requesterReminderId: cancellation.reminderId,
-    },
-    data: { requesterReminderId: null },
-  });
+  const cleanup = async (
+    cleanupClient: Pick<FriendshipClient, 'sharedReminderRequest' | 'reminderProjection'>,
+  ): Promise<void> => {
+    await cleanupClient.sharedReminderRequest.updateMany({
+      where: {
+        id: cancellation.requestId,
+        status: 'invalidated',
+        requesterReminderId: cancellation.reminderId,
+      },
+      data: { requesterReminderId: null },
+    });
+    await cleanupClient.reminderProjection.deleteMany({
+      where: {
+        sharedReminderRequestId: cancellation.requestId,
+        role: 'requester',
+        runtimeReminderId: cancellation.reminderId,
+      },
+    });
+  };
+  if (client.$transaction) {
+    await client.$transaction(cleanup);
+    return;
+  }
+  await cleanup(client);
 }
 
 function dedupeRequesterProjectionCancellations(

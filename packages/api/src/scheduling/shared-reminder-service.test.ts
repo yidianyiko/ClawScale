@@ -130,7 +130,7 @@ describe('shared reminder service', () => {
     ).rejects.toThrow('reminder_projection_failed');
 
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({ id: 'srr_1' }),
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'cancelled', resolvedAt: expect.any(Date) },
     });
   });
@@ -156,7 +156,7 @@ describe('shared reminder service', () => {
 
     expect(client.reminderProjection.create).not.toHaveBeenCalled();
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({ id: 'srr_1' }),
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'cancelled', resolvedAt: expect.any(Date) },
     });
   });
@@ -208,7 +208,7 @@ describe('shared reminder service', () => {
       reminderId: 'rem_req_1',
     });
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({ id: 'srr_1' }),
+      where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
       data: { status: 'cancelled', resolvedAt: expect.any(Date) },
     });
   });

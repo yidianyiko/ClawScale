@@ -771,7 +771,7 @@ export async function createSharedReminder(
     });
   } catch (error) {
     await client.sharedReminderRequest.updateMany({
-      where: { id: request.id },
+      where: { id: request.id, status: 'pending_invitee_confirmation' },
       data: { status: 'cancelled', resolvedAt: new Date() },
     });
     throw error;
