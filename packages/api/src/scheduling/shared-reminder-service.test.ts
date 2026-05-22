@@ -514,6 +514,36 @@ describe('shared reminder service', () => {
     expect(client.productNotification.create).not.toHaveBeenCalled();
   });
 
+  it('keeps requester projection row when cleanup runtime cancellation fails', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    client.sharedReminderRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_req_race' } },
+      cancel: { ok: false, error: 'reminder_bridge_transport_failed' },
+    });
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'shared:requester-cleanup-cancel-fails',
+      }),
+    ).rejects.toThrow('reminder_projection_failed');
+
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'acct_b',
+      reminderId: 'rem_req_race',
+    });
+    expect(client.reminderProjection.deleteMany).not.toHaveBeenCalled();
+    expect(client.sharedReminderEvent.create).not.toHaveBeenCalled();
+    expect(client.productNotification.create).not.toHaveBeenCalled();
+  });
+
   it('accepts before fire time and creates invitee projection', async () => {
     const client = fakeSharedReminderClient({
       sharedReminderRequest: {

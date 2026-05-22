@@ -484,16 +484,16 @@ async function cleanupCreatedProjection(
     role: SharedReminderProjectionRole;
   },
 ): Promise<void> {
+  await cancelProjection(reminderRuntime, {
+    customerId: input.ownerAccountId,
+    reminderId: input.runtimeReminderId,
+  });
   await client.reminderProjection.deleteMany({
     where: {
       sharedReminderRequestId: input.requestId,
       role: input.role,
       runtimeReminderId: input.runtimeReminderId,
     },
-  });
-  await cancelProjection(reminderRuntime, {
-    customerId: input.ownerAccountId,
-    reminderId: input.runtimeReminderId,
   });
 }
 
