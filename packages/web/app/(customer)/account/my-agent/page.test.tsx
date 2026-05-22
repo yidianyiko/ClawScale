@@ -188,6 +188,8 @@ describe('CustomerMyAgentPage', () => {
           speaking_style: null,
           extra_rules: null,
           status: { place: null, action: null },
+          proactive: { enabled: null },
+          memory: { enabled: null },
         },
         effective_profile: {
           display_name: 'Default Agent',
@@ -212,6 +214,12 @@ describe('CustomerMyAgentPage', () => {
     expect((container.querySelector('input[name="nickname"]') as HTMLInputElement).value).toBe('');
     expect((container.querySelector('input[name="user_address_name"]') as HTMLInputElement).value).toBe('');
     expect((container.querySelector('textarea[name="persona"]') as HTMLTextAreaElement).value).toBe('');
+    expect((container.querySelector('input[name="proactive"]') as HTMLInputElement).checked).toBe(false);
+    expect((container.querySelector('input[name="memory"]') as HTMLInputElement).checked).toBe(true);
+
+    const persona = container.querySelector('textarea[name="persona"]') as HTMLTextAreaElement;
+    persona.value = ' explicit persona ';
+    persona.dispatchEvent(new Event('input', { bubbles: true }));
 
     (container.querySelector('form') as HTMLFormElement).dispatchEvent(
       new Event('submit', { bubbles: true, cancelable: true }),
@@ -219,16 +227,16 @@ describe('CustomerMyAgentPage', () => {
     await flushTicks();
 
     expect(updateMock).toHaveBeenCalledWith({
-      display_name: '',
+      display_name: null,
       nickname: null,
       user_address_name: null,
-      persona: null,
+      persona: 'explicit persona',
       background: null,
       speaking_style: null,
       extra_rules: null,
       status: { place: null, action: null },
-      proactive: { enabled: false },
-      memory: { enabled: true },
+      proactive: null,
+      memory: null,
     });
   });
 

@@ -26,7 +26,9 @@ type FormState = {
   status_place: string;
   status_action: string;
   proactive_enabled: boolean;
+  proactive_overridden: boolean;
   memory_enabled: boolean;
+  memory_overridden: boolean;
 };
 
 function formFromInstance(
@@ -44,7 +46,9 @@ function formFromInstance(
     status_place: instance.status.place ?? '',
     status_action: instance.status.action ?? '',
     proactive_enabled: instance.proactive.enabled ?? effective.proactive.enabled,
+    proactive_overridden: instance.proactive.enabled !== null,
     memory_enabled: instance.memory.enabled ?? effective.memory.enabled,
+    memory_overridden: instance.memory.enabled !== null,
   };
 }
 
@@ -129,7 +133,7 @@ export default function CustomerMyAgentPage() {
     try {
       const formData = new FormData(event.currentTarget);
       const res = await updateCustomerAgentInstance({
-        display_name: String(formData.get('display_name') ?? '').trim(),
+        display_name: emptyAsNull(String(formData.get('display_name') ?? '')),
         nickname: emptyAsNull(String(formData.get('nickname') ?? '')),
         user_address_name: emptyAsNull(String(formData.get('user_address_name') ?? '')),
         persona: emptyAsNull(String(formData.get('persona') ?? '')),
@@ -140,8 +144,8 @@ export default function CustomerMyAgentPage() {
           place: emptyAsNull(String(formData.get('status_place') ?? '')),
           action: emptyAsNull(String(formData.get('status_action') ?? '')),
         },
-        proactive: { enabled: form.proactive_enabled },
-        memory: { enabled: form.memory_enabled },
+        proactive: form.proactive_overridden ? { enabled: form.proactive_enabled } : null,
+        memory: form.memory_overridden ? { enabled: form.memory_enabled } : null,
       });
       if (!res.ok) {
         if (AUTH_ERRORS.has(res.error)) {
@@ -236,7 +240,6 @@ export default function CustomerMyAgentPage() {
               <input
                 name="display_name"
                 maxLength={20}
-                required
                 value={form.display_name}
                 onChange={(event) => updateField('display_name', event.target.value)}
               />
@@ -330,7 +333,13 @@ export default function CustomerMyAgentPage() {
                 name="proactive"
                 type="checkbox"
                 checked={form.proactive_enabled}
-                onChange={(event) => updateField('proactive_enabled', event.target.checked)}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current
+                      ? { ...current, proactive_enabled: event.target.checked, proactive_overridden: true }
+                      : current,
+                  )
+                }
               />
               <span>Enable optional proactive follow-up</span>
             </label>
@@ -339,7 +348,11 @@ export default function CustomerMyAgentPage() {
                 name="memory"
                 type="checkbox"
                 checked={form.memory_enabled}
-                onChange={(event) => updateField('memory_enabled', event.target.checked)}
+                onChange={(event) =>
+                  setForm((current) =>
+                    current ? { ...current, memory_enabled: event.target.checked, memory_overridden: true } : current,
+                  )
+                }
               />
               <span>{copy.memoryPersonalization}</span>
             </label>
