@@ -629,7 +629,11 @@ export async function acceptSharedReminder(
   if (request.status !== 'pending_invitee_confirmation') {
     throw new Error('shared_reminder_not_pending');
   }
-  if (dueOrPast(request, input.now)) {
+  const existingInviteeProjection = await findProjection(client, {
+    requestId: request.id,
+    role: 'invitee',
+  });
+  if (!existingInviteeProjection && dueOrPast(request, input.now)) {
     await expirePendingRequest(client, request, idempotencyKey, input.now);
     throw new Error('shared_reminder_due');
   }
@@ -645,12 +649,8 @@ export async function acceptSharedReminder(
   }
   let inviteeReminderId: string;
   try {
-    const existingProjection = await findProjection(client, {
-      requestId: request.id,
-      role: 'invitee',
-    });
-    inviteeReminderId = existingProjection
-      ? existingProjection.runtimeReminderId
+    inviteeReminderId = existingInviteeProjection
+      ? existingInviteeProjection.runtimeReminderId
       : await createProjection(client, reminderRuntime, {
           request,
           ownerAccountId: actorAccountId,

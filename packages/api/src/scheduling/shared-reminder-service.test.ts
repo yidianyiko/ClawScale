@@ -496,6 +496,58 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('late accept retry reuses existing invitee projection instead of expiring', async () => {
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'pending_invitee_confirmation',
+        resolvedAt: new Date('2026-05-22T06:50:00.000Z'),
+      },
+      reminderProjection: {
+        id: 'rp_inv_1',
+        sharedReminderRequestId: 'srr_1',
+        ownerAccountId: 'acct_a',
+        runtimeReminderId: 'rem_inv_existing',
+        role: 'invitee',
+      },
+    });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    const result = await acceptSharedReminder(client as never, reminderRuntime, {
+      actorAccountId: 'acct_a',
+      requestId: 'srr_1',
+      now: new Date('2026-05-22T07:01:00.000Z'),
+      idempotencyKey: 'accept-late-existing-projection-srr-1',
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(client.reminderProjection.findFirst).toHaveBeenCalledWith({
+      where: { sharedReminderRequestId: 'srr_1', role: 'invitee' },
+    });
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: new Date('2026-05-22T07:01:00.000Z'),
+      },
+      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+    });
+    expect(client.sharedReminderRequest.updateMany).not.toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+      }),
+      data: { status: 'expired', resolvedAt: expect.any(Date) },
+    });
+  });
+
   it('accept race reconciles unique invitee projection conflict and cancels new runtime reminder', async () => {
     const existingProjection = {
       id: 'rp_inv_1',
