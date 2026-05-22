@@ -1154,6 +1154,52 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('reconciles due pending shared reminders with existing invitee projections', async () => {
+    const now = new Date('2026-05-22T07:01:00.000Z');
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        status: 'pending_invitee_confirmation',
+        resolvedAt: new Date('2026-05-22T06:50:00.000Z'),
+      },
+      reminderProjection: {
+        id: 'rp_inv_1',
+        sharedReminderRequestId: 'srr_1',
+        ownerAccountId: 'acct_a',
+        runtimeReminderId: 'rem_inv_existing',
+        role: 'invitee',
+      },
+    });
+
+    const result = await expireDueSharedReminders(client as never, { now });
+
+    expect(result).toEqual({ count: 1 });
+    expect(client.reminderProjection.findFirst).toHaveBeenCalledWith({
+      where: { sharedReminderRequestId: 'srr_1', role: 'invitee' },
+    });
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        OR: [
+          { resolvedAt: null },
+          { resolvedAt: { lt: new Date('2026-05-22T06:56:00.000Z') } },
+        ],
+      },
+      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+    });
+    expect(client.sharedReminderRequest.updateMany).not.toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+      }),
+      data: { status: 'expired', resolvedAt: expect.any(Date) },
+    });
+  });
+
   it('does not expire fresh-claimed pending shared reminders', async () => {
     const now = new Date('2026-05-22T07:01:00.000Z');
     const client = fakeSharedReminderClient({ sharedReminderRequest: null });

@@ -850,6 +850,37 @@ export async function expireDueSharedReminders(
   const selected = input.limit ? requests.slice(0, input.limit) : requests;
   let count = 0;
   for (const request of selected) {
+    const inviteeProjection = await findProjection(client, {
+      requestId: request.id,
+      role: 'invitee',
+    });
+    if (inviteeProjection) {
+      const transition = await client.sharedReminderRequest.updateMany({
+        where: {
+          id: request.id,
+          status: 'pending_invitee_confirmation',
+          ...unclaimedOrStaleClaimWhere(input.now),
+        },
+        data: {
+          status: 'accepted',
+          inviteeReminderId: inviteeProjection.runtimeReminderId,
+        },
+      });
+      if (transition.count === 1) {
+        count += 1;
+        await recordEvent(client, {
+          requestId: request.id,
+          fromState: 'pending_invitee_confirmation',
+          toState: 'accepted',
+          actorAccountId: request.inviteeAccountId,
+          actorRole: 'invitee',
+          idempotencyKey: `expire-reconcile:${request.id}:${input.now.toISOString()}`,
+          reason: 'invitee_projection_reconciled',
+        });
+      }
+      continue;
+    }
+
     const transition = await client.sharedReminderRequest.updateMany({
       where: {
         id: request.id,
