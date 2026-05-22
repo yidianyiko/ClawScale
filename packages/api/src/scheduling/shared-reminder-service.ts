@@ -127,6 +127,13 @@ function splitInstant(fireAt: string | Date, timezone: string): { localDate: str
   };
 }
 
+function requireRuntimeReminderId(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+  throw new Error('reminder_projection_failed');
+}
+
 function dueOrPast(request: SharedReminderRequestRecord, now: Date): boolean {
   return request.fireAt.getTime() <= now.getTime();
 }
@@ -351,7 +358,7 @@ async function createProjection(
   if (!projection.ok) {
     throw new Error('reminder_projection_failed');
   }
-  const runtimeReminderId = String(projection.data['id']);
+  const runtimeReminderId = requireRuntimeReminderId(projection.data['id']);
   try {
     await client.reminderProjection.create({
       data: {
@@ -528,6 +535,7 @@ export async function createSharedReminder(
   if (Number.isNaN(when.getTime())) {
     throw new Error('invalid_body');
   }
+  splitInstant(when, timezone);
   if (requesterAccountId === inviteeAccountId) {
     throw new Error('cannot_friend_self');
   }

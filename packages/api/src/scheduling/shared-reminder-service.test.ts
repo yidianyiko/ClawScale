@@ -118,6 +118,53 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('does not insert a requester projection when runtime create response is missing an id', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: {} },
+    });
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        idempotencyKey: 'shared:missing-runtime-id',
+      }),
+    ).rejects.toThrow('reminder_projection_failed');
+
+    expect(client.reminderProjection.create).not.toHaveBeenCalled();
+    expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'srr_1' }),
+      data: { status: 'cancelled', resolvedAt: expect.any(Date) },
+    });
+  });
+
+  it('rejects invalid timezone before creating a shared reminder request', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({});
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Not/AZone',
+        idempotencyKey: 'shared:bad-timezone',
+      }),
+    ).rejects.toThrow('invalid_body');
+
+    expect(client.sharedReminderRequest.create).not.toHaveBeenCalled();
+    expect(reminderRuntime.createRuntimeReminder).not.toHaveBeenCalled();
+  });
+
   it('cancels orphaned requester runtime reminder when requester projection persistence fails', async () => {
     const client = fakeSharedReminderClient({
       friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
