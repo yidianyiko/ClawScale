@@ -180,7 +180,8 @@ describe('user link service', () => {
     const result = await createLinkSession(db as never, { code: 'AbCdEfGhIjK_' });
 
     expect(result.token).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(result.nextUrl).toContain('/auth/login?next=');
+    expect(result.targetAccountId).toBe('ck_a');
+    expect(result.loginUrl).toContain('/auth/login?next=');
     expect(result.registerUrl).toContain('/auth/register?next=');
     expect(db.linkSession.create.mock.calls[0][0].data.tokenHash).not.toBe(result.token);
     expect(db.linkSession.create.mock.calls[0][0].data.tokenHash).toHaveLength(64);
@@ -190,8 +191,10 @@ describe('user link service', () => {
     expect(db.linkSession.create.mock.calls[0][0].data.expiresAt).toEqual(
       new Date('2026-06-21T00:00:00.000Z'),
     );
+    expect(result.expiresAt).toBe('2026-06-21T00:00:00.000Z');
     expect(db.productNotification.create).not.toHaveBeenCalled();
-    expect(result.nextUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
+    expect(result.loginUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
+    expect(result).not.toHaveProperty('nextUrl');
     expect(result).not.toHaveProperty('session');
     expect(result).not.toHaveProperty('id');
     expect(result).not.toHaveProperty('tokenHash');

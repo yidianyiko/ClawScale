@@ -1,12 +1,31 @@
 import type { ApiResponse } from '../../shared/src/types/api';
-import type { PublicUserLinkResponse, PublicUserLinkSession } from '../../shared/src/types/scheduling';
+import type {
+  FriendRequestResponse,
+  PublicLinkSessionResponse,
+  PublicUserLinkResponse,
+} from '../../shared/src/types/scheduling';
 import { getCustomerApiBase } from './customer-api';
-import { getCustomerToken } from './customer-auth';
+import { getCustomerToken, getStoredCustomerSession } from './customer-auth';
 
-export async function readPublicUserLink(
-  code: string,
-  options: { openSession?: boolean } = {},
-): Promise<ApiResponse<PublicUserLinkResponse>> {
+type CustomerSessionSummary = {
+  customerId: string;
+};
+
+function isPublicLinkSessionResponse(data: unknown): data is PublicLinkSessionResponse {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return false;
+  }
+  const row = data as Record<string, unknown>;
+  return (
+    typeof row.token === 'string' &&
+    typeof row.targetAccountId === 'string' &&
+    typeof row.expiresAt === 'string' &&
+    typeof row.loginUrl === 'string' &&
+    typeof row.registerUrl === 'string'
+  );
+}
+
+export async function fetchUserLink(code: string): Promise<ApiResponse<PublicUserLinkResponse>> {
   const base = getCustomerApiBase();
   const encodedCode = encodeURIComponent(code);
   const metaRes = await fetch(`${base}/api/public/user-links/${encodedCode}`, { cache: 'no-store' });
@@ -15,12 +34,12 @@ export async function readPublicUserLink(
   }
 
   const meta = (await metaRes.json()) as ApiResponse<PublicUserLinkResponse>;
-  if (!meta.ok) {
-    return meta;
-  }
-  if (options.openSession === false) {
-    return meta;
-  }
+  return meta.ok ? { ok: true, data: meta.data } : meta;
+}
+
+export async function openLinkSession(code: string): Promise<ApiResponse<PublicLinkSessionResponse>> {
+  const base = getCustomerApiBase();
+  const encodedCode = encodeURIComponent(code);
 
   try {
     const sessionRes = await fetch(`${base}/api/public/user-links/${encodedCode}/sessions`, {
@@ -28,43 +47,86 @@ export async function readPublicUserLink(
       cache: 'no-store',
     });
     if (!sessionRes.ok) {
-      return meta;
+      return { ok: false, error: 'link_session_not_opened' };
     }
 
-    const session = (await sessionRes.json()) as ApiResponse<PublicUserLinkSession>;
+    const session = (await sessionRes.json()) as ApiResponse<unknown>;
     if (!session.ok) {
-      return meta;
+      return session;
+    }
+    if (!isPublicLinkSessionResponse(session.data)) {
+      return { ok: false, error: 'link_session_not_opened' };
     }
 
     return {
       ok: true,
-      data: {
-        ...meta.data,
-        session: session.data,
-      },
+      data: session.data,
     };
   } catch {
-    return meta;
+    return { ok: false, error: 'link_session_not_opened' };
   }
 }
 
-export async function claimPublicLinkSession(token: string): Promise<ApiResponse<{ status: string }>> {
+export async function readCustomerSession(): Promise<CustomerSessionSummary | null> {
+  const session = getStoredCustomerSession();
+  return session ? { customerId: session.customerId } : null;
+}
+
+export async function sendFriendRequest(input: {
+  token: string;
+  message: string;
+}): Promise<{ ok: true; data: FriendRequestResponse } | { ok: false; error: string }> {
   const customerToken = getCustomerToken();
   if (!customerToken) {
     return { ok: false, error: 'unauthorized' };
   }
 
-  const res = await fetch(`${getCustomerApiBase()}/api/public/link-sessions/${encodeURIComponent(token)}/claim`, {
-    method: 'POST',
-    cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${customerToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: '{}',
-  });
-  if (!res.ok) {
-    return { ok: false, error: 'link_session_not_claimable' };
+  try {
+    const res = await fetch(
+      `${getCustomerApiBase()}/api/public/link-sessions/${encodeURIComponent(input.token)}/friend-requests`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${customerToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: input.message }),
+      },
+    );
+    if (!res.ok) {
+      return { ok: false, error: 'friend_request_failed' };
+    }
+    return (await res.json()) as ApiResponse<FriendRequestResponse>;
+  } catch {
+    return { ok: false, error: 'friend_request_failed' };
   }
-  return (await res.json()) as ApiResponse<{ status: string }>;
+}
+
+export async function claimPublicLinkSession(token: string): Promise<ApiResponse<{ status: string }>> {
+  const result = await sendFriendRequest({ token, message: '' });
+  return result.ok ? { ok: true, data: { status: result.data.status } } : result;
+}
+
+export async function readPublicUserLink(
+  code: string,
+  options: { openSession?: boolean } = {},
+): Promise<ApiResponse<PublicUserLinkResponse & { session?: PublicLinkSessionResponse }>> {
+  const meta = await fetchUserLink(code);
+  if (!meta.ok || options.openSession === false) {
+    return meta;
+  }
+
+  const session = await openLinkSession(code);
+  if (!session.ok) {
+    return meta;
+  }
+
+  return {
+    ok: true,
+    data: {
+      ...meta.data,
+      session: session.data,
+    },
+  };
 }

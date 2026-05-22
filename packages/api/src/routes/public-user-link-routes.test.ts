@@ -92,9 +92,10 @@ describe('public user link routes', () => {
   it('opens a link session and returns auth URLs containing link_session', async () => {
     mocks.createLinkSession.mockResolvedValueOnce({
       token: 'session-token',
-      nextUrl: '/auth/login?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dsession-token',
+      targetAccountId: 'ck_provider',
+      loginUrl: '/auth/login?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dsession-token',
       registerUrl: '/auth/register?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dsession-token',
-      expiresAt: new Date('2026-05-22T00:00:00.000Z'),
+      expiresAt: '2026-05-22T00:00:00.000Z',
     });
 
     const res = await createApp().request('/api/public/user-links/AbCdEfGhIjK_/sessions', {
@@ -108,10 +109,12 @@ describe('public user link routes', () => {
       ok: true,
       data: {
         token: 'session-token',
+        targetAccountId: 'ck_provider',
       },
     });
-    expect(body.data.nextUrl).toContain('link_session');
+    expect(body.data.loginUrl).toContain('link_session');
     expect(body.data.registerUrl).toContain('link_session');
+    expect(body.data).not.toHaveProperty('nextUrl');
   });
 
   it('returns link-session status from the public link-session surface', async () => {

@@ -1,33 +1,45 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { claimPublicLinkSession } from '../../../lib/user-link-api';
+import { useState, type FormEvent } from 'react';
+import { sendFriendRequest } from '../../../lib/user-link-api';
 
-export function UserLinkClaimHandoff({ token }: { token: string }) {
-  const [status, setStatus] = useState<'claiming' | 'failed'>('claiming');
+export function ClaimHandoff({ token, targetName }: { token: string; targetName: string }) {
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function claim() {
-      const result = await claimPublicLinkSession(token);
-      if (cancelled) return;
-      if (result.ok) {
-        window.location.assign('/channels/wechat-personal');
-        return;
-      }
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus('sending');
+    try {
+      const result = await sendFriendRequest({ token, message });
+      setStatus(result.ok ? 'sent' : 'failed');
+    } catch {
       setStatus('failed');
     }
-
-    void claim();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
-  if (status === 'failed') {
-    return <p className="public-user-link__status">Connection could not be completed. Please try signing in again.</p>;
   }
 
-  return <p className="public-user-link__status">Completing your connection...</p>;
+  if (status === 'sent') {
+    return <p className="public-user-link__status">Friend request sent to {targetName}.</p>;
+  }
+
+  return (
+    <form className="public-user-link__claim" onSubmit={handleSubmit}>
+      <label htmlFor="friend-request-message">Message</label>
+      <textarea
+        id="friend-request-message"
+        name="message"
+        value={message}
+        onChange={(event) => setMessage(event.currentTarget.value)}
+        maxLength={500}
+      />
+      <button type="submit" disabled={status === 'sending'}>
+        {status === 'sending' ? 'Sending...' : 'Send friend request'}
+      </button>
+      {status === 'failed' ? (
+        <p className="public-user-link__status">Friend request could not be sent. Please try again.</p>
+      ) : null}
+    </form>
+  );
 }
+
+export const UserLinkClaimHandoff = ClaimHandoff;

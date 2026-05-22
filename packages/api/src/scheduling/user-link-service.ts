@@ -309,9 +309,10 @@ export async function createLinkSession(
   input: CreateLinkSessionInput,
 ): Promise<{
   token: string;
-  nextUrl: string;
+  targetAccountId: string;
+  loginUrl: string;
   registerUrl: string;
-  expiresAt: Date;
+  expiresAt: string;
 }> {
   const code = nonEmpty(input.code, 'invalid_user_link');
   const userLink = await client.userLink.findFirst({
@@ -335,9 +336,10 @@ export async function createLinkSession(
 
   return {
     token,
-    nextUrl: authUrl('/auth/login', userLink.code, token),
+    targetAccountId: userLink.providerAccountId,
+    loginUrl: authUrl('/auth/login', userLink.code, token),
     registerUrl: authUrl('/auth/register', userLink.code, token),
-    expiresAt,
+    expiresAt: expiresAt.toISOString(),
   };
 }
 

@@ -1,19 +1,22 @@
-export interface PublicUserLinkProfile {
-  displayName: string;
-  tagline: string | null;
-  avatarUrl: string | null;
+export interface PublicUserLinkResponse {
+  code: string;
+  status: 'active';
+  profile: {
+    displayName: string;
+    tagline: string | null;
+    avatarUrl: string | null;
+  };
 }
 
-export interface PublicUserLinkSession {
-  token?: string;
-  nextUrl: string;
+export interface PublicLinkSessionResponse {
+  token: string;
+  targetAccountId: string;
+  expiresAt: string;
+  loginUrl: string;
   registerUrl: string;
 }
 
-export interface PublicUserLinkResponse {
-  code: string;
-  url: string;
-  qrUrl: string;
-  profile: PublicUserLinkProfile;
-  session?: PublicUserLinkSession;
+export interface FriendRequestResponse {
+  id: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
 }

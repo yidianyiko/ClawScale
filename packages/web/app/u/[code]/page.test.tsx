@@ -1,66 +1,115 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 
-const readPublicUserLinkMock = vi.hoisted(() => vi.fn());
+const mockFetchUserLink = vi.hoisted(() => vi.fn());
+const mockOpenLinkSession = vi.hoisted(() => vi.fn());
+const mockReadCustomerSession = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../lib/user-link-api', () => ({
-  readPublicUserLink: readPublicUserLinkMock,
+  fetchUserLink: mockFetchUserLink,
+  openLinkSession: mockOpenLinkSession,
+  readCustomerSession: mockReadCustomerSession,
 }));
 
 import UserLinkPage from './page';
 
+function renderHtml(html: string): HTMLElement {
+  const container = document.createElement('main');
+  container.innerHTML = html;
+  return container;
+}
+
 describe('UserLinkPage', () => {
-  it('shows provider profile and auth actions that preserve link_session', async () => {
-    readPublicUserLinkMock.mockResolvedValueOnce({
-    ok: true,
-    data: {
-      code: 'AbCdEfGhIjK_',
-      profile: { displayName: 'Coach A', tagline: 'Strength coaching', avatarUrl: null },
-      session: {
-        nextUrl: '/auth/login?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dtok',
-        registerUrl: '/auth/register?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dtok',
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders a public profile and starts login with preserved link session', async () => {
+    mockFetchUserLink.mockResolvedValue({
+      ok: true,
+      data: {
+        code: 'abc',
+        status: 'active',
+        profile: { displayName: 'Coach A', tagline: 'Strength coach', avatarUrl: null },
       },
-    },
+    });
+    mockOpenLinkSession.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'session-token',
+        targetAccountId: 'acct_a',
+        expiresAt: '2026-06-21T00:00:00.000Z',
+        loginUrl: '/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
+        registerUrl: '/auth/register?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
+      },
     });
 
-    const html = renderToString(await UserLinkPage({ params: Promise.resolve({ code: 'AbCdEfGhIjK_' }) }));
+    const html = renderToString(
+      await UserLinkPage({ params: Promise.resolve({ code: 'abc' }), searchParams: Promise.resolve({}) }),
+    );
+    const container = renderHtml(html);
+    const loginLink = Array.from(container.querySelectorAll('a')).find(
+      (link) => link.textContent === 'Log in to add friend',
+    );
 
-    expect(readPublicUserLinkMock).toHaveBeenCalledWith('AbCdEfGhIjK_', { openSession: true });
-    expect(html).toContain('Coach A');
-    expect(html).toContain('Strength coaching');
-    expect(html).toContain('/auth/login?next=');
-    expect(html).toContain('link_session');
-    expect(html).toContain('/u/AbCdEfGhIjK_/qr');
+    expect(container.querySelector('h1')?.textContent).toBe('Coach A');
+    expect(container.textContent).toContain('Strength coach');
+    expect(mockOpenLinkSession).toHaveBeenCalledWith('abc');
+    expect(loginLink?.getAttribute('href')).toBe('/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token');
   });
 
   it('shows a clear inactive state for inactive or missing links', async () => {
-    readPublicUserLinkMock.mockResolvedValueOnce({ ok: false, error: 'link_not_active' });
+    mockFetchUserLink.mockResolvedValueOnce({ ok: false, error: 'link_not_active' });
 
     const html = renderToString(await UserLinkPage({ params: Promise.resolve({ code: 'missing-code' }) }));
 
     expect(html).toContain('Link no longer active');
-    expect(html).toContain('cannot create new connection sessions');
+    expect(html).toContain('cannot start new friend requests');
     expect(html).not.toContain('/auth/login?next=');
   });
 
-  it('preserves an existing link session after auth instead of opening a new one', async () => {
-    readPublicUserLinkMock.mockResolvedValueOnce({
+  it('shows a clear retry state when link session creation fails', async () => {
+    mockFetchUserLink.mockResolvedValue({
       ok: true,
       data: {
-        code: 'AbCdEfGhIjK_',
+        code: 'abc',
+        status: 'active',
+        profile: { displayName: 'Coach A', tagline: null, avatarUrl: null },
+      },
+    });
+    mockOpenLinkSession.mockResolvedValue({ ok: false, error: 'link_session_not_opened' });
+
+    const html = renderToString(
+      await UserLinkPage({ params: Promise.resolve({ code: 'abc' }), searchParams: Promise.resolve({}) }),
+    );
+
+    expect(html).toContain('Friend request setup is temporarily unavailable');
+    expect(html).toContain('Please refresh this page and try again');
+    expect(html).not.toContain('Log in to add friend');
+  });
+
+  it('renders the authenticated friend-request form for a preserved session', async () => {
+    mockFetchUserLink.mockResolvedValue({
+      ok: true,
+      data: {
+        code: 'abc',
+        status: 'active',
         profile: { displayName: 'Coach A', tagline: null, avatarUrl: null },
       },
     });
 
     const html = renderToString(
       await UserLinkPage({
-        params: Promise.resolve({ code: 'AbCdEfGhIjK_' }),
-        searchParams: Promise.resolve({ link_session: 'tok' }),
+        params: Promise.resolve({ code: 'abc' }),
+        searchParams: Promise.resolve({ link_session: 'session-token' }),
       }),
     );
+    const container = renderHtml(html);
+    const submitButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Send friend request',
+    );
 
-    expect(readPublicUserLinkMock).toHaveBeenCalledWith('AbCdEfGhIjK_', { openSession: false });
-    expect(html).toContain('Completing your connection');
-    expect(html).toContain('link_session%3Dtok');
+    expect(submitButton).toBeTruthy();
+    expect(mockOpenLinkSession).not.toHaveBeenCalled();
   });
 });
