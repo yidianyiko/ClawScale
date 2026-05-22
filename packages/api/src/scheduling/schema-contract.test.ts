@@ -15,7 +15,6 @@ const retiredSchedulingImplementationPaths = [
   join(process.cwd(), 'src/scheduling/availability-service.ts'),
   join(process.cwd(), 'src/scheduling/service-link-service.ts'),
   join(process.cwd(), 'src/scheduling/appointment-service.ts'),
-  join(process.cwd(), 'src/scheduling/notification-service.ts'),
 ];
 
 describe('friend-link and shared-reminder schema contract', () => {

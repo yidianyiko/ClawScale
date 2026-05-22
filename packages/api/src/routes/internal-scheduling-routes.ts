@@ -2,6 +2,28 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import {
+  cancelRuntimeReminder,
+  createRuntimeReminder,
+} from '../lib/reminder-runtime-client.js';
+import {
+  acceptFriendRequest,
+  blockAccount,
+  cancelFriendRequest,
+  listFriendRequests,
+  listFriends,
+  rejectFriendRequest,
+  removeFriendship,
+  unblockAccount,
+} from '../scheduling/friendship-service.js';
+import { deliverPendingProductNotifications } from '../scheduling/notification-service.js';
+import {
+  acceptSharedReminder,
+  cancelSharedReminder,
+  createSharedReminder,
+  listPendingSharedReminders,
+  rejectSharedReminder,
+} from '../scheduling/shared-reminder-service.js';
+import {
   disableUserLink,
   getOrCreateActiveUserLink,
   resetUserLink,
@@ -27,9 +49,29 @@ async function readJsonObject(c: Context): Promise<JsonRecord | null> {
   }
 }
 
+async function readOptionalJsonObject(c: Context): Promise<JsonRecord | null> {
+  try {
+    const text = await c.req.text();
+    if (!text.trim()) {
+      return {};
+    }
+    const body = JSON.parse(text);
+    return typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? (body as JsonRecord)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function stringField(body: JsonRecord, key: string, fallback = ''): string {
   const value = body[key];
   return typeof value === 'string' ? value : fallback;
+}
+
+function numberField(body: JsonRecord, key: string, fallback: number): number {
+  const value = body[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 function schedulingErrorCode(error: unknown): string {
@@ -77,6 +119,25 @@ async function runActiveUserLinkTool<T>(
   }
 }
 
+async function runCustomerTool<T>(
+  c: Context,
+  body: JsonRecord,
+  fn: (customerId: string) => Promise<T>,
+  status = 200,
+): Promise<Response> {
+  const customerId = stringField(body, 'customer_id').trim();
+  if (!customerId) {
+    return c.json({ ok: false, error: 'invalid_customer_id' }, 400);
+  }
+
+  try {
+    const result = await fn(customerId);
+    return c.json({ ok: true, data: result }, status as never);
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingErrorCode(error) }, 400);
+  }
+}
+
 internalSchedulingRouter.post('/tools/:toolName', async (c) => {
   if (!isAuthorized(c.req.header('Authorization'))) {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
@@ -113,6 +174,148 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       }),
     );
   }
+  if (toolName === 'list_friend_requests') {
+    return runCustomerTool(c, body, (customerId) =>
+      listFriendRequests(db as never, {
+        accountId: customerId,
+      }),
+    );
+  }
+  if (toolName === 'accept_friend_request') {
+    return runCustomerTool(c, body, (customerId) =>
+      acceptFriendRequest(db as never, {
+        actorAccountId: customerId,
+        requestId: stringField(body, 'request_id'),
+        idempotencyKey: stringField(body, 'idempotency_key'),
+      }),
+    );
+  }
+  if (toolName === 'reject_friend_request') {
+    return runCustomerTool(c, body, (customerId) =>
+      rejectFriendRequest(db as never, {
+        actorAccountId: customerId,
+        requestId: stringField(body, 'request_id'),
+        idempotencyKey: stringField(body, 'idempotency_key'),
+      }),
+    );
+  }
+  if (toolName === 'cancel_friend_request') {
+    return runCustomerTool(c, body, (customerId) =>
+      cancelFriendRequest(db as never, {
+        actorAccountId: customerId,
+        requestId: stringField(body, 'request_id'),
+        idempotencyKey: stringField(body, 'idempotency_key'),
+      }),
+    );
+  }
+  if (toolName === 'list_friends') {
+    return runCustomerTool(c, body, (customerId) =>
+      listFriends(db as never, {
+        accountId: customerId,
+      }),
+    );
+  }
+  if (toolName === 'remove_friendship') {
+    return runCustomerTool(c, body, (customerId) =>
+      removeFriendship(
+        db as never,
+        { cancelRuntimeReminder },
+        {
+          actorAccountId: customerId,
+          friendshipId: stringField(body, 'friendship_id'),
+        },
+      ),
+    );
+  }
+  if (toolName === 'block_account') {
+    return runCustomerTool(c, body, (customerId) =>
+      blockAccount(
+        db as never,
+        { cancelRuntimeReminder },
+        {
+          blockerAccountId: customerId,
+          blockedAccountId: stringField(body, 'blocked_account_id'),
+        },
+      ),
+    );
+  }
+  if (toolName === 'unblock_account') {
+    return runCustomerTool(c, body, (customerId) =>
+      unblockAccount(db as never, {
+        blockerAccountId: customerId,
+        blockedAccountId: stringField(body, 'blocked_account_id'),
+      }),
+    );
+  }
+  if (toolName === 'create_shared_reminder') {
+    return runCustomerTool(
+      c,
+      body,
+      (customerId) =>
+        createSharedReminder(
+          db as never,
+          { createRuntimeReminder, cancelRuntimeReminder },
+          {
+            requesterAccountId: customerId,
+            inviteeAccountId: stringField(body, 'invitee_account_id'),
+            title: stringField(body, 'title'),
+            fireAt: stringField(body, 'fire_at'),
+            timezone: stringField(body, 'timezone', 'UTC'),
+            idempotencyKey: stringField(body, 'idempotency_key'),
+          },
+        ),
+      201,
+    );
+  }
+  if (toolName === 'list_pending_shared_reminders') {
+    return runCustomerTool(c, body, (customerId) =>
+      listPendingSharedReminders(db as never, {
+        inviteeAccountId: customerId,
+      }),
+    );
+  }
+  if (toolName === 'accept_shared_reminder') {
+    return runCustomerTool(c, body, (customerId) =>
+      acceptSharedReminder(
+        db as never,
+        { createRuntimeReminder, cancelRuntimeReminder },
+        {
+          actorAccountId: customerId,
+          requestId: stringField(body, 'request_id'),
+          now: new Date(),
+          idempotencyKey: stringField(body, 'idempotency_key'),
+        },
+      ),
+    );
+  }
+  if (toolName === 'reject_shared_reminder') {
+    return runCustomerTool(c, body, (customerId) =>
+      rejectSharedReminder(
+        db as never,
+        { createRuntimeReminder, cancelRuntimeReminder },
+        {
+          actorAccountId: customerId,
+          requestId: stringField(body, 'request_id'),
+          now: new Date(),
+          idempotencyKey: stringField(body, 'idempotency_key'),
+        },
+      ),
+    );
+  }
+  if (toolName === 'cancel_shared_reminder') {
+    return runCustomerTool(c, body, (customerId) =>
+      cancelSharedReminder(
+        db as never,
+        { createRuntimeReminder, cancelRuntimeReminder },
+        {
+          actorAccountId: customerId,
+          requestId: stringField(body, 'request_id'),
+          now: new Date(),
+          idempotencyKey: stringField(body, 'idempotency_key'),
+        },
+      ),
+    );
+  }
   return c.json({ ok: false, error: 'unknown_tool' }, 404);
 });
 
@@ -121,5 +324,17 @@ internalSchedulingRouter.post('/notifications/retry', async (c) => {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  return retiredAppointmentSchedulingTool(c);
+  const body = await readOptionalJsonObject(c);
+  if (!body) {
+    return c.json({ ok: false, error: 'invalid_body' }, 400);
+  }
+
+  try {
+    const result = await deliverPendingProductNotifications(db as never, {
+      limit: numberField(body, 'limit', 50),
+    });
+    return c.json({ ok: true, data: result });
+  } catch (error) {
+    return c.json({ ok: false, error: schedulingErrorCode(error) }, 400);
+  }
 });
