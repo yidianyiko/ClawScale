@@ -657,6 +657,61 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('fails accepted finalization when duplicate runtime cleanup fails after unique projection conflict', async () => {
+    const existingProjection = {
+      id: 'rp_inv_1',
+      sharedReminderRequestId: 'srr_1',
+      ownerAccountId: 'acct_a',
+      runtimeReminderId: 'rem_inv_existing',
+      role: 'invitee',
+    };
+    const client = fakeSharedReminderClient({
+      sharedReminderRequest: {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'pending_invitee_confirmation',
+      },
+      reminderProjection: null,
+    });
+    client.reminderProjection.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existingProjection);
+    client.reminderProjection.create.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+    );
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_inv_new' } },
+      cancel: { ok: false, error: 'reminder_bridge_transport_failed' },
+    });
+
+    await expect(
+      acceptSharedReminder(client as never, reminderRuntime, {
+        actorAccountId: 'acct_a',
+        requestId: 'srr_1',
+        now: new Date('2026-05-22T06:00:00.000Z'),
+        idempotencyKey: 'accept-unique-cleanup-fail-srr-1',
+      }),
+    ).rejects.toThrow('reminder_projection_failed');
+
+    expect(reminderRuntime.cancelRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'acct_a',
+      reminderId: 'rem_inv_new',
+    });
+    expect(client.sharedReminderRequest.updateMany).not.toHaveBeenCalledWith({
+      where: {
+        id: 'srr_1',
+        status: 'pending_invitee_confirmation',
+        inviteeAccountId: 'acct_a',
+        resolvedAt: new Date('2026-05-22T06:00:00.000Z'),
+      },
+      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+    });
+  });
+
   it('rejecting before fire time cancels requester projection', async () => {
     const client = fakeSharedReminderClient({
       sharedReminderRequest: {
@@ -796,7 +851,11 @@ describe('shared reminder service', () => {
     });
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
       where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
-      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+      data: {
+        status: 'accepted',
+        inviteeReminderId: 'rem_inv_existing',
+        resolvedAt: expect.any(Date),
+      },
     });
     expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
   });
@@ -1106,7 +1165,11 @@ describe('shared reminder service', () => {
     });
     expect(client.sharedReminderRequest.updateMany).toHaveBeenCalledWith({
       where: { id: 'srr_1', status: 'pending_invitee_confirmation' },
-      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+      data: {
+        status: 'accepted',
+        inviteeReminderId: 'rem_inv_existing',
+        resolvedAt: expect.any(Date),
+      },
     });
     expect(reminderRuntime.cancelRuntimeReminder).not.toHaveBeenCalled();
   });
@@ -1277,7 +1340,11 @@ describe('shared reminder service', () => {
           { resolvedAt: { lt: new Date('2026-05-22T06:56:00.000Z') } },
         ],
       },
-      data: { status: 'accepted', inviteeReminderId: 'rem_inv_existing' },
+      data: {
+        status: 'accepted',
+        inviteeReminderId: 'rem_inv_existing',
+        resolvedAt: expect.any(Date),
+      },
     });
     expect(client.sharedReminderRequest.updateMany).not.toHaveBeenCalledWith({
       where: expect.objectContaining({

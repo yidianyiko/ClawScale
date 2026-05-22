@@ -333,6 +333,7 @@ async function reconcileInviteeProjectionAsAccepted(
   client: Pick<SharedReminderClient, 'sharedReminderRequest' | 'sharedReminderEvent' | 'reminderProjection'>,
   request: SharedReminderRequestRecord,
   idempotencyKey: string,
+  resolvedAt: Date,
 ): Promise<SharedReminderActionResult | null> {
   const projection = await findProjection(client, {
     requestId: request.id,
@@ -346,6 +347,7 @@ async function reconcileInviteeProjectionAsAccepted(
     data: {
       status: 'accepted',
       inviteeReminderId: projection.runtimeReminderId,
+      resolvedAt,
     },
   });
   if (transition.count === 1) {
@@ -413,14 +415,10 @@ async function createProjection(
         role: input.role,
       });
       if (existing) {
-        try {
-          await cancelProjection(reminderRuntime, {
-            customerId: input.ownerAccountId,
-            reminderId: runtimeReminderId,
-          });
-        } catch {
-          // Best-effort cleanup only; the persisted projection is authoritative.
-        }
+        await cancelProjection(reminderRuntime, {
+          customerId: input.ownerAccountId,
+          reminderId: runtimeReminderId,
+        });
         return existing.runtimeReminderId;
       }
     }
@@ -756,7 +754,12 @@ export async function rejectSharedReminder(
   if (request.status !== 'pending_invitee_confirmation') {
     throw new Error('shared_reminder_not_pending');
   }
-  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(client, request, idempotencyKey);
+  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(
+    client,
+    request,
+    idempotencyKey,
+    input.now,
+  );
   if (reconciledAccepted) {
     return reconciledAccepted;
   }
@@ -830,7 +833,12 @@ export async function cancelSharedReminder(
   if (request.status !== 'pending_invitee_confirmation') {
     throw new Error('shared_reminder_not_pending');
   }
-  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(client, request, idempotencyKey);
+  const reconciledAccepted = await reconcileInviteeProjectionAsAccepted(
+    client,
+    request,
+    idempotencyKey,
+    input.now,
+  );
   if (reconciledAccepted) {
     return reconciledAccepted;
   }
@@ -910,6 +918,7 @@ export async function expireDueSharedReminders(
         data: {
           status: 'accepted',
           inviteeReminderId: inviteeProjection.runtimeReminderId,
+          resolvedAt: input.now,
         },
       });
       if (transition.count === 1) {
