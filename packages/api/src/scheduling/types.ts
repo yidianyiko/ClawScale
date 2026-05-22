@@ -1,11 +1,35 @@
-export type SchedulingCapability = 'appointment_request';
 export type UserLinkStatus = 'active' | 'disabled';
 export type LinkSessionStatus = 'opened' | 'claimed' | 'abandoned';
-export type ServiceLinkStatus = 'active' | 'blocked' | 'removed';
-export type BookableWindowStatus = 'active' | 'closed';
-export type AppointmentRequestStatus = 'pending_held' | 'confirmed_shared' | 'released';
-export type AppointmentReleaseReason = 'rejected_by_a' | 'cancelled_by_a' | 'cancelled_by_b';
-export type AppointmentActorRole = 'provider' | 'consumer' | 'system';
+export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type FriendshipStatus = 'active' | 'removed';
+export type SharedReminderRequestStatus =
+  | 'pending_invitee_confirmation'
+  | 'accepted'
+  | 'rejected'
+  | 'expired'
+  | 'cancelled'
+  | 'invalidated';
+export type SharedReminderProjectionRole = 'requester' | 'invitee';
+
+export interface SchedulingErrorBody {
+  ok: false;
+  error:
+    | 'invalid_body'
+    | 'invalid_user_link'
+    | 'invalid_link_session'
+    | 'link_session_expired'
+    | 'cannot_friend_self'
+    | 'friend_request_blocked'
+    | 'friend_request_not_found'
+    | 'friendship_required'
+    | 'friendship_not_found'
+    | 'shared_reminder_not_found'
+    | 'shared_reminder_not_pending'
+    | 'shared_reminder_due'
+    | 'reminder_projection_failed'
+    | 'bridge_delivery_failed'
+    | 'not_allowed';
+}
 
 export interface WeeklyBookableWindowRule {
   type: 'weekly';
@@ -33,20 +57,4 @@ export interface GeneratedWindowInstance {
   instanceStart: string;
   instanceEnd: string;
   providerTimezone: string;
-}
-
-export interface SchedulingErrorBody {
-  ok: false;
-  error:
-    | 'invalid_body'
-    | 'invalid_timezone'
-    | 'window_too_short'
-    | 'window_overlap'
-    | 'service_link_required'
-    | 'service_link_blocked'
-    | 'slot_unavailable'
-    | 'appointment_not_found'
-    | 'not_allowed'
-    | 'cooldown_active'
-    | 'bridge_delivery_failed';
 }

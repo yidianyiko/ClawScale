@@ -6,12 +6,16 @@ import {
   getOrCreateActiveUserLink,
   readPublicUserLinkByCode,
   resetUserLink,
+  sendFriendRequestFromLinkSession,
 } from './user-link-service.js';
 
 const db = {
   userLink: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   linkSession: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
   customer: { findUnique: vi.fn() },
+  friendRequest: { findFirst: vi.fn(), create: vi.fn() },
+  accountBlock: { findFirst: vi.fn() },
+  productNotification: { create: vi.fn() },
   $transaction: vi.fn(),
 };
 
@@ -162,9 +166,9 @@ describe('user link service', () => {
     expect(db.userLink.create).not.toHaveBeenCalled();
   });
 
-  it('opens a link session with token hash and 24 hour expiry', async () => {
+  it('opens a 30 day link session without notifying the target', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-21T00:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
     db.userLink.findFirst.mockResolvedValueOnce({
       id: 'ul_1',
       code: 'AbCdEfGhIjK_',
@@ -184,14 +188,105 @@ describe('user link service', () => {
     expect(db.linkSession.create.mock.calls[0][0].data.providerAccountId).toBe('ck_a');
     expect(db.linkSession.create.mock.calls[0][0].data.status).toBe('opened');
     expect(db.linkSession.create.mock.calls[0][0].data.expiresAt).toEqual(
-      new Date('2026-05-22T00:00:00.000Z'),
+      new Date('2026-06-21T00:00:00.000Z'),
     );
+    expect(db.productNotification.create).not.toHaveBeenCalled();
     expect(result.nextUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
     expect(result).not.toHaveProperty('session');
     expect(result).not.toHaveProperty('id');
     expect(result).not.toHaveProperty('tokenHash');
     expect(result).not.toHaveProperty('userLinkId');
     expect(result).not.toHaveProperty('providerAccountId');
+  });
+
+  it('creates a pending friend request when an authenticated visitor claims a link session', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.create.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'acct_b',
+      targetAccountId: 'acct_a',
+      linkSessionId: 'ls_1',
+      status: 'pending',
+    });
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: 'Let us connect',
+      idempotencyKey: 'friend:req:1',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_1', status: 'pending' });
+    expect(db.friendRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requesterAccountId: 'acct_b',
+        targetAccountId: 'acct_a',
+        linkSessionId: 'ls_1',
+        message: 'Let us connect',
+        idempotencyKey: 'friend:req:1',
+        status: 'pending',
+      }),
+    });
+    expect(db.linkSession.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ls_1', status: 'opened' },
+      data: {
+        status: 'claimed',
+        consumerAccountId: 'acct_b',
+        claimedAt: expect.any(Date),
+      },
+    });
+    expect(db.productNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        friendRequestId: 'fr_1',
+        recipientAccountId: 'acct_a',
+        kind: 'friend_request',
+        payload: {
+          text: '你有一个新的好友请求，请确认或拒绝。',
+          metadata: {
+            request_id: 'fr_1',
+            request_type: 'friend_request',
+            actor_account_id: 'acct_b',
+            allowed_actions: ['accept', 'reject'],
+          },
+        },
+        status: 'pending_delivery',
+      }),
+    });
+  });
+
+  it('rejects self-claiming a user link session', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
+    db.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+
+    await expect(
+      sendFriendRequestFromLinkSession(db as never, {
+        token: 'session-token',
+        requesterAccountId: 'acct_a',
+        message: null,
+        idempotencyKey: 'friend:req:self',
+      }),
+    ).rejects.toThrow('cannot_friend_self');
+
+    expect(db.friendRequest.create).not.toHaveBeenCalled();
+    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
+    expect(db.productNotification.create).not.toHaveBeenCalled();
   });
 
   it('fails closed for the retired link-session claim write path', async () => {

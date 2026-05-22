@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 
 const USER_LINK_CODE_BYTES = 9;
 const LINK_SESSION_TOKEN_BYTES = 32;
-const LINK_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const LINK_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface UserLinkRecord {
   id: string;
@@ -47,6 +47,16 @@ interface UserLinkClient {
       where: { id: string };
       select?: Record<string, unknown>;
     }): Promise<ProviderProfileRecord | null>;
+  };
+  friendRequest: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
+    create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
+  };
+  accountBlock: {
+    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
+  };
+  productNotification: {
+    create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   };
   $transaction?<T>(fn: (client: UserLinkTransactionClient) => Promise<T>): Promise<T>;
 }
@@ -338,4 +348,87 @@ export async function claimLinkSession(
   _input: { token: string; consumerAccountId: string },
 ): Promise<LinkSessionRecord> {
   throw new Error('appointment_scheduling_retired');
+}
+
+export async function sendFriendRequestFromLinkSession(
+  client: UserLinkClient,
+  input: {
+    token: string;
+    requesterAccountId: string;
+    message: string | null;
+    idempotencyKey: string;
+  },
+): Promise<Record<string, unknown>> {
+  const requesterAccountId = nonEmpty(input.requesterAccountId, 'invalid_account');
+  const session = await client.linkSession.findUnique({
+    where: { tokenHash: tokenHash(input.token) },
+  });
+  if (!session || session.status !== 'opened') {
+    throw new Error('invalid_link_session');
+  }
+  if (new Date(session.expiresAt).getTime() <= Date.now()) {
+    throw new Error('link_session_expired');
+  }
+  if (session.providerAccountId === requesterAccountId) {
+    throw new Error('cannot_friend_self');
+  }
+
+  const block = await client.accountBlock.findFirst({
+    where: {
+      blockerAccountId: session.providerAccountId,
+      blockedAccountId: requesterAccountId,
+    },
+  });
+  if (block) {
+    throw new Error('friend_request_blocked');
+  }
+
+  const existing = await client.friendRequest.findFirst({
+    where: {
+      requesterAccountId,
+      targetAccountId: session.providerAccountId,
+      status: 'pending',
+    },
+  });
+  if (existing) {
+    return existing;
+  }
+
+  const request = await client.friendRequest.create({
+    data: {
+      requesterAccountId,
+      targetAccountId: session.providerAccountId,
+      linkSessionId: session.id,
+      message: input.message,
+      idempotencyKey: input.idempotencyKey,
+      status: 'pending',
+    },
+  });
+  await client.linkSession.updateMany({
+    where: { id: session.id, status: 'opened' },
+    data: {
+      status: 'claimed',
+      consumerAccountId: requesterAccountId,
+      claimedAt: new Date(),
+    },
+  });
+  await client.productNotification.create({
+    data: {
+      friendRequestId: request['id'],
+      recipientAccountId: session.providerAccountId,
+      idempotencyKey: `friend-request:${request['id']}:target`,
+      kind: 'friend_request',
+      payload: {
+        text: '你有一个新的好友请求，请确认或拒绝。',
+        metadata: {
+          request_id: request['id'],
+          request_type: 'friend_request',
+          actor_account_id: requesterAccountId,
+          allowed_actions: ['accept', 'reject'],
+        },
+      },
+      status: 'pending_delivery',
+    },
+  });
+  return request;
 }
