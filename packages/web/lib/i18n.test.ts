@@ -105,6 +105,12 @@ describe('i18n helpers', () => {
     expect(messages.zh.publicShell.cta.signIn).toBeDefined();
     expect(messages.en.customerPages.login.resendVerificationEmail).toBe('Resend verification email');
     expect(messages.zh.customerPages.login.resendVerificationEmail).toBe('重新发送验证邮件');
+    expect(messages.en.customerPages.login.resendVerificationSuccess).toContain(
+      'valid for 15 minutes',
+    );
+    expect(messages.en.customerPages.login.resendVerificationSuccess).toContain('spam folder');
+    expect(messages.zh.customerPages.login.resendVerificationSuccess).toContain('15 分钟内有效');
+    expect(messages.zh.customerPages.login.resendVerificationSuccess).toContain('垃圾邮箱');
     expect(messages.en.customerPages.login.verificationRetryDescription).toBe(
       "We couldn't verify your email right now. Resend a verification email to continue.",
     );

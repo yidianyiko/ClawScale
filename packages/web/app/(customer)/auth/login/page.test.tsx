@@ -220,6 +220,8 @@ describe('CustomerLoginPage', () => {
       email: 'alice@example.com',
     });
     expect(container.textContent).toContain('Verification email sent.');
+    expect(container.textContent).toContain('valid for 15 minutes');
+    expect(container.textContent).toContain('spam folder');
   });
 
   it('keeps unverified login attempts on the recovery flow after neutral login and profile hydration', async () => {

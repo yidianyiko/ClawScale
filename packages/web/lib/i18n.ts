@@ -576,7 +576,8 @@ export const messages: MessagesCatalog = {
           "We couldn't verify your email right now. Resend a verification email to continue.",
         resendVerificationEmail: 'Resend verification email',
         resendingVerificationEmail: 'Sending verification email...',
-        resendVerificationSuccess: 'Verification email sent. Check your inbox.',
+        resendVerificationSuccess:
+          "Verification email sent. Check your inbox. The link is valid for 15 minutes. If you don't see it, check your spam folder.",
         resendVerificationError: 'Unable to resend the verification email right now.',
       },
       register: {
@@ -1016,7 +1017,7 @@ export const messages: MessagesCatalog = {
         verificationRetryDescription: '暂时无法验证你的邮箱。请重新发送验证邮件继续。',
         resendVerificationEmail: '重新发送验证邮件',
         resendingVerificationEmail: '正在发送验证邮件...',
-        resendVerificationSuccess: '验证邮件已发送，请查收邮箱。',
+        resendVerificationSuccess: '验证邮件已发送，请查收邮箱。链接 15 分钟内有效；如果没有看到，请检查垃圾邮箱。',
         resendVerificationError: '暂时无法重新发送验证邮件，请稍后再试。',
       },
       register: {

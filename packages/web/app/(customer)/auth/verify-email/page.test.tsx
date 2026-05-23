@@ -263,6 +263,8 @@ describe('CustomerVerifyEmailPage', () => {
     });
     expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
+    expect(container.textContent).toContain('valid for 15 minutes');
+    expect(container.textContent).toContain('spam folder');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
@@ -304,6 +306,8 @@ describe('CustomerVerifyEmailPage', () => {
     });
     expect(container.querySelector('.auth-alert--warning')).toBeTruthy();
     expect(container.textContent).toContain('Verification email sent. Check your inbox.');
+    expect(container.textContent).toContain('valid for 15 minutes');
+    expect(container.textContent).toContain('spam folder');
     expect(replaceMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
