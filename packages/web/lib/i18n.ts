@@ -188,6 +188,36 @@ type CustomerPagesMessages = {
     wechatPersonalTitle: string;
     wechatPersonalDescription: string;
   };
+  friends: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    linkTitle: string;
+    linkDescription: string;
+    copyLink: string;
+    copied: string;
+    resetLink: string;
+    disableLink: string;
+    linkDisabled: string;
+    incomingTitle: string;
+    outgoingTitle: string;
+    friendsTitle: string;
+    emptyIncoming: string;
+    emptyOutgoing: string;
+    emptyFriends: string;
+    loading: string;
+    loadFailure: string;
+    actionFailure: string;
+    accept: string;
+    reject: string;
+    cancelRequest: string;
+    removeFriend: string;
+    pending: string;
+    accepted: string;
+    rejected: string;
+    cancelled: string;
+    unknownFriend: string;
+  };
   myAgent: {
     eyebrow: string;
     title: string;
@@ -645,6 +675,36 @@ export const messages: MessagesCatalog = {
         wechatPersonalTitle: 'Personal WeChat',
         wechatPersonalDescription: 'Connect, reconnect, or archive your personal WeChat channel.',
       },
+      friends: {
+        eyebrow: 'Friends',
+        title: 'Friend management',
+        description: 'Share your add-friend link, review requests, and manage current friends.',
+        linkTitle: 'My friend link',
+        linkDescription: 'Share this URL with someone who should be able to send you a friend request.',
+        copyLink: 'Copy link',
+        copied: 'Link copied.',
+        resetLink: 'Reset link',
+        disableLink: 'Disable current link',
+        linkDisabled: 'The current link was disabled. A new link can be created when you refresh this page.',
+        incomingTitle: 'Incoming requests',
+        outgoingTitle: 'Outgoing requests',
+        friendsTitle: 'Current friends',
+        emptyIncoming: 'No incoming friend requests.',
+        emptyOutgoing: 'No outgoing friend requests.',
+        emptyFriends: 'No friends yet.',
+        loading: 'Loading friend data...',
+        loadFailure: 'Unable to load friend data right now.',
+        actionFailure: 'Unable to update friend data right now.',
+        accept: 'Accept',
+        reject: 'Reject',
+        cancelRequest: 'Cancel request',
+        removeFriend: 'Remove friend',
+        pending: 'Pending',
+        accepted: 'Accepted',
+        rejected: 'Rejected',
+        cancelled: 'Cancelled',
+        unknownFriend: 'Unknown account',
+      },
       myAgent: {
         eyebrow: 'Agent settings',
         title: 'My Agent',
@@ -1050,6 +1110,36 @@ export const messages: MessagesCatalog = {
         description: '管理当前已经迁移到中立 ClawScale 客户壳层中的通道入口。',
         wechatPersonalTitle: '个人微信',
         wechatPersonalDescription: '连接、重新连接或归档你的个人微信通道。',
+      },
+      friends: {
+        eyebrow: '好友',
+        title: '好友管理',
+        description: '分享你的好友链接，处理好友请求，并管理当前好友。',
+        linkTitle: '我的好友链接',
+        linkDescription: '把这个链接发给对方，对方登录或注册后就可以向你发送好友请求。',
+        copyLink: '复制链接',
+        copied: '链接已复制。',
+        resetLink: '重置链接',
+        disableLink: '停用当前链接',
+        linkDisabled: '当前链接已停用。刷新页面时可以按现有规则创建新的链接。',
+        incomingTitle: '收到的请求',
+        outgoingTitle: '发出的请求',
+        friendsTitle: '当前好友',
+        emptyIncoming: '暂无收到的好友请求。',
+        emptyOutgoing: '暂无发出的好友请求。',
+        emptyFriends: '暂无好友。',
+        loading: '正在加载好友数据...',
+        loadFailure: '暂时无法加载好友数据。',
+        actionFailure: '暂时无法更新好友数据。',
+        accept: '接受',
+        reject: '拒绝',
+        cancelRequest: '取消请求',
+        removeFriend: '删除好友',
+        pending: '待处理',
+        accepted: '已接受',
+        rejected: '已拒绝',
+        cancelled: '已取消',
+        unknownFriend: '未知账号',
       },
       myAgent: {
         eyebrow: '智能体设置',
