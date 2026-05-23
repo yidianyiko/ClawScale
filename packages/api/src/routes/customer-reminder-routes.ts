@@ -353,7 +353,7 @@ export const customerReminderRouter = new Hono()
     if (!result.ok) {
       return runtimeErrorResponse(c, result.error);
     }
-    return c.json({ ok: true, data: result.data });
+    return c.json({ ok: true, data: mapReminderForBoard(result.data) });
   })
   .patch('/:reminderId', async (c) => {
     const body = await readJsonObject(c);
@@ -382,7 +382,7 @@ export const customerReminderRouter = new Hono()
     if (!result.ok) {
       return runtimeErrorResponse(c, result.error);
     }
-    return c.json({ ok: true, data: result.data });
+    return c.json({ ok: true, data: mapReminderForBoard(result.data) });
   })
   .post('/:reminderId/complete', async (c) => {
     const auth = c.get('customerReminderAuth');

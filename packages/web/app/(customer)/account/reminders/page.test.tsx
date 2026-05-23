@@ -93,7 +93,7 @@ describe('CustomerRemindersPage', () => {
       ok: true,
       data: {
         reminders: [
-          makeReminder(),
+          makeReminder({ durationMinutes: 60 }),
           makeReminder({ id: 'rem-2', title: 'Call mom', localDate: '2026-05-15', localTime: '20:00' }),
         ],
       },
@@ -338,6 +338,7 @@ describe('CustomerRemindersPage', () => {
       localTime: '09:30',
       timezone: 'Asia/Tokyo',
       repeat: 'none',
+      durationMinutes: 60,
     });
 
     const completeButton = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Complete');

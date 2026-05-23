@@ -190,6 +190,52 @@ describe('customer reminder routes', () => {
     });
   });
 
+  it('returns created reminders in the customer reminder DTO shape with duration', async () => {
+    mocks.createRuntimeReminder.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'rem-created',
+        title: 'Lesson',
+        schedule: {
+          localDate: '2026-05-13',
+          localTime: '09:30:00',
+          timezone: 'Asia/Tokyo',
+          rrule: null,
+          durationMinutes: 60,
+        },
+      },
+    });
+
+    const res = await createApp().request('/api/customer/reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Lesson',
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        durationMinutes: 60,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        id: 'rem-created',
+        title: 'Lesson',
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        rrule: null,
+        durationMinutes: 60,
+      },
+    });
+  });
+
   it('validates create and update reminder fields', async () => {
     const createRes = await createApp().request('/api/customer/reminders', {
       method: 'POST',
@@ -367,6 +413,53 @@ describe('customer reminder routes', () => {
     expect(mocks.cancelRuntimeReminder).toHaveBeenCalledWith({
       customerId: 'ck_123',
       reminderId: 'rem-2',
+    });
+  });
+
+  it('returns updated reminders in the customer reminder DTO shape with duration', async () => {
+    mocks.updateRuntimeReminder.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: 'rem-1',
+        title: 'Updated lesson',
+        schedule: {
+          localDate: '2026-05-14',
+          localTime: '10:00:00',
+          timezone: 'Asia/Tokyo',
+          rrule: 'FREQ=WEEKLY',
+          durationMinutes: 90,
+        },
+      },
+    });
+
+    const res = await createApp().request('/api/customer/reminders/rem-1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Updated lesson',
+        localDate: '2026-05-14',
+        localTime: '10:00',
+        timezone: 'Asia/Tokyo',
+        rrule: 'FREQ=WEEKLY',
+        durationMinutes: 90,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        id: 'rem-1',
+        title: 'Updated lesson',
+        localDate: '2026-05-14',
+        localTime: '10:00',
+        timezone: 'Asia/Tokyo',
+        rrule: 'FREQ=WEEKLY',
+        durationMinutes: 90,
+      },
     });
   });
 

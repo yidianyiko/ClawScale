@@ -108,6 +108,7 @@ function formFromReminder(reminder: CustomerReminder): CustomerReminderFormInput
     localTime: reminder.localTime,
     timezone: reminder.timezone || getDefaultTimezone(),
     repeat: repeatFromRrule(reminder.rrule),
+    ...(reminder.durationMinutes !== undefined ? { durationMinutes: reminder.durationMinutes } : {}),
   };
 }
 
@@ -135,6 +136,7 @@ function ReminderForm({
       localTime: String(formData.get('localTime') ?? form.localTime),
       timezone: String(formData.get('timezone') ?? form.timezone).trim() || 'UTC',
       repeat: String(formData.get('repeat') ?? form.repeat) as CustomerReminderRepeat,
+      ...(form.durationMinutes !== undefined ? { durationMinutes: form.durationMinutes } : {}),
     });
   }
 
