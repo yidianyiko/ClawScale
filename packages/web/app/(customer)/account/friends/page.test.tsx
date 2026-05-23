@@ -164,6 +164,12 @@ describe('CustomerFriendsPage', () => {
     expect(findButton(container, 'Cancel request')).toBeTruthy();
     expect(findButton(container, 'Remove friend')).toBeTruthy();
     expect(container.textContent).toContain('Accepted');
+
+    const terminalRow = [...container.querySelectorAll('.customer-friend-row')].find((row) =>
+      row.textContent?.includes('acct_done'),
+    );
+    expect(terminalRow?.textContent).toContain('Accepted');
+    expect(terminalRow?.querySelector('button')).toBeNull();
   });
 
   it('redirects auth failures on load to login with the friends next path', async () => {
@@ -220,7 +226,7 @@ describe('CustomerFriendsPage', () => {
     expect(listFriendsMock).toHaveBeenCalledTimes(5);
   });
 
-  it('copies, resets, and disables the current friend link', async () => {
+  it('copies and resets the current friend link', async () => {
     renderPage();
     await flushTicks();
 
@@ -235,14 +241,27 @@ describe('CustomerFriendsPage', () => {
     expect(getLinkMock).toHaveBeenCalledTimes(2);
     expect(listRequestsMock).toHaveBeenCalledTimes(2);
     expect(listFriendsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the disabled friend link local without immediately fetching a replacement link', async () => {
+    getLinkMock
+      .mockResolvedValueOnce({ ok: true, data: friendLink({ url: 'https://kap.example/u/abc' }) })
+      .mockResolvedValue({ ok: true, data: friendLink({ url: 'https://kap.example/u/new-link' }) });
+
+    renderPage();
+    await flushTicks();
+    expect(container.textContent).toContain('https://kap.example/u/abc');
 
     findButton(container, 'Disable current link')?.click();
     await flushTicks();
+
     expect(disableLinkMock).toHaveBeenCalledOnce();
-    expect(getLinkMock).toHaveBeenCalledTimes(3);
-    expect(listRequestsMock).toHaveBeenCalledTimes(3);
-    expect(listFriendsMock).toHaveBeenCalledTimes(3);
+    expect(getLinkMock).toHaveBeenCalledTimes(1);
+    expect(listRequestsMock).toHaveBeenCalledTimes(1);
+    expect(listFriendsMock).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('The current link was disabled.');
+    expect(container.textContent).not.toContain('https://kap.example/u/abc');
+    expect(container.textContent).not.toContain('https://kap.example/u/new-link');
   });
 
   it('redirects auth failures from mutations and shows action failures without leaving the page', async () => {

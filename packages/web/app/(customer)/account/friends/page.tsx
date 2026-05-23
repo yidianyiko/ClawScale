@@ -239,7 +239,7 @@ export default function CustomerFriendsPage() {
         setError(copy.actionFailure);
         return;
       }
-      await loadData();
+      setFriendLink(null);
       setNotice(copy.linkDisabled);
     } catch {
       setError(copy.actionFailure);
