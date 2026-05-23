@@ -3841,6 +3841,115 @@ html[data-locale-ready="true"] .coke-site-splash {
   color: var(--ink-1000);
 }
 
+.coke-site .customer-friends-page {
+  max-width: 1000px;
+}
+
+.coke-site .customer-friends-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.coke-site .customer-friends-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.coke-site .customer-friends-section h2 {
+  margin: 0;
+  color: var(--ink-1000);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.coke-site .customer-friends-section p {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.coke-site .customer-friend-link-box {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(27, 20, 16, 0.1);
+  background: #fff;
+  color: var(--ink-900);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.coke-site .customer-friends-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.coke-site .customer-friends-list {
+  display: grid;
+  gap: 10px;
+}
+
+.coke-site .customer-friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(27, 20, 16, 0.08);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.coke-site .customer-friend-row div {
+  min-width: 0;
+}
+
+.coke-site .customer-friend-row strong,
+.coke-site .customer-friend-row span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.coke-site .customer-friend-row strong {
+  color: var(--ink-1000);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.coke-site .customer-friend-row span,
+.coke-site .customer-friends-empty {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.coke-site .customer-friend-row__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.coke-site .customer-friend-row__actions .customer-action {
+  min-height: 32px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.coke-site .customer-friends-empty {
+  margin: 0;
+}
+
 .coke-site .customer-reminder-drawer {
   display: grid;
   gap: 18px;
@@ -4091,8 +4200,18 @@ html[data-locale-ready="true"] .coke-site-splash {
   }
 
   .coke-site .my-agent-summary,
+  .coke-site .customer-friends-grid,
   .coke-site .my-agent-form__grid {
     grid-template-columns: 1fr;
+  }
+
+  .coke-site .customer-friend-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .coke-site .customer-friend-row__actions {
+    justify-content: stretch;
   }
 
   .coke-site .customer-action-row {
