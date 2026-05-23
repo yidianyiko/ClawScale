@@ -67,14 +67,38 @@ function getDefaultTimezone(): string {
   }
 }
 
+function nextFutureTimeSlot(now: Date = new Date()): { localDate: string; localTime: string } {
+  const slot = new Date(now);
+  slot.setSeconds(0, 0);
+  const minutes = slot.getMinutes();
+  const nextQuarterHour = Math.ceil((minutes + 1) / 15) * 15;
+  slot.setMinutes(nextQuarterHour);
+  return {
+    localDate: toLocalDate(slot),
+    localTime: `${String(slot.getHours()).padStart(2, '0')}:${String(slot.getMinutes()).padStart(2, '0')}`,
+  };
+}
+
 function emptyForm(localDate: string): CustomerReminderFormInput {
+  const today = toLocalDate(new Date());
+  const defaultSlot = localDate <= today ? nextFutureTimeSlot() : { localDate, localTime: '09:00' };
   return {
     title: '',
-    localDate,
-    localTime: '09:00',
+    localDate: defaultSlot.localDate,
+    localTime: defaultSlot.localTime,
     timezone: getDefaultTimezone(),
     repeat: 'none',
   };
+}
+
+function saveReminderErrorMessage(error: string): string {
+  if (error === 'invalid_schedule') {
+    return 'Reminder time is in the past. Choose a future time.';
+  }
+  if (error === 'invalid_body') {
+    return 'Check the reminder details and try again.';
+  }
+  return 'Unable to save this reminder right now.';
 }
 
 function formFromReminder(reminder: CustomerReminder): CustomerReminderFormInput {
@@ -293,7 +317,7 @@ export default function CustomerRemindersPage() {
           setBlocked(true);
           return;
         }
-        setError('Unable to save this reminder right now.');
+        setError(saveReminderErrorMessage(res.error));
         return;
       }
       setDrawer({ mode: 'closed' });

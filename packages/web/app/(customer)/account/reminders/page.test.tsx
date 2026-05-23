@@ -275,6 +275,47 @@ describe('CustomerRemindersPage', () => {
     expect(listMock).toHaveBeenCalledTimes(2);
   });
 
+  it('defaults a new reminder for today to a future time slot', async () => {
+    vi.setSystemTime(new Date('2026-05-23T17:03:00+09:00'));
+    listMock.mockResolvedValue({
+      ok: true,
+      data: {
+        reminders: [],
+      },
+    });
+
+    renderPage();
+    await flushTicks(3);
+
+    const newButton = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('New reminder'),
+    );
+    newButton?.click();
+    await flushTicks(1);
+
+    expect((container.querySelector('input[name="localDate"]') as HTMLInputElement | null)?.value).toBe('2026-05-23');
+    expect((container.querySelector('input[name="localTime"]') as HTMLInputElement | null)?.value).toBe('17:15');
+  });
+
+  it('shows a specific message when the selected reminder time is in the past', async () => {
+    createMock.mockResolvedValueOnce({ ok: false, error: 'invalid_schedule' });
+
+    renderPage();
+    await flushTicks(3);
+
+    const newButton = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('New reminder'),
+    );
+    newButton?.click();
+    await flushTicks(1);
+
+    (container.querySelector('input[name="title"]') as HTMLInputElement).value = 'Past reminder';
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushTicks(3);
+
+    expect(container.textContent).toContain('Reminder time is in the past. Choose a future time.');
+  });
+
   it('edits, completes, and cancels existing reminders through their action wrappers', async () => {
     renderPage();
     await flushTicks(3);
