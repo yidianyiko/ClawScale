@@ -76,6 +76,14 @@ function numberField(body: JsonRecord, key: string, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function optionalNumberField(body: JsonRecord, key: string): number | null {
+  const value = body[key];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+}
+
 function schedulingErrorCode(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -254,6 +262,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
             title: stringField(body, 'title'),
             fireAt: stringField(body, 'fire_at'),
             timezone: stringField(body, 'timezone', 'UTC'),
+            durationMinutes: optionalNumberField(body, 'duration_minutes'),
             idempotencyKey: stringField(body, 'idempotency_key'),
           },
         ),

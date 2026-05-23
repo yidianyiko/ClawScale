@@ -759,6 +759,7 @@ model SharedReminderRequest {
   title               String                      @db.VarChar(200)
   fireAt              DateTime                    @map("fire_at")
   timezone            String
+  durationMinutes     Int?                        @map("duration_minutes")
   idempotencyKey      String?                     @map("idempotency_key")
   status              SharedReminderRequestStatus @default(pending_invitee_confirmation)
   requesterReminderId String?                     @map("requester_reminder_id")

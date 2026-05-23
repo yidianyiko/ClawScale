@@ -72,6 +72,19 @@ describe('friend-link and shared-reminder schema contract', () => {
     expect(sql).toContain('"friend_request_id" IS NOT NULL');
   });
 
+  it('stores shared reminder duration as optional interval timing', () => {
+    const schema = readFileSync(schemaPath, 'utf8');
+    const migration = readFileSync(
+      join(process.cwd(), 'prisma/migrations/20260524100000_shared_reminder_duration/migration.sql'),
+      'utf8',
+    );
+
+    expect(schema).toContain('durationMinutes');
+    expect(schema).toContain('Int?');
+    expect(schema).toContain('@map("duration_minutes")');
+    expect(migration).toContain('ALTER TABLE "shared_reminder_requests" ADD COLUMN "duration_minutes" INTEGER');
+  });
+
   it('keeps retired route files detached from deleted scheduling storage', () => {
     const routeSources = [
       readFileSync(customerSchedulingRoutesPath, 'utf8'),

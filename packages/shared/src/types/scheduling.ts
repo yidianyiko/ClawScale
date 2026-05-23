@@ -20,3 +20,9 @@ export interface FriendRequestResponse {
   id: string;
   status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
 }
+
+export interface SharedReminderResponse {
+  id: string;
+  status: 'pending_invitee_confirmation' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'invalidated';
+  durationMinutes?: number | null;
+}

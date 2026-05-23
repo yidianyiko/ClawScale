@@ -306,6 +306,7 @@ describe('internal scheduling routes', () => {
           title: '吃药',
           fire_at: '2026-05-23T02:00:00.000Z',
           timezone: 'Asia/Tokyo',
+          duration_minutes: 60,
           idempotency_key: 'idem_1',
         },
         expected: [
@@ -317,6 +318,7 @@ describe('internal scheduling routes', () => {
             title: '吃药',
             fireAt: '2026-05-23T02:00:00.000Z',
             timezone: 'Asia/Tokyo',
+            durationMinutes: 60,
             idempotencyKey: 'idem_1',
           },
         ],

@@ -24,6 +24,7 @@ interface SharedReminderRequestRecord {
   title: string;
   fireAt: Date;
   timezone: string;
+  durationMinutes?: number | null;
   status: SharedReminderRequestStatus;
   requesterReminderId?: string | null;
   inviteeReminderId?: string | null;
@@ -113,6 +114,16 @@ function nonEmpty(value: string, code: string): string {
     throw new Error(code);
   }
   return trimmed;
+}
+
+function optionalPositiveInteger(value: number | null | undefined, code: string): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(code);
+  }
+  return value;
 }
 
 function isUniqueConflict(error: unknown): boolean {
@@ -524,6 +535,7 @@ async function createProjection(
     title: string;
     timezone: string;
     fireAt: Date;
+    durationMinutes?: number | null;
     role: SharedReminderProjectionRole;
     counterpartyAccountId: string;
   },
@@ -535,6 +547,7 @@ async function createProjection(
     localDate: when.localDate,
     localTime: when.localTime,
     timezone: input.timezone,
+    ...(input.durationMinutes ? { durationMinutes: input.durationMinutes } : {}),
     metadata: {
       shared_reminder_request_id: input.request.id,
       projection_role: input.role,
@@ -715,6 +728,7 @@ export async function createSharedReminder(
     title: string;
     fireAt: string;
     timezone: string;
+    durationMinutes?: number | null;
     idempotencyKey: string;
   },
 ): Promise<Record<string, unknown>> {
@@ -722,6 +736,7 @@ export async function createSharedReminder(
   const inviteeAccountId = nonEmpty(input.inviteeAccountId, 'invalid_account');
   const title = nonEmpty(input.title, 'invalid_body');
   const timezone = nonEmpty(input.timezone, 'invalid_body');
+  const durationMinutes = optionalPositiveInteger(input.durationMinutes, 'invalid_body');
   const idempotencyKey = nonEmpty(input.idempotencyKey, 'invalid_body');
   const when = new Date(input.fireAt);
   if (Number.isNaN(when.getTime())) {
@@ -746,6 +761,7 @@ export async function createSharedReminder(
         title,
         fireAt: when,
         timezone,
+        durationMinutes,
         idempotencyKey,
         status: 'pending_invitee_confirmation',
       },
@@ -774,6 +790,7 @@ export async function createSharedReminder(
       title,
       fireAt: when,
       timezone,
+      durationMinutes: request.durationMinutes ?? null,
       role: 'requester',
       counterpartyAccountId: inviteeAccountId,
     });
@@ -849,6 +866,7 @@ export async function acceptSharedReminder(
           title: request.title,
           fireAt: request.fireAt,
           timezone: request.timezone,
+          durationMinutes: request.durationMinutes ?? null,
           role: 'invitee',
           counterpartyAccountId: request.requesterAccountId,
         });

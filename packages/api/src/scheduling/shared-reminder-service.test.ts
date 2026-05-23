@@ -168,6 +168,59 @@ describe('shared reminder service', () => {
     });
   });
 
+  it('persists duration and projects it into requester reminder', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_req_1' } },
+    });
+
+    await createSharedReminder(client as never, reminderRuntime, {
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      title: 'lesson',
+      fireAt: '2026-05-22T07:00:00.000Z',
+      timezone: 'Asia/Shanghai',
+      durationMinutes: 60,
+      idempotencyKey: 'shared:duration',
+    });
+
+    expect(client.sharedReminderRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        durationMinutes: 60,
+      }),
+    });
+    expect(reminderRuntime.createRuntimeReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationMinutes: 60,
+      }),
+    );
+  });
+
+  it('does not reject shared reminders because another reminder overlaps', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_req_1' } },
+    });
+
+    await expect(
+      createSharedReminder(client as never, reminderRuntime, {
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'lesson',
+        fireAt: '2026-05-22T07:00:00.000Z',
+        timezone: 'Asia/Shanghai',
+        durationMinutes: 60,
+        idempotencyKey: 'shared:no-overlap-check',
+      }),
+    ).resolves.toMatchObject({ status: 'pending_invitee_confirmation' });
+
+    expect('reminderFindMany' in client).toBe(false);
+  });
+
   it('cancels the request when requester projection creation fails', async () => {
     const client = fakeSharedReminderClient({
       friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
