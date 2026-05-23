@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  claimLinkSession,
   createLinkSession,
   disableUserLink,
   getOrCreateActiveUserLink,
@@ -532,16 +531,4 @@ describe('user link service', () => {
     expect(db.productNotification.create).not.toHaveBeenCalled();
   });
 
-  it('fails closed for the retired link-session claim write path', async () => {
-    await expect(
-      claimLinkSession(db as never, {
-        token: 'session-token',
-        consumerAccountId: 'ck_b',
-      }),
-    ).rejects.toThrow('appointment_scheduling_retired');
-
-    expect(db.$transaction).not.toHaveBeenCalled();
-    expect(db.linkSession.findUnique).not.toHaveBeenCalled();
-    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
-  });
 });

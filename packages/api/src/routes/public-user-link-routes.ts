@@ -150,10 +150,6 @@ publicLinkSessionRouter.get('/:token/status', async (c) => {
   }
 });
 
-publicLinkSessionRouter.post('/:token/claim', async (c) => {
-  return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
-});
-
 publicLinkSessionRouter.post('/:token/friend-requests', async (c) => {
   const session = await readCustomerSession(c);
   if (!session) {

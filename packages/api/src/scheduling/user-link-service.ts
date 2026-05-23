@@ -381,13 +381,6 @@ export async function getLinkSessionStatus(
   return session;
 }
 
-export async function claimLinkSession(
-  _client: unknown,
-  _input: { token: string; consumerAccountId: string },
-): Promise<LinkSessionRecord> {
-  throw new Error('appointment_scheduling_retired');
-}
-
 export async function sendFriendRequestFromLinkSession(
   client: UserLinkClient,
   input: {

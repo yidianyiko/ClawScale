@@ -471,32 +471,4 @@ describe('customer scheduling routes', () => {
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'friend_request_blocked' });
   });
 
-  it.each([
-    ['POST', '/bookable-windows/preview'],
-    ['POST', '/bookable-windows/confirm'],
-    ['GET', '/bookable-windows'],
-    ['POST', '/appointments'],
-    ['GET', '/appointments/pending'],
-    ['POST', '/appointments/apt_1/confirm'],
-    ['POST', '/appointments/apt_1/reject'],
-    ['POST', '/appointments/apt_1/cancel'],
-    ['POST', '/service-links/ck_other/block'],
-    ['POST', '/service-links/ck_other/unblock'],
-    ['DELETE', '/service-links/ck_other'],
-  ])('fails closed for retired %s %s', async (method, path) => {
-    const res = await createApp().request(`/api/customer/scheduling${path}`, {
-      method,
-      headers: {
-        authorization: 'Bearer customer-token',
-        'content-type': 'application/json',
-      },
-      body: method === 'GET' ? undefined : JSON.stringify({ preview: {}, idempotencyKey: 'idem_1' }),
-    });
-
-    expect(res.status).toBe(410);
-    await expect(res.json()).resolves.toEqual({
-      ok: false,
-      error: 'appointment_scheduling_retired',
-    });
-  });
 });

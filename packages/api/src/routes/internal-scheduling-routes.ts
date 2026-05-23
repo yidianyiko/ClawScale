@@ -81,26 +81,6 @@ function schedulingErrorCode(error: unknown): string {
   return 'scheduling_failed';
 }
 
-function retiredAppointmentSchedulingTool(c: Context): Response {
-  return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
-}
-
-function isRetiredAppointmentSchedulingTool(toolName: string): boolean {
-  return (
-    toolName === 'open_bookable_windows' ||
-    toolName === 'confirm_bookable_windows' ||
-    toolName === 'list_pending_requests' ||
-    toolName === 'query_bookable_windows' ||
-    toolName === 'request_appointment' ||
-    toolName === 'confirm_appointment' ||
-    toolName === 'reject_appointment' ||
-    toolName === 'cancel_appointment' ||
-    toolName === 'block_service_link' ||
-    toolName === 'unblock_service_link' ||
-    toolName === 'remove_service_link'
-  );
-}
-
 async function runActiveUserLinkTool<T>(
   c: Context,
   body: JsonRecord,
@@ -144,10 +124,6 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
   }
 
   const toolName = c.req.param('toolName');
-  if (isRetiredAppointmentSchedulingTool(toolName)) {
-    return retiredAppointmentSchedulingTool(c);
-  }
-
   const body = await readJsonObject(c);
   if (!body) {
     return c.json({ ok: false, error: 'invalid_body' }, 400);

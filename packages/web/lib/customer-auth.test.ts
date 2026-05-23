@@ -91,8 +91,6 @@ describe('customer auth storage', () => {
   });
 
   it('clears the stored customer profile when clearing customer auth', () => {
-    localStorage.setItem('coke_user_token', 'legacy-token');
-    localStorage.setItem('coke_user_profile', JSON.stringify({ id: 'legacy_1' }));
     storeCustomerAuth({
       token: 'customer-token',
       customerId: 'ck_1',
@@ -120,8 +118,6 @@ describe('customer auth storage', () => {
     expect(getCustomerToken()).toBeNull();
     expect(getStoredCustomerSession()).toBeNull();
     expect(getStoredCustomerProfile()).toBeNull();
-    expect(localStorage.getItem('coke_user_token')).toBeNull();
-    expect(localStorage.getItem('coke_user_profile')).toBeNull();
   });
 
   it('fetches the hydrated customer profile from the neutral me endpoint', async () => {

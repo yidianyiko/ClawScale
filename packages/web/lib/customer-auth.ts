@@ -4,8 +4,6 @@ import { customerApi } from './customer-api';
 const TOKEN_KEY = 'customer_token';
 const SESSION_KEY = 'customer_session';
 const PROFILE_KEY = 'customer_profile';
-const LEGACY_COKE_TOKEN_KEY = 'coke_user_token';
-const LEGACY_COKE_PROFILE_KEY = 'coke_user_profile';
 
 type CustomerClaimStatus = 'active' | 'unclaimed' | 'pending';
 type CustomerMembershipRole = 'owner' | 'member' | 'viewer';
@@ -81,8 +79,6 @@ export function storeCustomerAuth(result: CustomerAuthResult): void {
 
   const { token, continueTo: _continueTo, ...session } = result;
   storage.removeItem(PROFILE_KEY);
-  storage.removeItem(LEGACY_COKE_TOKEN_KEY);
-  storage.removeItem(LEGACY_COKE_PROFILE_KEY);
   storage.setItem(TOKEN_KEY, token);
   storage.setItem(SESSION_KEY, JSON.stringify(session));
 }
@@ -96,8 +92,6 @@ export function clearCustomerAuth(): void {
   storage.removeItem(TOKEN_KEY);
   storage.removeItem(SESSION_KEY);
   storage.removeItem(PROFILE_KEY);
-  storage.removeItem(LEGACY_COKE_TOKEN_KEY);
-  storage.removeItem(LEGACY_COKE_PROFILE_KEY);
 }
 
 export function getCustomerToken(): string | null {

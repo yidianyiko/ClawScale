@@ -74,10 +74,6 @@ async function requireCustomerSchedulingAuth(c: Context, next: Next): Promise<Re
   }
 }
 
-function retiredAppointmentSchedulingResponse(c: Context): Response {
-  return c.json({ ok: false, error: 'appointment_scheduling_retired' }, 410);
-}
-
 async function readJsonObject(c: Context): Promise<Record<string, unknown> | null> {
   const contentType = c.req.header('content-type') ?? '';
   if (!contentType.includes('application/json')) {
@@ -457,48 +453,4 @@ customerSchedulingRouter.post('/shared-reminders/:id/cancel', async (c) => {
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'shared_reminder_failed') }, 400);
   }
-});
-
-customerSchedulingRouter.post('/bookable-windows/preview', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/bookable-windows/confirm', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.get('/bookable-windows', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/appointments', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.get('/appointments/pending', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/appointments/:id/confirm', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/appointments/:id/reject', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/appointments/:id/cancel', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/service-links/:otherAccountId/block', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.post('/service-links/:otherAccountId/unblock', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
-});
-
-customerSchedulingRouter.delete('/service-links/:otherAccountId', async (c) => {
-  return retiredAppointmentSchedulingResponse(c);
 });

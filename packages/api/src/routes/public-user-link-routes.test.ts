@@ -358,17 +358,4 @@ describe('public user link routes', () => {
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'friend_request_failed' });
   });
 
-  it('fails closed for the retired link-session claim path', async () => {
-    const res = await createApp().request('/api/public/link-sessions/session-token/claim', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ customer_id: 'ck_attacker' }),
-    });
-
-    expect(res.status).toBe(410);
-    await expect(res.json()).resolves.toEqual({
-      ok: false,
-      error: 'appointment_scheduling_retired',
-    });
-  });
 });
