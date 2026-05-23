@@ -7,6 +7,13 @@ export interface ListRemindersInput {
   states?: string[];
 }
 
+export interface ListCalendarFactsInput {
+  customerId: string;
+  from: string;
+  to: string;
+  timezone: string;
+}
+
 export interface CreateReminderInput {
   customerId: string;
   title: string;
@@ -142,6 +149,27 @@ export async function listRuntimeReminders(
   }
   const data = readBridgeData<unknown>(bridge.json);
   return { ok: true, data: Array.isArray(data) ? (data as ReminderRuntimeRecord[]) : [] };
+}
+
+export async function listRuntimeCalendarFacts(
+  input: ListCalendarFactsInput,
+): Promise<ReminderRuntimeResult<ReminderRuntimeRecord>> {
+  const url = new URL(`${readBridgeBaseUrl()}/bridge/internal/reminder-calendar-facts`);
+  url.searchParams.set('customer_id', input.customerId);
+  url.searchParams.set('from', input.from);
+  url.searchParams.set('to', input.to);
+  url.searchParams.set('timezone', input.timezone);
+
+  const bridge = await requestBridgeJson(`${url.pathname}${url.search}`, {
+    method: 'GET',
+  });
+  if (!bridge.ok) {
+    return { ok: false, error: bridgeFailureError(bridge) };
+  }
+  if (!bridge.response.ok || bridge.json.ok !== true) {
+    return { ok: false, error: bridgeFailureError(bridge) };
+  }
+  return { ok: true, data: readBridgeData<ReminderRuntimeRecord>(bridge.json) };
 }
 
 export async function createRuntimeReminder(

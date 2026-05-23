@@ -30,9 +30,14 @@ const notifications = vi.hoisted(() => ({
   deliverPendingProductNotifications: vi.fn(),
 }));
 
+const friendCalendarFacts = vi.hoisted(() => ({
+  listFriendCalendarFacts: vi.fn(),
+}));
+
 const reminderRuntime = vi.hoisted(() => ({
   createRuntimeReminder: vi.fn(),
   cancelRuntimeReminder: vi.fn(),
+  listRuntimeCalendarFacts: vi.fn(),
 }));
 
 const db = vi.hoisted(() => ({}));
@@ -45,6 +50,7 @@ vi.mock('../scheduling/user-link-service.js', () => ({
 }));
 vi.mock('../scheduling/friendship-service.js', () => friendships);
 vi.mock('../scheduling/shared-reminder-service.js', () => sharedReminders);
+vi.mock('../scheduling/friend-calendar-facts-service.js', () => friendCalendarFacts);
 vi.mock('../scheduling/notification-service.js', () => notifications);
 vi.mock('../lib/reminder-runtime-client.js', () => reminderRuntime);
 
@@ -76,6 +82,12 @@ describe('internal scheduling routes', () => {
     sharedReminders.acceptSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'accepted' });
     sharedReminders.rejectSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'rejected' });
     sharedReminders.cancelSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'cancelled' });
+    friendCalendarFacts.listFriendCalendarFacts.mockResolvedValue({
+      target_account_id: 'acct_coach',
+      range: { from: '2026-05-25', to: '2026-05-31', timezone: 'Asia/Tokyo' },
+      busy_intervals: [],
+      privacy: { event_details_included: false },
+    });
     notifications.deliverPendingProductNotifications.mockResolvedValue({ delivered: 1, failed: 0 });
     reminderRuntime.createRuntimeReminder.mockResolvedValue({ ok: true, data: { id: 'rem_1' } });
     reminderRuntime.cancelRuntimeReminder.mockResolvedValue({ ok: true, data: { id: 'rem_1' } });
@@ -382,6 +394,43 @@ describe('internal scheduling routes', () => {
       expect(res.status).toBe(testCase.status);
       expect(testCase.service).toHaveBeenCalledWith(...testCase.expected);
     }
+  });
+
+  it('routes list_friend_calendar_facts with trusted requester identity', async () => {
+    friendCalendarFacts.listFriendCalendarFacts.mockResolvedValue({
+      target_account_id: 'acct_coach',
+      range: { from: '2026-05-25', to: '2026-05-31', timezone: 'Asia/Tokyo' },
+      busy_intervals: [],
+      privacy: { event_details_included: false },
+    });
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_friend_calendar_facts', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        target_account_id: 'acct_coach',
+        from_date: '2026-05-25',
+        to_date: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendCalendarFacts.listFriendCalendarFacts).toHaveBeenCalledWith(
+      db as never,
+      { listRuntimeCalendarFacts: reminderRuntime.listRuntimeCalendarFacts },
+      {
+        requesterAccountId: 'acct_student',
+        targetAccountId: 'acct_coach',
+        fromDate: '2026-05-25',
+        toDate: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      },
+    );
   });
 
   it('routes product notification retry after auth', async () => {

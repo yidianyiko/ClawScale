@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import {
   cancelRuntimeReminder,
   createRuntimeReminder,
+  listRuntimeCalendarFacts,
 } from '../lib/reminder-runtime-client.js';
 import {
   acceptFriendRequest,
@@ -15,6 +16,7 @@ import {
   removeFriendship,
   unblockAccount,
 } from '../scheduling/friendship-service.js';
+import { listFriendCalendarFacts } from '../scheduling/friend-calendar-facts-service.js';
 import { deliverPendingProductNotifications } from '../scheduling/notification-service.js';
 import {
   acceptSharedReminder,
@@ -221,6 +223,21 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         blockerAccountId: customerId,
         blockedAccountId: stringField(body, 'blocked_account_id'),
       }),
+    );
+  }
+  if (toolName === 'list_friend_calendar_facts') {
+    return runCustomerTool(c, body, (customerId) =>
+      listFriendCalendarFacts(
+        db as never,
+        { listRuntimeCalendarFacts },
+        {
+          requesterAccountId: customerId,
+          targetAccountId: stringField(body, 'target_account_id'),
+          fromDate: stringField(body, 'from_date'),
+          toDate: stringField(body, 'to_date'),
+          timezone: stringField(body, 'timezone', 'UTC'),
+        },
+      ),
     );
   }
   if (toolName === 'create_shared_reminder') {

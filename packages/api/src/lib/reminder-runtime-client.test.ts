@@ -3,6 +3,7 @@ import {
   cancelRuntimeReminder,
   completeRuntimeReminder,
   createRuntimeReminder,
+  listRuntimeCalendarFacts,
   listRuntimeReminders,
   updateRuntimeReminder,
 } from './reminder-runtime-client.js';
@@ -221,6 +222,58 @@ describe('reminder runtime client', () => {
 
     expect(calls[0]?.body.durationMinutes).toBe(60);
     expect(calls[1]?.body.durationMinutes).toBe(90);
+  });
+
+  it('lists calendar facts through the bridge without exposing reminder details', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            targetAccountId: 'acct_coach',
+            range: { from: '2026-05-25', to: '2026-05-31', timezone: 'Asia/Tokyo' },
+            busyIntervals: [
+              {
+                startAt: '2026-05-25T01:00:00+00:00',
+                endAt: '2026-05-25T02:00:00+00:00',
+                localStart: '2026-05-25 10:00',
+                localEnd: '2026-05-25 11:00',
+              },
+            ],
+            privacy: { eventDetailsIncluded: false },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    await expect(
+      listRuntimeCalendarFacts({
+        customerId: 'acct_coach',
+        from: '2026-05-25',
+        to: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        targetAccountId: 'acct_coach',
+        range: { from: '2026-05-25', to: '2026-05-31', timezone: 'Asia/Tokyo' },
+        busyIntervals: [
+          {
+            startAt: '2026-05-25T01:00:00+00:00',
+            endAt: '2026-05-25T02:00:00+00:00',
+            localStart: '2026-05-25 10:00',
+            localEnd: '2026-05-25 11:00',
+          },
+        ],
+        privacy: { eventDetailsIncluded: false },
+      },
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8090/bridge/internal/reminder-calendar-facts?customer_id=acct_coach&from=2026-05-25&to=2026-05-31&timezone=Asia%2FTokyo',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   it('normalizes bridge errors and preserves conversation_required', async () => {
