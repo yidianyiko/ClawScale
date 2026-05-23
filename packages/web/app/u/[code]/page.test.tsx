@@ -3,12 +3,10 @@ import { renderToString } from 'react-dom/server';
 
 const mockFetchUserLink = vi.hoisted(() => vi.fn());
 const mockOpenLinkSession = vi.hoisted(() => vi.fn());
-const mockReadCustomerSession = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../lib/user-link-api', () => ({
   fetchUserLink: mockFetchUserLink,
   openLinkSession: mockOpenLinkSession,
-  readCustomerSession: mockReadCustomerSession,
 }));
 
 import UserLinkPage from './page';

@@ -28,7 +28,7 @@ export interface CustomerAgentInstance {
   updated_at?: string | null;
 }
 
-export interface CustomerAgentEffectiveProfile {
+interface CustomerAgentEffectiveProfile {
   display_name: string;
   nickname: string;
   user_address_name: string | null;

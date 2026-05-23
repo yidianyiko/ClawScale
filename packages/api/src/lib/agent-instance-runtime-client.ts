@@ -1,6 +1,6 @@
-export type AgentInstanceRuntimeRecord = Record<string, unknown>;
+type AgentInstanceRuntimeRecord = Record<string, unknown>;
 
-export interface AgentInstanceRuntimeData {
+interface AgentInstanceRuntimeData {
   agent_instance: AgentInstanceRuntimeRecord;
   effective_profile: AgentInstanceRuntimeRecord;
 }

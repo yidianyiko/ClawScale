@@ -5,11 +5,7 @@ import type {
   PublicUserLinkResponse,
 } from '../../shared/src/types/scheduling';
 import { getCustomerApiBase } from './customer-api';
-import { getCustomerToken, getStoredCustomerSession } from './customer-auth';
-
-type CustomerSessionSummary = {
-  customerId: string;
-};
+import { getCustomerToken } from './customer-auth';
 
 function isPublicLinkSessionResponse(data: unknown): data is PublicLinkSessionResponse {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
@@ -67,11 +63,6 @@ export async function openLinkSession(code: string): Promise<ApiResponse<PublicL
   }
 }
 
-export async function readCustomerSession(): Promise<CustomerSessionSummary | null> {
-  const session = getStoredCustomerSession();
-  return session ? { customerId: session.customerId } : null;
-}
-
 export async function sendFriendRequest(input: {
   token: string;
   message: string;
@@ -101,32 +92,4 @@ export async function sendFriendRequest(input: {
   } catch {
     return { ok: false, error: 'friend_request_failed' };
   }
-}
-
-export async function claimPublicLinkSession(token: string): Promise<ApiResponse<{ status: string }>> {
-  const result = await sendFriendRequest({ token, message: '' });
-  return result.ok ? { ok: true, data: { status: result.data.status } } : result;
-}
-
-export async function readPublicUserLink(
-  code: string,
-  options: { openSession?: boolean } = {},
-): Promise<ApiResponse<PublicUserLinkResponse & { session?: PublicLinkSessionResponse }>> {
-  const meta = await fetchUserLink(code);
-  if (!meta.ok || options.openSession === false) {
-    return meta;
-  }
-
-  const session = await openLinkSession(code);
-  if (!session.ok) {
-    return meta;
-  }
-
-  return {
-    ok: true,
-    data: {
-      ...meta.data,
-      session: session.data,
-    },
-  };
 }

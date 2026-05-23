@@ -41,5 +41,3 @@ export function ClaimHandoff({ token, targetName }: { token: string; targetName:
     </form>
   );
 }
-
-export const UserLinkClaimHandoff = ClaimHandoff;
