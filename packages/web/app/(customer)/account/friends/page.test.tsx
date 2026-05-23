@@ -264,6 +264,33 @@ describe('CustomerFriendsPage', () => {
     expect(container.textContent).not.toContain('https://kap.example/u/new-link');
   });
 
+  it('disables current-link actions after the current friend link is disabled', async () => {
+    getLinkMock.mockResolvedValueOnce({
+      ok: true,
+      data: friendLink({ url: 'https://kap.example/u/current-link' }),
+    });
+
+    renderPage();
+    await flushTicks();
+
+    findButton(container, 'Disable current link')?.click();
+    await flushTicks();
+
+    expect(container.textContent).toContain('The current link was disabled.');
+    expect(container.textContent).not.toContain('https://kap.example/u/current-link');
+
+    const copyButton = findButton(container, 'Copy link') as HTMLButtonElement;
+    const resetButton = findButton(container, 'Reset link') as HTMLButtonElement;
+    const disableButton = findButton(container, 'Disable current link') as HTMLButtonElement;
+    expect(copyButton.disabled).toBe(true);
+    expect(resetButton.disabled).toBe(true);
+    expect(disableButton.disabled).toBe(true);
+
+    disableButton.click();
+    await flushTicks();
+    expect(disableLinkMock).toHaveBeenCalledOnce();
+  });
+
   it('redirects auth failures from mutations and shows action failures without leaving the page', async () => {
     acceptMock.mockResolvedValueOnce({ ok: false, error: 'unauthorized' });
 

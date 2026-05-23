@@ -304,7 +304,7 @@ export default function CustomerFriendsPage() {
               type="button"
               className="customer-action customer-action--secondary"
               onClick={resetLink}
-              disabled={actionPending}
+              disabled={!friendLink || actionPending}
             >
               {copy.resetLink}
             </button>
@@ -312,7 +312,7 @@ export default function CustomerFriendsPage() {
               type="button"
               className="customer-action customer-action--secondary"
               onClick={disableLink}
-              disabled={actionPending}
+              disabled={!friendLink || actionPending}
             >
               {copy.disableLink}
             </button>
