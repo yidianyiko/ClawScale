@@ -134,6 +134,8 @@ const titleSchema = nonEmptyStringSchema.max(200);
 
 const rruleSchema = z.union([z.literal('FREQ=DAILY'), z.literal('FREQ=WEEKLY'), z.null()]).optional();
 
+const durationMinutesSchema = z.number().int().positive().nullable().optional();
+
 const optionalHintSchema = z.preprocess(
   (value) => readNonEmptyString(value) ?? undefined,
   z.string().optional(),
@@ -166,6 +168,7 @@ const createReminderBodySchema = z.object({
   rrule: rruleSchema,
   businessConversationKey: optionalHintSchema,
   gatewayConversationId: optionalHintSchema,
+  durationMinutes: durationMinutesSchema,
 });
 
 const updateReminderBodySchema = z
@@ -175,9 +178,16 @@ const updateReminderBodySchema = z
     localTime: localTimeSchema.optional(),
     timezone: timezoneSchema.optional(),
     rrule: rruleSchema,
+    durationMinutes: durationMinutesSchema,
   })
   .superRefine((value, ctx) => {
-    const scheduleKeys: Array<keyof typeof value> = ['localDate', 'localTime', 'timezone', 'rrule'];
+    const scheduleKeys: Array<keyof typeof value> = [
+      'localDate',
+      'localTime',
+      'timezone',
+      'rrule',
+      'durationMinutes',
+    ];
     const hasScheduleField = scheduleKeys.some((key) => key in value);
     if (!hasScheduleField) {
       return;
@@ -276,6 +286,12 @@ function mapReminderForBoard(reminder: Record<string, unknown>): Record<string, 
         : 'rrule' in reminder
           ? reminder.rrule
           : null,
+    durationMinutes:
+      typeof schedule?.durationMinutes === 'number'
+        ? schedule.durationMinutes
+        : typeof reminder.durationMinutes === 'number'
+          ? reminder.durationMinutes
+          : null,
     schedule: undefined,
   };
 }
@@ -330,6 +346,9 @@ export const customerReminderRouter = new Hono()
       ...(parsed.data.gatewayConversationId
         ? { gatewayConversationId: parsed.data.gatewayConversationId }
         : {}),
+      ...(parsed.data.durationMinutes !== undefined
+        ? { durationMinutes: parsed.data.durationMinutes }
+        : {}),
     });
     if (!result.ok) {
       return runtimeErrorResponse(c, result.error);
@@ -356,6 +375,9 @@ export const customerReminderRouter = new Hono()
       ...(parsed.data.localTime !== undefined ? { localTime: parsed.data.localTime } : {}),
       ...(parsed.data.timezone !== undefined ? { timezone: parsed.data.timezone } : {}),
       ...(parsed.data.rrule !== undefined ? { rrule: parsed.data.rrule } : {}),
+      ...(parsed.data.durationMinutes !== undefined
+        ? { durationMinutes: parsed.data.durationMinutes }
+        : {}),
     });
     if (!result.ok) {
       return runtimeErrorResponse(c, result.error);

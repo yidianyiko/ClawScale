@@ -12,6 +12,7 @@ export interface CustomerReminder {
   localTime: string;
   timezone: string;
   rrule?: string | null;
+  durationMinutes?: number | null;
 }
 
 export interface CustomerReminderFormInput {
@@ -20,6 +21,7 @@ export interface CustomerReminderFormInput {
   localTime: string;
   timezone: string;
   repeat: CustomerReminderRepeat;
+  durationMinutes?: number | null;
 }
 
 interface ListCustomerRemindersInput {
@@ -49,6 +51,7 @@ function reminderBody(input: CustomerReminderFormInput) {
     localTime: input.localTime,
     timezone: input.timezone,
     rrule: repeatToRrule(input.repeat),
+    durationMinutes: input.durationMinutes ?? null,
   };
 }
 

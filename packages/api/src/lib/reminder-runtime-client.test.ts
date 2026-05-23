@@ -192,6 +192,37 @@ describe('reminder runtime client', () => {
     );
   });
 
+  it('sends durationMinutes to bridge create and update requests', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        return new Response(JSON.stringify({ ok: true, data: { id: 'rem_1' } }), { status: 200 });
+      }),
+    );
+
+    await createRuntimeReminder({
+      customerId: 'acct_a',
+      title: 'lesson',
+      localDate: '2026-05-25',
+      localTime: '10:00',
+      timezone: 'Asia/Tokyo',
+      durationMinutes: 60,
+    });
+    await updateRuntimeReminder({
+      customerId: 'acct_a',
+      reminderId: 'rem_1',
+      localDate: '2026-05-25',
+      localTime: '11:00',
+      timezone: 'Asia/Tokyo',
+      durationMinutes: 90,
+    });
+
+    expect(calls[0]?.body.durationMinutes).toBe(60);
+    expect(calls[1]?.body.durationMinutes).toBe(90);
+  });
+
   it('normalizes bridge errors and preserves conversation_required', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: false, error: 'conversation_required' }), {

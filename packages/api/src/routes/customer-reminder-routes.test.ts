@@ -58,6 +58,7 @@ describe('customer reminder routes', () => {
             localTime: '09:30:00',
             timezone: 'Asia/Tokyo',
             rrule: 'FREQ=WEEKLY',
+            durationMinutes: 60,
           },
           lifecycleState: 'active',
         },
@@ -110,6 +111,7 @@ describe('customer reminder routes', () => {
             localTime: '09:30',
             timezone: 'Asia/Tokyo',
             rrule: 'FREQ=WEEKLY',
+            durationMinutes: 60,
             lifecycleState: 'active',
           },
         ],
@@ -170,6 +172,7 @@ describe('customer reminder routes', () => {
         rrule: null,
         businessConversationKey: 'bc-123',
         gatewayConversationId: 'gw-123',
+        durationMinutes: 60,
       }),
     });
 
@@ -183,6 +186,7 @@ describe('customer reminder routes', () => {
       rrule: null,
       businessConversationKey: 'bc-123',
       gatewayConversationId: 'gw-123',
+      durationMinutes: 60,
     });
   });
 
@@ -198,6 +202,7 @@ describe('customer reminder routes', () => {
         localDate: '2026-05-13',
         localTime: '09:30',
         timezone: 'Asia/Tokyo',
+        durationMinutes: 0,
       }),
     });
     const updateRes = await createApp().request('/api/customer/reminders/rem-1', {
@@ -312,6 +317,19 @@ describe('customer reminder routes', () => {
       },
       body: JSON.stringify({ customerId: 'ck_attacker', title: 'Updated' }),
     });
+    await app.request('/api/customer/reminders/rem-1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        durationMinutes: 90,
+      }),
+    });
     await app.request('/api/customer/reminders/rem-1/complete', {
       method: 'POST',
       headers: {
@@ -333,6 +351,14 @@ describe('customer reminder routes', () => {
       customerId: 'ck_123',
       reminderId: 'rem-1',
       title: 'Updated',
+    });
+    expect(mocks.updateRuntimeReminder).toHaveBeenCalledWith({
+      customerId: 'ck_123',
+      reminderId: 'rem-1',
+      localDate: '2026-05-13',
+      localTime: '09:30',
+      timezone: 'Asia/Tokyo',
+      durationMinutes: 90,
     });
     expect(mocks.completeRuntimeReminder).toHaveBeenCalledWith({
       customerId: 'ck_123',

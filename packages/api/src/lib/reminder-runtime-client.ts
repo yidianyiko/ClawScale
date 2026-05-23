@@ -17,6 +17,7 @@ export interface CreateReminderInput {
   businessConversationKey?: string | null;
   gatewayConversationId?: string | null;
   metadata?: Record<string, unknown>;
+  durationMinutes?: number | null;
 }
 
 export interface UpdateReminderInput {
@@ -27,6 +28,7 @@ export interface UpdateReminderInput {
   localTime?: string;
   timezone?: string;
   rrule?: string | null;
+  durationMinutes?: number | null;
   [key: string]: unknown;
 }
 
@@ -155,6 +157,7 @@ export async function createRuntimeReminder(
     ...(input.businessConversationKey ? { businessConversationKey: input.businessConversationKey } : {}),
     ...(input.gatewayConversationId ? { gatewayConversationId: input.gatewayConversationId } : {}),
     ...(input.metadata ? { metadata: input.metadata } : {}),
+    ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),
   };
   return writeReminder('/bridge/internal/reminders', 'POST', body);
 }
@@ -169,6 +172,7 @@ export async function updateRuntimeReminder(
     ...(input.localTime !== undefined ? { localTime: input.localTime } : {}),
     ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
     ...(input.rrule !== undefined ? { rrule: input.rrule } : {}),
+    ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),
   };
   return writeReminder(`/bridge/internal/reminders/${encodeURIComponent(input.reminderId)}`, 'PATCH', body);
 }

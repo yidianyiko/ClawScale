@@ -55,6 +55,7 @@ describe('customer reminder wrappers', () => {
       localTime: '09:30',
       timezone: 'Asia/Tokyo',
       repeat: 'weekly',
+      durationMinutes: 60,
     });
     await updateCustomerReminder('rem-1', {
       title: 'Daily standup',
@@ -62,6 +63,7 @@ describe('customer reminder wrappers', () => {
       localTime: '09:00',
       timezone: 'Asia/Tokyo',
       repeat: 'daily',
+      durationMinutes: 90,
     });
 
     expect(apiMock.post).toHaveBeenCalledWith('/api/customer/reminders', {
@@ -70,6 +72,7 @@ describe('customer reminder wrappers', () => {
       localTime: '09:30',
       timezone: 'Asia/Tokyo',
       rrule: 'FREQ=WEEKLY',
+      durationMinutes: 60,
     });
     expect(apiMock.patch).toHaveBeenCalledWith('/api/customer/reminders/rem-1', {
       title: 'Daily standup',
@@ -77,6 +80,7 @@ describe('customer reminder wrappers', () => {
       localTime: '09:00',
       timezone: 'Asia/Tokyo',
       rrule: 'FREQ=DAILY',
+      durationMinutes: 90,
     });
   });
 
@@ -97,6 +101,7 @@ describe('customer reminder wrappers', () => {
       localTime: '10:00',
       timezone: 'UTC',
       rrule: null,
+      durationMinutes: null,
     });
   });
 
