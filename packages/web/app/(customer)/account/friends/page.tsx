@@ -132,15 +132,29 @@ export default function CustomerFriendsPage() {
       if (requestId !== requestIdRef.current) {
         return false;
       }
-      for (const res of [linkRes, requestsRes, friendsRes]) {
-        if (!res.ok) {
-          if (AUTH_ERRORS.has(res.error)) {
-            replace(LOGIN_NEXT_PATH);
-            return false;
-          }
-          setError(copy.loadFailure);
+      if (!linkRes.ok) {
+        if (AUTH_ERRORS.has(linkRes.error)) {
+          replace(LOGIN_NEXT_PATH);
           return false;
         }
+        setError(copy.loadFailure);
+        return false;
+      }
+      if (!requestsRes.ok) {
+        if (AUTH_ERRORS.has(requestsRes.error)) {
+          replace(LOGIN_NEXT_PATH);
+          return false;
+        }
+        setError(copy.loadFailure);
+        return false;
+      }
+      if (!friendsRes.ok) {
+        if (AUTH_ERRORS.has(friendsRes.error)) {
+          replace(LOGIN_NEXT_PATH);
+          return false;
+        }
+        setError(copy.loadFailure);
+        return false;
       }
       setFriendLink(linkRes.data);
       setRequests(requestsRes.data);
