@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { LocaleProvider } from '../../../../components/locale-provider';
 
 const replaceMock = vi.hoisted(() => vi.fn());
+const searchParamsMock = vi.hoisted(() => vi.fn());
 const getLinkMock = vi.hoisted(() => vi.fn());
 const listRequestsMock = vi.hoisted(() => vi.fn());
 const listFriendsMock = vi.hoisted(() => vi.fn());
@@ -14,9 +15,12 @@ const cancelMock = vi.hoisted(() => vi.fn());
 const removeMock = vi.hoisted(() => vi.fn());
 const resetLinkMock = vi.hoisted(() => vi.fn());
 const disableLinkMock = vi.hoisted(() => vi.fn());
+const getLinkSessionStatusMock = vi.hoisted(() => vi.fn());
+const sendFriendRequestMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
+  useSearchParams: () => searchParamsMock(),
 }));
 
 vi.mock('../../../../lib/customer-friends', () => ({
@@ -29,6 +33,11 @@ vi.mock('../../../../lib/customer-friends', () => ({
   removeCustomerFriend: (...args: unknown[]) => removeMock(...args),
   resetCustomerFriendLink: (...args: unknown[]) => resetLinkMock(...args),
   disableCustomerFriendLink: (...args: unknown[]) => disableLinkMock(...args),
+}));
+
+vi.mock('../../../../lib/user-link-api', () => ({
+  getLinkSessionStatus: (...args: unknown[]) => getLinkSessionStatusMock(...args),
+  sendFriendRequest: (...args: unknown[]) => sendFriendRequestMock(...args),
 }));
 
 import FriendsPage from './page';
@@ -81,6 +90,13 @@ function findButton(container: HTMLElement, label: string) {
   return [...container.querySelectorAll('button')].find((button) => button.textContent === label);
 }
 
+function changeTextarea(container: HTMLElement, value: string) {
+  const textarea = container.querySelector('textarea') as HTMLTextAreaElement;
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  valueSetter?.call(textarea, value);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 describe('CustomerFriendsPage', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -98,6 +114,7 @@ describe('CustomerFriendsPage', () => {
 
   beforeEach(() => {
     replaceMock.mockReset();
+    searchParamsMock.mockReset();
     getLinkMock.mockReset();
     listRequestsMock.mockReset();
     listFriendsMock.mockReset();
@@ -107,6 +124,9 @@ describe('CustomerFriendsPage', () => {
     removeMock.mockReset();
     resetLinkMock.mockReset();
     disableLinkMock.mockReset();
+    getLinkSessionStatusMock.mockReset();
+    sendFriendRequestMock.mockReset();
+    searchParamsMock.mockReturnValue(new URLSearchParams());
     getLinkMock.mockResolvedValue({ ok: true, data: friendLink() });
     listRequestsMock.mockResolvedValue({
       ok: true,
@@ -128,6 +148,16 @@ describe('CustomerFriendsPage', () => {
     removeMock.mockResolvedValue({ ok: true, data: { id: 'friendship-1', status: 'removed' } });
     resetLinkMock.mockResolvedValue({ ok: true, data: friendLink({ code: 'new-code' }) });
     disableLinkMock.mockResolvedValue({ ok: true, data: { count: 1 } });
+    getLinkSessionStatusMock.mockResolvedValue({
+      ok: true,
+      data: {
+        providerAccountId: 'acct_target',
+        consumerAccountId: null,
+        status: 'opened',
+        expiresAt: '2026-06-21T00:00:00.000Z',
+      },
+    });
+    sendFriendRequestMock.mockResolvedValue({ ok: true, data: { id: 'request-new', status: 'pending' } });
     writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -179,6 +209,47 @@ describe('CustomerFriendsPage', () => {
     await flushTicks();
 
     expect(replaceMock).toHaveBeenCalledWith('/auth/login?next=/account/friends');
+  });
+
+  it('sends a preserved public-link session from the friends dashboard', async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams('link_session=session-token'));
+    listRequestsMock.mockResolvedValueOnce({ ok: true, data: [] }).mockResolvedValue({
+      ok: true,
+      data: [friendRequest({ id: 'outgoing-new', direction: 'outgoing', counterpartAccountId: 'acct_target' })],
+    });
+
+    renderPage();
+    await flushTicks();
+
+    expect(getLinkSessionStatusMock).toHaveBeenCalledWith('session-token');
+    expect(container.textContent).toContain('Friend invitation');
+    expect(container.textContent).toContain('acct_target');
+
+    changeTextarea(container, 'Hi, let us connect.');
+    findButton(container, 'Send friend request')?.click();
+    await flushTicks();
+
+    expect(sendFriendRequestMock).toHaveBeenCalledWith({
+      token: 'session-token',
+      message: 'Hi, let us connect.',
+    });
+    expect(listRequestsMock).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('Friend request sent.');
+  });
+
+  it('shows existing outgoing request status for a preserved public-link session', async () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams('link_session=session-token'));
+    listRequestsMock.mockResolvedValueOnce({
+      ok: true,
+      data: [friendRequest({ id: 'outgoing-1', direction: 'outgoing', counterpartAccountId: 'acct_target' })],
+    });
+
+    renderPage();
+    await flushTicks();
+
+    expect(container.textContent).toContain('You already sent a request to this account.');
+    expect(container.textContent).toContain('Pending');
+    expect(findButton(container, 'Send friend request')).toBeUndefined();
   });
 
   it('shows quiet empty states when request and friend lists are empty', async () => {

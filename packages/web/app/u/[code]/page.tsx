@@ -1,9 +1,14 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { fetchUserLink, openLinkSession } from '../../../lib/user-link-api';
-import { ClaimHandoff } from './claim-handoff';
 
 function firstSearchParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function dashboardAuthHref(path: '/auth/login' | '/auth/register', token: string): string {
+  const next = `/account/friends?link_session=${encodeURIComponent(token)}`;
+  return `${path}?next=${encodeURIComponent(next)}`;
 }
 
 export default async function UserLinkPage({
@@ -16,6 +21,11 @@ export default async function UserLinkPage({
   const { code } = await params;
   const query = searchParams ? await searchParams : {};
   const linkSessionToken = firstSearchParam(query.link_session);
+
+  if (linkSessionToken) {
+    redirect(`/account/friends?link_session=${encodeURIComponent(linkSessionToken)}`);
+  }
+
   const result = await fetchUserLink(code);
 
   if (!result.ok) {
@@ -58,17 +68,16 @@ export default async function UserLinkPage({
         />
         {openedLinkSession ? (
           <div className="public-user-link__actions">
-            <Link href={openedLinkSession.loginUrl}>Log in to add friend</Link>
-            <Link href={openedLinkSession.registerUrl}>Create account to add friend</Link>
+            <Link href={dashboardAuthHref('/auth/login', openedLinkSession.token)}>Log in to add friend</Link>
+            <Link href={dashboardAuthHref('/auth/register', openedLinkSession.token)}>
+              Create account to add friend
+            </Link>
           </div>
         ) : null}
         {linkSessionFailed ? (
           <p className="public-user-link__status">
             Friend request setup is temporarily unavailable. Please refresh this page and try again.
           </p>
-        ) : null}
-        {linkSessionToken ? (
-          <ClaimHandoff token={linkSessionToken} targetName={link.profile.displayName} />
         ) : null}
       </section>
     </main>

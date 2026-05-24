@@ -173,8 +173,8 @@ function userLinkQrUrl(code: string): string {
   return `${userLinkUrl(code)}/qr`;
 }
 
-function authUrl(path: '/auth/login' | '/auth/register', code: string, token: string): string {
-  const next = `/u/${encodeURIComponent(code)}?link_session=${encodeURIComponent(token)}`;
+function authUrl(path: '/auth/login' | '/auth/register', _code: string, token: string): string {
+  const next = `/account/friends?link_session=${encodeURIComponent(token)}`;
   return `${readDomainClient()}${path}?next=${encodeURIComponent(next)}`;
 }
 

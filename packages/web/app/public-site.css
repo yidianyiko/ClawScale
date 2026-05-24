@@ -3946,6 +3946,34 @@ html[data-locale-ready="true"] .coke-site-splash {
   font-size: 12px;
 }
 
+.coke-site .customer-friend-invite__form {
+  display: grid;
+  gap: 10px;
+}
+
+.coke-site .customer-friend-invite__form label {
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.coke-site .customer-friend-invite__form textarea {
+  min-height: 92px;
+  resize: vertical;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(27, 20, 16, 0.12);
+  background: #fff;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.coke-site .customer-friend-invite__form .customer-action {
+  justify-self: start;
+}
+
 .coke-site .customer-friends-empty {
   margin: 0;
 }

@@ -220,6 +220,13 @@ describe('user link service', () => {
     expect(result.expiresAt).toBe('2026-06-21T00:00:00.000Z');
     expect(db.productNotification.create).not.toHaveBeenCalled();
     expect(result.loginUrl).toContain(encodeURIComponent(`link_session=${result.token}`));
+    expect(result.loginUrl).toContain(
+      encodeURIComponent(`/account/friends?link_session=${result.token}`),
+    );
+    expect(result.registerUrl).toContain(
+      encodeURIComponent(`/account/friends?link_session=${result.token}`),
+    );
+    expect(result.loginUrl).not.toContain(encodeURIComponent('/u/AbCdEfGhIjK_'));
     expect(result).not.toHaveProperty('nextUrl');
     expect(result).not.toHaveProperty('session');
     expect(result).not.toHaveProperty('id');

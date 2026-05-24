@@ -199,6 +199,17 @@ type CustomerPagesMessages = {
     resetLink: string;
     disableLink: string;
     linkDisabled: string;
+    inviteTitle: string;
+    inviteDescription: string;
+    inviteTargetLabel: string;
+    inviteMessageLabel: string;
+    inviteSend: string;
+    inviteSending: string;
+    inviteSent: string;
+    inviteExistingRequest: string;
+    inviteAlreadyFriend: string;
+    inviteLoadFailure: string;
+    inviteUnavailable: string;
     incomingTitle: string;
     outgoingTitle: string;
     friendsTitle: string;
@@ -687,6 +698,17 @@ export const messages: MessagesCatalog = {
         resetLink: 'Reset link',
         disableLink: 'Disable current link',
         linkDisabled: 'The current link was disabled. A new link can be created when you refresh this page.',
+        inviteTitle: 'Friend invitation',
+        inviteDescription: 'Review this invitation from your account before sending a request.',
+        inviteTargetLabel: 'Target account',
+        inviteMessageLabel: 'Message',
+        inviteSend: 'Send friend request',
+        inviteSending: 'Sending...',
+        inviteSent: 'Friend request sent.',
+        inviteExistingRequest: 'You already sent a request to this account.',
+        inviteAlreadyFriend: 'This account is already in your friends list.',
+        inviteLoadFailure: 'Unable to load this invitation right now.',
+        inviteUnavailable: 'This invitation can no longer start a new friend request.',
         incomingTitle: 'Incoming requests',
         outgoingTitle: 'Outgoing requests',
         friendsTitle: 'Current friends',
@@ -1123,6 +1145,17 @@ export const messages: MessagesCatalog = {
         resetLink: '重置链接',
         disableLink: '停用当前链接',
         linkDisabled: '当前链接已停用。刷新页面时可以按现有规则创建新的链接。',
+        inviteTitle: '好友邀请',
+        inviteDescription: '在你的账号面板里确认这条邀请，然后发送好友请求。',
+        inviteTargetLabel: '目标账号',
+        inviteMessageLabel: '留言',
+        inviteSend: '发送好友请求',
+        inviteSending: '发送中...',
+        inviteSent: '好友请求已发送。',
+        inviteExistingRequest: '你已经向这个账号发送过请求。',
+        inviteAlreadyFriend: '这个账号已经在你的好友列表中。',
+        inviteLoadFailure: '暂时无法加载这条邀请。',
+        inviteUnavailable: '这条邀请已不能再发起新的好友请求。',
         incomingTitle: '收到的请求',
         outgoingTitle: '发出的请求',
         friendsTitle: '当前好友',

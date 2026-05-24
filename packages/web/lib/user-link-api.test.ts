@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchUserLink, openLinkSession, sendFriendRequest } from './user-link-api';
+import { fetchUserLink, getLinkSessionStatus, openLinkSession, sendFriendRequest } from './user-link-api';
 
 const originalCokeApiUrl = process.env['NEXT_PUBLIC_COKE_API_URL'];
 const originalApiUrl = process.env['NEXT_PUBLIC_API_URL'];
@@ -68,8 +68,8 @@ describe('user-link api helpers', () => {
           token: 'session-token',
           targetAccountId: 'acct_a',
           expiresAt: '2026-06-21T00:00:00.000Z',
-          loginUrl: '/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
-          registerUrl: '/auth/register?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
+          loginUrl: '/auth/login?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
+          registerUrl: '/auth/register?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
         },
       }),
     }));
@@ -93,8 +93,8 @@ describe('user-link api helpers', () => {
         ok: true,
         data: {
           token: 'session-token',
-          nextUrl: '/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
-          registerUrl: '/auth/register?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
+          nextUrl: '/auth/login?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
+          registerUrl: '/auth/register?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
           expiresAt: '2026-06-21T00:00:00.000Z',
         },
       }),
@@ -105,6 +105,37 @@ describe('user-link api helpers', () => {
       ok: false,
       error: 'link_session_not_opened',
     });
+  });
+
+  it('reads a public link session status for the friends dashboard handoff', async () => {
+    process.env['NEXT_PUBLIC_API_URL'] = 'https://gateway.example.com';
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: {
+          providerAccountId: 'acct_target',
+          consumerAccountId: null,
+          status: 'opened',
+          expiresAt: '2026-06-21T00:00:00.000Z',
+        },
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    await expect(getLinkSessionStatus('session/token')).resolves.toEqual({
+      ok: true,
+      data: {
+        providerAccountId: 'acct_target',
+        consumerAccountId: null,
+        status: 'opened',
+        expiresAt: '2026-06-21T00:00:00.000Z',
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://gateway.example.com/api/public/link-sessions/session%2Ftoken/status',
+      { cache: 'no-store' },
+    );
   });
 
   it('posts a friend request for a preserved link session', async () => {

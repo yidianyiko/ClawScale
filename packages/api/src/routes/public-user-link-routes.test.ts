@@ -93,8 +93,8 @@ describe('public user link routes', () => {
     mocks.createLinkSession.mockResolvedValueOnce({
       token: 'session-token',
       targetAccountId: 'ck_provider',
-      loginUrl: '/auth/login?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dsession-token',
-      registerUrl: '/auth/register?next=%2Fu%2FAbCdEfGhIjK_%3Flink_session%3Dsession-token',
+      loginUrl: '/auth/login?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
+      registerUrl: '/auth/register?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
       expiresAt: '2026-05-22T00:00:00.000Z',
     });
 
@@ -114,6 +114,7 @@ describe('public user link routes', () => {
     });
     expect(body.data.loginUrl).toContain('link_session');
     expect(body.data.registerUrl).toContain('link_session');
+    expect(body.data.loginUrl).toContain('%2Faccount%2Ffriends');
     expect(body.data).not.toHaveProperty('nextUrl');
   });
 

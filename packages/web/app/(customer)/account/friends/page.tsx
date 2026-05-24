@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { useLocale } from '../../../../components/locale-provider';
 import {
@@ -18,12 +18,25 @@ import {
   type CustomerFriendLink,
   type CustomerFriendRequest,
 } from '../../../../lib/customer-friends';
+import {
+  getLinkSessionStatus,
+  sendFriendRequest,
+} from '../../../../lib/user-link-api';
+import type { PublicLinkSessionStatusResponse } from '../../../../../shared/src/types/scheduling';
 
 const AUTH_ERRORS = new Set(['invalid_or_expired_token', 'unauthorized', 'account_not_found', 'claim_inactive']);
 const LOGIN_NEXT_PATH = '/auth/login?next=/account/friends';
 
 type FriendCopy = ReturnType<typeof useLocale>['messages']['customerPages']['friends'];
 type RequestAction = 'accept' | 'reject' | 'cancel';
+
+function loginNextPath(inviteToken: string): string {
+  if (!inviteToken) {
+    return LOGIN_NEXT_PATH;
+  }
+  const next = `/account/friends?link_session=${encodeURIComponent(inviteToken)}`;
+  return `/auth/login?next=${encodeURIComponent(next)}`;
+}
 
 function statusLabel(copy: FriendCopy, status: CustomerFriendRequest['status']) {
   return copy[status] ?? status;
@@ -95,15 +108,20 @@ function RequestList({
   );
 }
 
-export default function CustomerFriendsPage() {
+function CustomerFriendsPageContent() {
   const { replace } = useRouter();
+  const searchParams = useSearchParams();
   const { messages } = useLocale();
   const copy = messages.customerPages.friends;
+  const inviteToken = searchParams.get('link_session')?.trim() ?? '';
   const [friendLink, setFriendLink] = useState<CustomerFriendLink | null>(null);
   const [requests, setRequests] = useState<CustomerFriendRequest[]>([]);
   const [friends, setFriends] = useState<CustomerFriend[]>([]);
+  const [linkSession, setLinkSession] = useState<PublicLinkSessionStatusResponse | null>(null);
+  const [linkSessionFailed, setLinkSessionFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const requestIdRef = useRef(0);
@@ -116,6 +134,19 @@ export default function CustomerFriendsPage() {
     () => requests.filter((request) => request.direction === 'outgoing'),
     [requests],
   );
+  const inviteRequest = useMemo(() => {
+    if (!linkSession) {
+      return null;
+    }
+    return outgoingRequests.find((request) => request.counterpartAccountId === linkSession.providerAccountId) ?? null;
+  }, [linkSession, outgoingRequests]);
+  const inviteFriend = useMemo(() => {
+    if (!linkSession) {
+      return null;
+    }
+    return friends.find((friend) => friend.counterpartAccountId === linkSession.providerAccountId) ?? null;
+  }, [friends, linkSession]);
+  const canSendInvite = Boolean(linkSession && linkSession.status === 'opened' && !inviteRequest && !inviteFriend);
 
   const loadData = useCallback(async () => {
     const requestId = requestIdRef.current + 1;
@@ -124,17 +155,18 @@ export default function CustomerFriendsPage() {
     setError('');
 
     try {
-      const [linkRes, requestsRes, friendsRes] = await Promise.all([
+      const [linkRes, requestsRes, friendsRes, linkSessionRes] = await Promise.all([
         getCustomerFriendLink(),
         listCustomerFriendRequests(),
         listCustomerFriends(),
+        inviteToken ? getLinkSessionStatus(inviteToken) : Promise.resolve(null),
       ]);
       if (requestId !== requestIdRef.current) {
         return false;
       }
       if (!linkRes.ok) {
         if (AUTH_ERRORS.has(linkRes.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return false;
         }
         setError(copy.loadFailure);
@@ -142,7 +174,7 @@ export default function CustomerFriendsPage() {
       }
       if (!requestsRes.ok) {
         if (AUTH_ERRORS.has(requestsRes.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return false;
         }
         setError(copy.loadFailure);
@@ -150,7 +182,7 @@ export default function CustomerFriendsPage() {
       }
       if (!friendsRes.ok) {
         if (AUTH_ERRORS.has(friendsRes.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return false;
         }
         setError(copy.loadFailure);
@@ -159,6 +191,13 @@ export default function CustomerFriendsPage() {
       setFriendLink(linkRes.data);
       setRequests(requestsRes.data);
       setFriends(friendsRes.data);
+      if (linkSessionRes) {
+        setLinkSession(linkSessionRes.ok ? linkSessionRes.data : null);
+        setLinkSessionFailed(!linkSessionRes.ok);
+      } else {
+        setLinkSession(null);
+        setLinkSessionFailed(false);
+      }
       return true;
     } catch {
       if (requestId === requestIdRef.current) {
@@ -170,7 +209,7 @@ export default function CustomerFriendsPage() {
         setLoading(false);
       }
     }
-  }, [copy.loadFailure, replace]);
+  }, [copy.loadFailure, inviteToken, replace]);
 
   useEffect(() => {
     void loadData();
@@ -203,12 +242,41 @@ export default function CustomerFriendsPage() {
             : await cancelCustomerFriendRequest(requestId);
       if (!res.ok) {
         if (AUTH_ERRORS.has(res.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return;
         }
         setError(copy.actionFailure);
         return;
       }
+      await loadData();
+    } catch {
+      setError(copy.actionFailure);
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function runInviteSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inviteToken || !canSendInvite) {
+      return;
+    }
+
+    setActionPending(true);
+    setError('');
+    setNotice('');
+    try {
+      const res = await sendFriendRequest({ token: inviteToken, message: inviteMessage });
+      if (!res.ok) {
+        if (AUTH_ERRORS.has(res.error)) {
+          replace(loginNextPath(inviteToken));
+          return;
+        }
+        setError(copy.actionFailure);
+        return;
+      }
+      setInviteMessage('');
+      setNotice(copy.inviteSent);
       await loadData();
     } catch {
       setError(copy.actionFailure);
@@ -225,7 +293,7 @@ export default function CustomerFriendsPage() {
       const res = await resetCustomerFriendLink();
       if (!res.ok) {
         if (AUTH_ERRORS.has(res.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return;
         }
         setError(copy.actionFailure);
@@ -247,7 +315,7 @@ export default function CustomerFriendsPage() {
       const res = await disableCustomerFriendLink();
       if (!res.ok) {
         if (AUTH_ERRORS.has(res.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return;
         }
         setError(copy.actionFailure);
@@ -270,7 +338,7 @@ export default function CustomerFriendsPage() {
       const res = await removeCustomerFriend(friendshipId);
       if (!res.ok) {
         if (AUTH_ERRORS.has(res.error)) {
-          replace(LOGIN_NEXT_PATH);
+          replace(loginNextPath(inviteToken));
           return;
         }
         setError(copy.actionFailure);
@@ -333,6 +401,48 @@ export default function CustomerFriendsPage() {
           </div>
         </section>
 
+        {inviteToken ? (
+          <section className="customer-friends-section customer-friend-invite" aria-labelledby="friend-invite-title">
+            <div>
+              <h2 id="friend-invite-title">{copy.inviteTitle}</h2>
+              <p>{copy.inviteDescription}</p>
+            </div>
+            {linkSessionFailed ? (
+              <p className="customer-inline-note customer-inline-note--error">{copy.inviteLoadFailure}</p>
+            ) : null}
+            {linkSession ? (
+              <>
+                <div className="customer-friend-link-box">
+                  <span>{copy.inviteTargetLabel}: {linkSession.providerAccountId}</span>
+                </div>
+                {inviteFriend ? (
+                  <p className="customer-inline-note">{copy.inviteAlreadyFriend}</p>
+                ) : inviteRequest ? (
+                  <p className="customer-inline-note">
+                    {copy.inviteExistingRequest} {statusLabel(copy, inviteRequest.status)}
+                  </p>
+                ) : canSendInvite ? (
+                  <form className="customer-friend-invite__form" onSubmit={runInviteSubmit}>
+                    <label htmlFor="friend-invite-message">{copy.inviteMessageLabel}</label>
+                    <textarea
+                      id="friend-invite-message"
+                      name="message"
+                      value={inviteMessage}
+                      onChange={(event) => setInviteMessage(event.currentTarget.value)}
+                      maxLength={500}
+                    />
+                    <button type="submit" className="customer-action customer-action--primary" disabled={actionPending}>
+                      {actionPending ? copy.inviteSending : copy.inviteSend}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="customer-inline-note customer-inline-note--error">{copy.inviteUnavailable}</p>
+                )}
+              </>
+            ) : null}
+          </section>
+        ) : null}
+
         <div className="customer-friends-grid">
           <section className="customer-friends-section" aria-labelledby="incoming-requests-title">
             <h2 id="incoming-requests-title">{copy.incomingTitle}</h2>
@@ -388,5 +498,13 @@ export default function CustomerFriendsPage() {
         </section>
       </div>
     </section>
+  );
+}
+
+export default function CustomerFriendsPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomerFriendsPageContent />
+    </Suspense>
   );
 }

@@ -3,10 +3,18 @@ import { renderToString } from 'react-dom/server';
 
 const mockFetchUserLink = vi.hoisted(() => vi.fn());
 const mockOpenLinkSession = vi.hoisted(() => vi.fn());
+const mockRedirect = vi.hoisted(() =>
+  vi.fn((url: string) => {
+    throw new Error(`redirect:${url}`);
+  }),
+);
 
 vi.mock('../../../lib/user-link-api', () => ({
   fetchUserLink: mockFetchUserLink,
   openLinkSession: mockOpenLinkSession,
+}));
+vi.mock('next/navigation', () => ({
+  redirect: mockRedirect,
 }));
 
 import UserLinkPage from './page';
@@ -37,8 +45,8 @@ describe('UserLinkPage', () => {
         token: 'session-token',
         targetAccountId: 'acct_a',
         expiresAt: '2026-06-21T00:00:00.000Z',
-        loginUrl: '/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
-        registerUrl: '/auth/register?next=%2Fu%2Fabc%3Flink_session%3Dsession-token',
+        loginUrl: '/auth/login?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
+        registerUrl: '/auth/register?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
       },
     });
 
@@ -53,7 +61,9 @@ describe('UserLinkPage', () => {
     expect(container.querySelector('h1')?.textContent).toBe('Coach A');
     expect(container.textContent).toContain('Strength coach');
     expect(mockOpenLinkSession).toHaveBeenCalledWith('abc');
-    expect(loginLink?.getAttribute('href')).toBe('/auth/login?next=%2Fu%2Fabc%3Flink_session%3Dsession-token');
+    expect(loginLink?.getAttribute('href')).toBe(
+      '/auth/login?next=%2Faccount%2Ffriends%3Flink_session%3Dsession-token',
+    );
   });
 
   it('shows a clear inactive state for inactive or missing links', async () => {
@@ -86,7 +96,7 @@ describe('UserLinkPage', () => {
     expect(html).not.toContain('Log in to add friend');
   });
 
-  it('renders the authenticated friend-request form for a preserved session', async () => {
+  it('redirects preserved sessions into the customer friends dashboard', async () => {
     mockFetchUserLink.mockResolvedValue({
       ok: true,
       data: {
@@ -96,18 +106,13 @@ describe('UserLinkPage', () => {
       },
     });
 
-    const html = renderToString(
-      await UserLinkPage({
+    await expect(
+      UserLinkPage({
         params: Promise.resolve({ code: 'abc' }),
         searchParams: Promise.resolve({ link_session: 'session-token' }),
       }),
-    );
-    const container = renderHtml(html);
-    const submitButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Send friend request',
-    );
-
-    expect(submitButton).toBeTruthy();
+    ).rejects.toThrow('redirect:/account/friends?link_session=session-token');
     expect(mockOpenLinkSession).not.toHaveBeenCalled();
+    expect(mockRedirect).toHaveBeenCalledWith('/account/friends?link_session=session-token');
   });
 });

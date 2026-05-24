@@ -2,6 +2,7 @@ import type { ApiResponse } from '../../shared/src/types/api';
 import type {
   FriendRequestResponse,
   PublicLinkSessionResponse,
+  PublicLinkSessionStatusResponse,
   PublicUserLinkResponse,
 } from '../../shared/src/types/scheduling';
 import { getCustomerApiBase } from './customer-api';
@@ -18,6 +19,19 @@ function isPublicLinkSessionResponse(data: unknown): data is PublicLinkSessionRe
     typeof row.expiresAt === 'string' &&
     typeof row.loginUrl === 'string' &&
     typeof row.registerUrl === 'string'
+  );
+}
+
+function isPublicLinkSessionStatusResponse(data: unknown): data is PublicLinkSessionStatusResponse {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return false;
+  }
+  const row = data as Record<string, unknown>;
+  return (
+    typeof row.providerAccountId === 'string' &&
+    (typeof row.consumerAccountId === 'string' || row.consumerAccountId === null) &&
+    (row.status === 'opened' || row.status === 'claimed' || row.status === 'abandoned') &&
+    typeof row.expiresAt === 'string'
   );
 }
 
@@ -60,6 +74,32 @@ export async function openLinkSession(code: string): Promise<ApiResponse<PublicL
     };
   } catch {
     return { ok: false, error: 'link_session_not_opened' };
+  }
+}
+
+export async function getLinkSessionStatus(
+  token: string,
+): Promise<ApiResponse<PublicLinkSessionStatusResponse>> {
+  const base = getCustomerApiBase();
+  try {
+    const statusRes = await fetch(
+      `${base}/api/public/link-sessions/${encodeURIComponent(token)}/status`,
+      { cache: 'no-store' },
+    );
+    if (!statusRes.ok) {
+      return { ok: false, error: 'link_session_not_found' };
+    }
+
+    const status = (await statusRes.json()) as ApiResponse<unknown>;
+    if (!status.ok) {
+      return status;
+    }
+    if (!isPublicLinkSessionStatusResponse(status.data)) {
+      return { ok: false, error: 'link_session_not_found' };
+    }
+    return { ok: true, data: status.data };
+  } catch {
+    return { ok: false, error: 'link_session_not_found' };
   }
 }
 

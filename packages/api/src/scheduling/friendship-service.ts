@@ -90,6 +90,7 @@ interface FriendshipClient {
   friendRequest: {
     findMany(args: {
       where: Record<string, unknown>;
+      include?: Record<string, unknown>;
       orderBy?: Record<string, unknown> | Record<string, unknown>[];
     }): Promise<FriendRequestRecord[]>;
     findUnique(args: {

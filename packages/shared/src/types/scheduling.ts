@@ -16,6 +16,13 @@ export interface PublicLinkSessionResponse {
   registerUrl: string;
 }
 
+export interface PublicLinkSessionStatusResponse {
+  providerAccountId: string;
+  consumerAccountId: string | null;
+  status: 'opened' | 'claimed' | 'abandoned';
+  expiresAt: string;
+}
+
 export interface FriendRequestResponse {
   id: string;
   status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
