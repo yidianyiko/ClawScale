@@ -240,6 +240,42 @@ describe('internal scheduling routes', () => {
     }
   });
 
+  it('resolves accept_friend_request friend_name against pending incoming requests', async () => {
+    friendships.listFriendRequests.mockResolvedValueOnce([
+      {
+        id: 'fr_1',
+        requesterAccountId: 'ck_bob',
+        targetAccountId: 'ck_provider',
+        status: 'pending',
+        requester: { id: 'ck_bob', displayName: 'Bob Smoke', avatarUrl: null },
+        target: { id: 'ck_provider', displayName: 'Alice Smoke', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/accept_friend_request', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        friend_name: 'Bob',
+        idempotency_key: 'idem_name',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.listFriendRequests).toHaveBeenCalledWith(db as never, {
+      accountId: 'ck_provider',
+    });
+    expect(friendships.acceptFriendRequest).toHaveBeenCalledWith(db as never, {
+      actorAccountId: 'ck_provider',
+      requestId: 'fr_1',
+      idempotencyKey: 'idem_name',
+    });
+  });
+
   it('routes user-link-code friend requests with the internal customer id as requester', async () => {
     const res = await createApp().request('/api/internal/scheduling/tools/send_friend_request_by_user_link_code', {
       method: 'POST',

@@ -15,6 +15,8 @@ interface FriendRequestRecord {
   requesterAccountId: string;
   targetAccountId: string;
   status: FriendRequestStatus;
+  requester?: CustomerProfileRecord;
+  target?: CustomerProfileRecord;
 }
 
 interface FriendRequestActionResult {
@@ -452,6 +454,10 @@ export async function listFriendRequests(
   return client.friendRequest.findMany({
     where: {
       OR: [{ requesterAccountId: accountId }, { targetAccountId: accountId }],
+    },
+    include: {
+      requester: { select: { id: true, displayName: true, avatarUrl: true } },
+      target: { select: { id: true, displayName: true, avatarUrl: true } },
     },
     orderBy: { createdAt: 'desc' },
   });

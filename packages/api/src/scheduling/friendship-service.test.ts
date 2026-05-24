@@ -3,6 +3,7 @@ import {
   acceptFriendRequest,
   blockAccount,
   cancelFriendRequest,
+  listFriendRequests,
   listFriends,
   rejectFriendRequest,
   removeFriendship,
@@ -314,6 +315,40 @@ describe('friendship service', () => {
       include: {
         accountA: { select: { id: true, displayName: true, avatarUrl: true } },
         accountB: { select: { id: true, displayName: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('lists friend requests with requester and target profile data for name resolution', async () => {
+    db.friendRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'fr_1',
+        requesterAccountId: 'ck_b',
+        targetAccountId: 'ck_a',
+        status: 'pending',
+        requester: { id: 'ck_b', displayName: 'Bob', avatarUrl: null },
+        target: { id: 'ck_a', displayName: 'Alice', avatarUrl: null },
+      },
+    ]);
+
+    await expect(listFriendRequests(db as never, { accountId: 'ck_a' })).resolves.toEqual([
+      {
+        id: 'fr_1',
+        requesterAccountId: 'ck_b',
+        targetAccountId: 'ck_a',
+        status: 'pending',
+        requester: { id: 'ck_b', displayName: 'Bob', avatarUrl: null },
+        target: { id: 'ck_a', displayName: 'Alice', avatarUrl: null },
+      },
+    ]);
+    expect(db.friendRequest.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ requesterAccountId: 'ck_a' }, { targetAccountId: 'ck_a' }],
+      },
+      include: {
+        requester: { select: { id: true, displayName: true, avatarUrl: true } },
+        target: { select: { id: true, displayName: true, avatarUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

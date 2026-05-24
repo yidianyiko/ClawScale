@@ -90,6 +90,14 @@ function normalizeName(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function requestFriendName(body: JsonRecord): string {
+  return normalizeName(
+    stringField(body, 'friend_name') ||
+      stringField(body, 'requester_name') ||
+      stringField(body, 'target_name'),
+  );
+}
+
 function accountIdForFriend(friendship: FriendshipRecord, actorAccountId: string): string | null {
   if (friendship.accountAId === actorAccountId) return friendship.accountBId;
   if (friendship.accountBId === actorAccountId) return friendship.accountAId;
@@ -132,6 +140,130 @@ async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: str
     throw new Error('friend_not_found');
   }
   return accountIdForFriend(matchedFriendship, requesterAccountId) ?? '';
+}
+
+type FriendRequestLookupRecord = {
+  id: string;
+  requesterAccountId: string;
+  targetAccountId: string;
+  status: string;
+  requester?: { displayName?: string | null } | null;
+  target?: { displayName?: string | null } | null;
+};
+
+function friendRequestProfileName(
+  request: FriendRequestLookupRecord,
+  actorField: 'requesterAccountId' | 'targetAccountId',
+): string {
+  const profile = actorField === 'requesterAccountId' ? request.target : request.requester;
+  return normalizeName(profile?.displayName ?? '');
+}
+
+async function resolveFriendRequestId(
+  body: JsonRecord,
+  actorAccountId: string,
+  toolName: 'accept_friend_request' | 'reject_friend_request' | 'cancel_friend_request',
+): Promise<string> {
+  const explicitRequestId = stringField(body, 'request_id').trim();
+  if (explicitRequestId) {
+    return explicitRequestId;
+  }
+
+  const friendName = requestFriendName(body);
+  if (!friendName) {
+    return '';
+  }
+
+  const actorField = toolName === 'cancel_friend_request' ? 'requesterAccountId' : 'targetAccountId';
+  const requests = (await listFriendRequests(db as never, {
+    accountId: actorAccountId,
+  })) as FriendRequestLookupRecord[];
+  const matches = requests.filter((request) => {
+    if (request.status !== 'pending') {
+      return false;
+    }
+    if (request[actorField] !== actorAccountId) {
+      return false;
+    }
+    const displayName = friendRequestProfileName(request, actorField);
+    return displayName === friendName || displayName.includes(friendName);
+  });
+
+  if (matches.length === 0) {
+    throw new Error('friend_name_not_found');
+  }
+  if (matches.length > 1) {
+    throw new Error('friend_name_ambiguous');
+  }
+  return matches[0]?.id ?? '';
+}
+
+type SharedReminderLookupRecord = {
+  id: string;
+  requesterAccountId: string;
+  inviteeAccountId: string;
+  status: string;
+  requester?: { displayName?: string | null } | null;
+  invitee?: { displayName?: string | null } | null;
+};
+
+function sharedReminderProfileName(
+  record: SharedReminderLookupRecord,
+  actorField: 'requesterAccountId' | 'inviteeAccountId',
+): string {
+  const profile = actorField === 'requesterAccountId' ? record.invitee : record.requester;
+  return normalizeName(profile?.displayName ?? '');
+}
+
+async function resolveSharedReminderRequestId(
+  body: JsonRecord,
+  actorAccountId: string,
+  toolName: 'accept_shared_reminder' | 'reject_shared_reminder' | 'cancel_shared_reminder',
+): Promise<string> {
+  const explicit = stringField(body, 'request_id').trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  // For accept / reject the actor is the invitee; for cancel the actor is the requester.
+  const actorField = toolName === 'cancel_shared_reminder' ? 'requesterAccountId' : 'inviteeAccountId';
+  const counterpartyName = normalizeName(
+    stringField(body, 'inviter_name') ||
+      stringField(body, 'requester_name') ||
+      stringField(body, 'invitee_name') ||
+      stringField(body, 'friend_name'),
+  );
+
+  const records = (await (db as never as {
+    sharedReminderRequest: {
+      findMany: (args: unknown) => Promise<SharedReminderLookupRecord[]>;
+    };
+  }).sharedReminderRequest.findMany({
+    where: {
+      status: 'pending_invitee_confirmation',
+      [actorField]: actorAccountId,
+    },
+    include: {
+      requester: { select: { displayName: true } },
+      invitee: { select: { displayName: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })) as SharedReminderLookupRecord[];
+
+  const candidates = counterpartyName
+    ? records.filter((record) => {
+        const displayName = sharedReminderProfileName(record, actorField);
+        return displayName === counterpartyName || displayName.includes(counterpartyName);
+      })
+    : records;
+
+  if (candidates.length === 0) {
+    throw new Error(counterpartyName ? 'shared_reminder_name_not_found' : 'shared_reminder_request_not_found');
+  }
+  if (candidates.length > 1) {
+    throw new Error('shared_reminder_request_ambiguous');
+  }
+  return candidates[0]?.id ?? '';
 }
 
 function schedulingErrorCode(error: unknown): string {
@@ -228,28 +360,28 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     );
   }
   if (toolName === 'accept_friend_request') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       acceptFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
+        requestId: await resolveFriendRequestId(body, customerId, 'accept_friend_request'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
   }
   if (toolName === 'reject_friend_request') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       rejectFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
+        requestId: await resolveFriendRequestId(body, customerId, 'reject_friend_request'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
   }
   if (toolName === 'cancel_friend_request') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       cancelFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: stringField(body, 'request_id'),
+        requestId: await resolveFriendRequestId(body, customerId, 'cancel_friend_request'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
@@ -337,46 +469,49 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     );
   }
   if (toolName === 'accept_shared_reminder') {
-    return runCustomerTool(c, body, (customerId) =>
-      acceptSharedReminder(
+    return runCustomerTool(c, body, async (customerId) => {
+      const requestId = await resolveSharedReminderRequestId(body, customerId, 'accept_shared_reminder');
+      return acceptSharedReminder(
         db as never,
         { createRuntimeReminder, cancelRuntimeReminder },
         {
           actorAccountId: customerId,
-          requestId: stringField(body, 'request_id'),
+          requestId,
           now: new Date(),
           idempotencyKey: stringField(body, 'idempotency_key'),
         },
-      ),
-    );
+      );
+    });
   }
   if (toolName === 'reject_shared_reminder') {
-    return runCustomerTool(c, body, (customerId) =>
-      rejectSharedReminder(
+    return runCustomerTool(c, body, async (customerId) => {
+      const requestId = await resolveSharedReminderRequestId(body, customerId, 'reject_shared_reminder');
+      return rejectSharedReminder(
         db as never,
         { createRuntimeReminder, cancelRuntimeReminder },
         {
           actorAccountId: customerId,
-          requestId: stringField(body, 'request_id'),
+          requestId,
           now: new Date(),
           idempotencyKey: stringField(body, 'idempotency_key'),
         },
-      ),
-    );
+      );
+    });
   }
   if (toolName === 'cancel_shared_reminder') {
-    return runCustomerTool(c, body, (customerId) =>
-      cancelSharedReminder(
+    return runCustomerTool(c, body, async (customerId) => {
+      const requestId = await resolveSharedReminderRequestId(body, customerId, 'cancel_shared_reminder');
+      return cancelSharedReminder(
         db as never,
         { createRuntimeReminder, cancelRuntimeReminder },
         {
           actorAccountId: customerId,
-          requestId: stringField(body, 'request_id'),
+          requestId,
           now: new Date(),
           idempotencyKey: stringField(body, 'idempotency_key'),
         },
-      ),
-    );
+      );
+    });
   }
   return c.json({ ok: false, error: 'unknown_tool' }, 404);
 });
