@@ -22,7 +22,7 @@ interface FriendRequestActionResult {
   status: FriendRequestStatus;
 }
 
-interface FriendshipRecord {
+export interface FriendshipRecord {
   id: string;
   accountAId: string;
   accountBId: string;
@@ -31,7 +31,7 @@ interface FriendshipRecord {
   accountB?: CustomerProfileRecord;
 }
 
-interface CustomerProfileRecord {
+export interface CustomerProfileRecord {
   id: string;
   displayName: string;
   avatarUrl: string | null;

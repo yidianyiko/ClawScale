@@ -10,6 +10,7 @@ import {
   acceptFriendRequest,
   blockAccount,
   cancelFriendRequest,
+  type FriendshipRecord,
   listFriendRequests,
   listFriends,
   rejectFriendRequest,
@@ -89,21 +90,20 @@ function normalizeName(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function accountIdForFriend(friendship: JsonRecord, actorAccountId: string): string | null {
-  const accountAId = typeof friendship['accountAId'] === 'string' ? friendship['accountAId'] : '';
-  const accountBId = typeof friendship['accountBId'] === 'string' ? friendship['accountBId'] : '';
-  if (accountAId === actorAccountId && accountBId) return accountBId;
-  if (accountBId === actorAccountId && accountAId) return accountAId;
+function accountIdForFriend(friendship: FriendshipRecord, actorAccountId: string): string | null {
+  if (friendship.accountAId === actorAccountId) return friendship.accountBId;
+  if (friendship.accountBId === actorAccountId) return friendship.accountAId;
   return null;
 }
 
-function displayNameForFriend(friendship: JsonRecord, actorAccountId: string): string {
-  const accountAId = typeof friendship['accountAId'] === 'string' ? friendship['accountAId'] : '';
-  const accountBId = typeof friendship['accountBId'] === 'string' ? friendship['accountBId'] : '';
-  const friendProfile = accountAId === actorAccountId ? friendship['accountB'] : accountBId === actorAccountId ? friendship['accountA'] : null;
-  if (typeof friendProfile !== 'object' || friendProfile === null) return '';
-  const displayName = (friendProfile as JsonRecord)['displayName'];
-  return typeof displayName === 'string' ? displayName : '';
+function displayNameForFriend(friendship: FriendshipRecord, actorAccountId: string): string {
+  const friendProfile =
+    friendship.accountAId === actorAccountId
+      ? friendship.accountB
+      : friendship.accountBId === actorAccountId
+        ? friendship.accountA
+        : null;
+  return friendProfile?.displayName ?? '';
 }
 
 async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
@@ -117,7 +117,7 @@ async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: str
   }
 
   const friends = await listFriends(db as never, { accountId: requesterAccountId });
-  const matches = (friends as JsonRecord[]).filter((friendship) => {
+  const matches = friends.filter((friendship) => {
     const displayName = normalizeName(displayNameForFriend(friendship, requesterAccountId));
     return displayName === inviteeName || displayName.includes(inviteeName);
   });
@@ -127,7 +127,11 @@ async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: str
   if (matches.length > 1) {
     throw new Error('friend_name_ambiguous');
   }
-  return accountIdForFriend(matches[0], requesterAccountId) ?? '';
+  const matchedFriendship = matches[0];
+  if (!matchedFriendship) {
+    throw new Error('friend_not_found');
+  }
+  return accountIdForFriend(matchedFriendship, requesterAccountId) ?? '';
 }
 
 function schedulingErrorCode(error: unknown): string {
