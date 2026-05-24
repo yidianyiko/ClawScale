@@ -21,7 +21,7 @@ import { createRouteBindingSnapshot } from './route-binding.js';
 import { parseCommand, formatCommandHelp } from './slash-commands.js';
 import { normalizeInboundAttachments } from './inbound-attachments.js';
 import type { Prisma } from '@prisma/client';
-import type { AiBackendType, AiBackendProviderConfig } from './ai-backend-runtime.js';
+import type { AiBackendType, AiBackendProviderConfig } from './ai-backend.js';
 
 export interface Attachment {
   url: string;
