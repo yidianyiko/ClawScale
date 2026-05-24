@@ -187,6 +187,86 @@ describe('friendship service', () => {
     });
   });
 
+  it('delivers accepted friend-request notifications only after the accept transaction commits', async () => {
+    const events: string[] = [];
+    const tx = {
+      friendRequest: {
+        updateMany: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      friendship: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+      },
+      accountBlock: {
+        findFirst: vi.fn(),
+      },
+      productNotification: {
+        create: vi.fn(() => {
+          throw new Error('notification_in_transaction');
+        }),
+      },
+    };
+    db.$transaction.mockImplementationOnce(async (fn) => {
+      events.push('transaction:start');
+      const result = await fn(tx as never);
+      events.push('transaction:commit');
+      return result;
+    });
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      events.push('bridge:fetch');
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    tx.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+    tx.friendRequest.findUnique.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'ck_z',
+      targetAccountId: 'ck_a',
+      status: 'accepted',
+    });
+    tx.accountBlock.findFirst.mockResolvedValueOnce(null);
+    tx.friendship.create.mockResolvedValueOnce({
+      id: 'fs_1',
+      accountAId: 'ck_a',
+      accountBId: 'ck_z',
+      status: 'active',
+    });
+    db.productNotification.create.mockImplementationOnce(async ({ data }) => {
+      events.push('notification:create');
+      return {
+        id: 'pn_1',
+        recipientAccountId: data.recipientAccountId,
+        idempotencyKey: data.idempotencyKey,
+        kind: data.kind,
+        payload: data.payload,
+        status: 'pending_delivery',
+      };
+    });
+    db.productNotification.updateMany.mockImplementationOnce(async () => {
+      events.push('notification:delivered');
+      return { count: 1 };
+    });
+
+    const result = await acceptFriendRequest(db as never, {
+      actorAccountId: 'ck_a',
+      requestId: 'fr_1',
+      idempotencyKey: 'idem_accept',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_1', status: 'accepted' });
+    expect(tx.productNotification.create).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:commit',
+      'notification:create',
+      'bridge:fetch',
+      'notification:delivered',
+    ]);
+  });
+
   it('rejecting a pending request marks it rejected without creating a friendship', async () => {
     db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
 

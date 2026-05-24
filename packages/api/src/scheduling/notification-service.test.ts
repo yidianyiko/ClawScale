@@ -134,7 +134,15 @@ describe('product notification service', () => {
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
     expect(body).toEqual({
       customer_id: 'acct_a',
+      tenant_id: 'product_notification',
+      channel_id: 'product_notification',
+      platform: 'product_notification',
+      external_id: 'acct_a',
+      end_user_id: 'acct_a',
+      business_conversation_key: 'product-notification:acct_a',
+      gateway_conversation_id: 'product-notification:acct_a',
       inbound_event_id: 'friend-request:fr_1:target',
+      input: '你有一个新的好友请求，请确认或拒绝。',
       text: '你有一个新的好友请求，请确认或拒绝。',
       timestamp: expect.any(Number),
       message_type: 'product_notification',
@@ -183,6 +191,21 @@ describe('product notification service', () => {
         deliveredAt: expect.any(Date),
         lastError: null,
       },
+    });
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      customer_id: 'acct_a',
+      tenant_id: 'product_notification',
+      channel_id: 'product_notification',
+      platform: 'product_notification',
+      external_id: 'acct_a',
+      end_user_id: 'acct_a',
+      business_conversation_key: 'product-notification:acct_a',
+      gateway_conversation_id: 'product-notification:acct_a',
+      inbound_event_id: 'shared-reminder:sr_1:shared_reminder_request',
+      input: '你有一个共享提醒请求，请确认或拒绝。',
+      text: '你有一个共享提醒请求，请确认或拒绝。',
+      message_type: 'product_notification',
     });
   });
 

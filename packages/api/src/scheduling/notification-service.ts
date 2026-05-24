@@ -53,6 +53,10 @@ function readBridgeHeaders(): Record<string, string> {
   };
 }
 
+function productNotificationConversationKey(recipientAccountId: string): string {
+  return `product-notification:${recipientAccountId}`;
+}
+
 function isUniqueConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
@@ -93,7 +97,19 @@ async function deliverProductNotification(record: ProductNotificationRecord): Pr
       headers: readBridgeHeaders(),
       body: JSON.stringify({
         customer_id: record.recipientAccountId,
+        tenant_id: 'product_notification',
+        channel_id: 'product_notification',
+        platform: 'product_notification',
+        external_id: record.recipientAccountId,
+        end_user_id: record.recipientAccountId,
+        business_conversation_key: productNotificationConversationKey(
+          record.recipientAccountId,
+        ),
+        gateway_conversation_id: productNotificationConversationKey(
+          record.recipientAccountId,
+        ),
         inbound_event_id: record.idempotencyKey,
+        input: payload.text,
         text: payload.text,
         timestamp: Date.now(),
         message_type: 'product_notification',

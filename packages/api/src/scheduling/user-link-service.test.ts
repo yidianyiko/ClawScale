@@ -304,6 +304,91 @@ describe('user link service', () => {
     );
   });
 
+  it('delivers friend request notifications only after the friend request transaction commits', async () => {
+    const events: string[] = [];
+    const tx = {
+      linkSession: { findUnique: vi.fn(), updateMany: vi.fn() },
+      friendRequest: { findFirst: vi.fn(), create: vi.fn() },
+      accountBlock: { findFirst: vi.fn() },
+      productNotification: {
+        findFirst: vi.fn(() => {
+          throw new Error('notification_in_transaction');
+        }),
+        create: vi.fn(() => {
+          throw new Error('notification_in_transaction');
+        }),
+      },
+    };
+    db.$transaction.mockImplementationOnce(async (fn) => {
+      events.push('transaction:start');
+      const result = await fn(tx as never);
+      events.push('transaction:commit');
+      return result;
+    });
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      events.push('bridge:fetch');
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    tx.linkSession.findUnique.mockResolvedValueOnce({
+      id: 'ls_1',
+      providerAccountId: 'acct_a',
+      consumerAccountId: null,
+      status: 'opened',
+      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+    tx.accountBlock.findFirst.mockResolvedValueOnce(null);
+    tx.friendRequest.findFirst.mockResolvedValueOnce(null);
+    tx.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
+    tx.friendRequest.create.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'acct_b',
+      targetAccountId: 'acct_a',
+      linkSessionId: 'ls_1',
+      status: 'pending',
+    });
+    db.productNotification.findFirst.mockImplementationOnce(async () => {
+      events.push('notification:find');
+      return null;
+    });
+    db.productNotification.create.mockImplementationOnce(async ({ data }) => {
+      events.push('notification:create');
+      return {
+        id: 'pn_1',
+        recipientAccountId: data.recipientAccountId,
+        idempotencyKey: data.idempotencyKey,
+        kind: data.kind,
+        payload: data.payload,
+        status: 'pending_delivery',
+      };
+    });
+    db.productNotification.updateMany.mockImplementationOnce(async () => {
+      events.push('notification:delivered');
+      return { count: 1 };
+    });
+
+    const result = await sendFriendRequestFromLinkSession(db as never, {
+      token: 'session-token',
+      requesterAccountId: 'acct_b',
+      message: 'Let us connect',
+      idempotencyKey: 'friend:req:after-commit',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_1', status: 'pending' });
+    expect(tx.productNotification.findFirst).not.toHaveBeenCalled();
+    expect(tx.productNotification.create).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      'transaction:start',
+      'transaction:commit',
+      'notification:find',
+      'notification:create',
+      'bridge:fetch',
+      'notification:delivered',
+    ]);
+  });
+
   it('returns the existing pending request when the same requester retries after claiming', async () => {
     db.linkSession.findUnique.mockResolvedValueOnce({
       id: 'ls_1',

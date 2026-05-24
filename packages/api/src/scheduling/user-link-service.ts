@@ -75,11 +75,11 @@ interface UserLinkClient {
 type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
 type FriendRequestWriteClient = Pick<
   UserLinkClient,
-  'linkSession' | 'friendRequest' | 'accountBlock' | 'productNotification'
+  'linkSession' | 'friendRequest' | 'accountBlock'
 >;
 type UserLinkTransactionClient = Pick<
   UserLinkClient,
-  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock' | 'productNotification'
+  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock'
 >;
 
 interface UserLinkInput {
@@ -104,6 +104,17 @@ interface ProductNotificationDeliveryRecord {
   idempotencyKey: string;
   kind: string;
   payload: unknown;
+}
+
+interface FriendRequestNotificationInput {
+  request: Record<string, unknown>;
+  requesterAccountId: string;
+  targetAccountId: string;
+}
+
+interface FriendRequestWriteResult {
+  request: Record<string, unknown>;
+  notification: FriendRequestNotificationInput | null;
 }
 
 export interface PublicUserLinkResult {
@@ -393,7 +404,7 @@ export async function sendFriendRequestFromLinkSession(
   const requesterAccountId = nonEmpty(input.requesterAccountId, 'invalid_account');
   const sessionTokenHash = tokenHash(input.token);
 
-  return runFriendRequestWrite(client, async (writeClient) => {
+  const result = await runFriendRequestWrite(client, async (writeClient): Promise<FriendRequestWriteResult> => {
     const session = await writeClient.linkSession.findUnique({
       where: { tokenHash: sessionTokenHash },
     });
@@ -416,12 +427,14 @@ export async function sendFriendRequestFromLinkSession(
       if (!existing) {
         throw new Error('invalid_link_session');
       }
-      await ensureFriendRequestNotification(writeClient, {
+      return {
         request: existing,
-        requesterAccountId,
-        targetAccountId: session.providerAccountId,
-      });
-      return existing;
+        notification: {
+          request: existing,
+          requesterAccountId,
+          targetAccountId: session.providerAccountId,
+        },
+      };
     }
     if (session.status !== 'opened') {
       throw new Error('invalid_link_session');
@@ -459,7 +472,7 @@ export async function sendFriendRequestFromLinkSession(
         session.providerAccountId,
       );
       if (raced) {
-        return raced;
+        return { request: raced, notification: null };
       }
       throw new Error('invalid_link_session');
     }
@@ -471,13 +484,20 @@ export async function sendFriendRequestFromLinkSession(
       message: input.message,
       idempotencyKey: input.idempotencyKey,
     }));
-    await ensureFriendRequestNotification(writeClient, {
+    return {
       request,
-      requesterAccountId,
-      targetAccountId: session.providerAccountId,
-    });
-    return request;
+      notification: {
+        request,
+        requesterAccountId,
+        targetAccountId: session.providerAccountId,
+      },
+    };
   });
+
+  if (result.notification) {
+    await ensureFriendRequestNotification(client, result.notification);
+  }
+  return result.request;
 }
 
 async function findPendingFriendRequest(

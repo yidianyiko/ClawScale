@@ -67,6 +67,16 @@ interface RequesterProjectionCancellation {
   reminderId: string;
 }
 
+interface AcceptedFriendRequestNotificationInput {
+  request: FriendRequestRecord;
+  idempotencyKey: string;
+}
+
+interface AcceptFriendRequestWriteResult {
+  request: FriendRequestRecord;
+  notification: AcceptedFriendRequestNotificationInput | null;
+}
+
 interface ReminderRuntimePort {
   cancelRuntimeReminder(input: {
     customerId: string;
@@ -455,7 +465,7 @@ export async function acceptFriendRequest(
   const requestId = nonEmpty(input.requestId, 'friend_request_not_found');
   const idempotencyKey = nonEmpty(input.idempotencyKey, 'invalid_idempotency_key');
 
-  return runWrite(client, async (writeClient) => {
+  const result = await runWrite(client, async (writeClient): Promise<AcceptFriendRequestWriteResult> => {
     const transition = await writeClient.friendRequest.updateMany({
       where: { id: requestId, status: 'pending', targetAccountId: actorAccountId },
       data: { status: 'accepted', resolvedAt: new Date() },
@@ -477,9 +487,19 @@ export async function acceptFriendRequest(
         throw new Error('friendship_not_found');
       }
     }
-    await createAcceptedNotification(writeClient, { request, idempotencyKey });
-    return request;
+    return {
+      request,
+      notification: {
+        request,
+        idempotencyKey,
+      },
+    };
   });
+
+  if (result.notification) {
+    await createAcceptedNotification(client, result.notification);
+  }
+  return result.request;
 }
 
 export async function rejectFriendRequest(
