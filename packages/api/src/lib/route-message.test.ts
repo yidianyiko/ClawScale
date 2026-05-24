@@ -23,7 +23,6 @@ const issuePublicCheckoutToken = vi.hoisted(() => vi.fn());
 const buildPublicCheckoutUrl = vi.hoisted(() => vi.fn());
 const provisionSharedChannelCustomer = vi.hoisted(() => vi.fn());
 const createRouteBindingSnapshot = vi.hoisted(() => vi.fn());
-const runClawscaleAgent = vi.hoisted(() => vi.fn());
 
 vi.mock('../db/index.js', () => ({ db }));
 vi.mock('./ai-backend.js', () => ({ generateReply }));
@@ -46,11 +45,6 @@ vi.mock('./route-binding.js', async () => {
     createRouteBindingSnapshot,
   };
 });
-vi.mock('./clawscale-agent.js', () => ({
-  buildSelectionMenu: vi.fn(() => 'menu'),
-  runClawscaleAgent,
-}));
-
 import { routeInboundMessage } from './route-message.js';
 
 describe('routeInboundMessage', () => {
@@ -122,7 +116,6 @@ describe('routeInboundMessage', () => {
     db.endUserBackend.deleteMany.mockResolvedValue({});
     db.conversation.update.mockResolvedValue({});
     generateReply.mockResolvedValue('bridge ok');
-    runClawscaleAgent.mockResolvedValue('agent ok');
     bindBusinessConversation.mockResolvedValue({
       tenantId: 'ten_1',
       cokeAccountId: 'acct_1',
@@ -186,6 +179,21 @@ describe('routeInboundMessage', () => {
         rawIdentityValue: '+1 (415) 555-0100',
       }),
     );
+  });
+
+  it('loads only custom bridge backends for inbound routing', async () => {
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: 'hello',
+      meta: { platform: 'whatsapp_business' },
+    });
+
+    expect(db.aiBackend.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'ten_1', isActive: true, type: 'custom' },
+      orderBy: { createdAt: 'asc' },
+    });
   });
 
   it('ignores mismatched meta.platform when provisioning whatsapp_evolution shared channels', async () => {
@@ -427,7 +435,7 @@ describe('routeInboundMessage', () => {
     expect(result).toBeNull();
     expect(db.message.create).not.toHaveBeenCalled();
     expect(generateReply).not.toHaveBeenCalled();
-    expect(runClawscaleAgent).not.toHaveBeenCalled();
+    expect(generateReply).not.toHaveBeenCalled();
   });
 
   it('scrubs unsafe legacy attachment metadata before backend history dispatch', async () => {
@@ -581,23 +589,7 @@ describe('routeInboundMessage', () => {
     );
   });
 
-  it('does not copy inbound attachments onto commands executed by the ClawScale tool', async () => {
-    db.channel.findUnique.mockResolvedValue({
-      id: 'ch_1',
-      tenantId: 'ten_1',
-      type: 'whatsapp_business',
-      customerId: null,
-      ownershipKind: 'customer',
-      agentId: null,
-      status: 'connected',
-      scope: 'tenant_shared',
-      ownerClawscaleUserId: null,
-      ownerClawscaleUser: null,
-    });
-    db.tenant.findUnique.mockResolvedValue({
-      id: 'ten_1',
-      settings: { clawscale: { llm: { model: 'openai:gpt-test', apiKey: 'key', multimodal: true } } },
-    });
+  it('routes retired team command text to the custom bridge instead of managing backends', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
       tenantId: 'ten_1',
@@ -610,35 +602,37 @@ describe('routeInboundMessage', () => {
       clawscaleUser: null,
       activeBackends: [],
     });
-    runClawscaleAgent.mockImplementationOnce(async ({ executeCommand }) => {
-      await executeCommand('/team');
-      return 'agent ok';
-    });
 
-    await routeInboundMessage({
+    const result = await routeInboundMessage({
       channelId: 'ch_1',
       externalId: 'wxid_123',
-      text: 'caption',
-      attachments: [{ url: 'https://cdn.example.com/photo.jpg', filename: 'photo.jpg', contentType: 'image/jpeg' }],
+      text: '/team invite 1',
       meta: { platform: 'whatsapp_business' },
     });
 
-    const userMessages = db.message.create.mock.calls
-      .map((call) => call[0]?.data)
-      .filter((data) => data?.role === 'user');
-    expect(userMessages).toHaveLength(2);
-    expect(userMessages[0]?.metadata?.attachments).toHaveLength(1);
-    expect(userMessages[1]).toEqual(
+    expect(db.endUserBackend.upsert).toHaveBeenCalledWith({
+      where: { endUserId_backendId: { endUserId: 'eu_1', backendId: 'ab_1' } },
+      create: { endUserId: 'eu_1', backendId: 'ab_1' },
+      update: {},
+    });
+    expect(generateReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: '/team',
-        metadata: expect.not.objectContaining({
-          attachments: expect.anything(),
+        backend: expect.objectContaining({ type: 'custom' }),
+      }),
+    );
+    expect(db.message.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: 'user',
+          content: '/team invite 1',
         }),
       }),
     );
+    expect(result).toEqual(expect.objectContaining({ reply: 'bridge ok' }));
   });
 
-  it('does not copy inbound attachments onto direct system command recursion', async () => {
+  it('treats retired direct command syntax as ordinary bridge text', async () => {
     db.endUser.findUnique.mockResolvedValue({
       id: 'eu_1',
       tenantId: 'ten_1',
@@ -652,7 +646,7 @@ describe('routeInboundMessage', () => {
       activeBackends: [{ backendId: 'ab_1' }],
     });
 
-    await routeInboundMessage({
+    const result = await routeInboundMessage({
       channelId: 'ch_1',
       externalId: 'wxid_123',
       text: 'clawscale> /team',
@@ -663,16 +657,15 @@ describe('routeInboundMessage', () => {
     const userMessages = db.message.create.mock.calls
       .map((call) => call[0]?.data)
       .filter((data) => data?.role === 'user');
-    expect(userMessages).toHaveLength(2);
+    expect(userMessages).toHaveLength(1);
     expect(userMessages[0]?.metadata?.attachments).toHaveLength(1);
-    expect(userMessages[1]).toEqual(
+    expect(userMessages[0]).toEqual(
       expect.objectContaining({
-        content: '/team',
-        metadata: expect.not.objectContaining({
-          attachments: expect.anything(),
-        }),
+        content: 'clawscale> /team',
       }),
     );
+    expect(generateReply).toHaveBeenCalledOnce();
+    expect(result).toEqual(expect.objectContaining({ reply: 'bridge ok' }));
   });
 
   it('threads the provisioned shared-channel customerId into downstream routing metadata', async () => {

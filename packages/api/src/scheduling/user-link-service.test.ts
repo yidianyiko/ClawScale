@@ -5,6 +5,7 @@ import {
   getOrCreateActiveUserLink,
   readPublicUserLinkByCode,
   resetUserLink,
+  sendFriendRequestByUserLinkCode,
   sendFriendRequestFromLinkSession,
 } from './user-link-service.js';
 
@@ -225,6 +226,51 @@ describe('user link service', () => {
     expect(result).not.toHaveProperty('tokenHash');
     expect(result).not.toHaveProperty('userLinkId');
     expect(result).not.toHaveProperty('providerAccountId');
+  });
+
+  it('creates a pending friend request from a public user-link code in chat', async () => {
+    db.userLink.findFirst.mockResolvedValueOnce({
+      id: 'ul_1',
+      providerAccountId: 'acct_a',
+      code: 'AbCdEfGhIjK_',
+      status: 'active',
+    });
+    db.accountBlock.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.findFirst.mockResolvedValueOnce(null);
+    db.friendRequest.create.mockResolvedValueOnce({
+      id: 'fr_1',
+      requesterAccountId: 'acct_b',
+      targetAccountId: 'acct_a',
+      linkSessionId: null,
+      status: 'pending',
+    });
+    db.productNotification.findFirst.mockResolvedValueOnce(null);
+
+    const result = await sendFriendRequestByUserLinkCode(db as never, {
+      code: 'AbCdEfGhIjK_',
+      requesterAccountId: 'acct_b',
+      message: '一起测试提醒',
+      idempotencyKey: 'friend:req:code',
+    });
+
+    expect(result).toMatchObject({ id: 'fr_1', status: 'pending' });
+    expect(db.friendRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requesterAccountId: 'acct_b',
+        targetAccountId: 'acct_a',
+        linkSessionId: null,
+        message: '一起测试提醒',
+        idempotencyKey: 'friend:req:code',
+        status: 'pending',
+      }),
+    });
+    expect(db.productNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        friendRequestId: 'fr_1',
+        recipientAccountId: 'acct_a',
+        kind: 'friend_request',
+      }),
+    });
   });
 
   it('creates a pending friend request when an authenticated visitor claims a link session', async () => {

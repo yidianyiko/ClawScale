@@ -29,6 +29,7 @@ import {
   disableUserLink,
   getOrCreateActiveUserLink,
   resetUserLink,
+  sendFriendRequestByUserLinkCode,
 } from '../scheduling/user-link-service.js';
 
 type JsonRecord = Record<string, unknown>;
@@ -82,6 +83,51 @@ function optionalNumberField(body: JsonRecord, key: string): number | null {
     return null;
   }
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+}
+
+function normalizeName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function accountIdForFriend(friendship: JsonRecord, actorAccountId: string): string | null {
+  const accountAId = typeof friendship['accountAId'] === 'string' ? friendship['accountAId'] : '';
+  const accountBId = typeof friendship['accountBId'] === 'string' ? friendship['accountBId'] : '';
+  if (accountAId === actorAccountId && accountBId) return accountBId;
+  if (accountBId === actorAccountId && accountAId) return accountAId;
+  return null;
+}
+
+function displayNameForFriend(friendship: JsonRecord, actorAccountId: string): string {
+  const accountAId = typeof friendship['accountAId'] === 'string' ? friendship['accountAId'] : '';
+  const accountBId = typeof friendship['accountBId'] === 'string' ? friendship['accountBId'] : '';
+  const friendProfile = accountAId === actorAccountId ? friendship['accountB'] : accountBId === actorAccountId ? friendship['accountA'] : null;
+  if (typeof friendProfile !== 'object' || friendProfile === null) return '';
+  const displayName = (friendProfile as JsonRecord)['displayName'];
+  return typeof displayName === 'string' ? displayName : '';
+}
+
+async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
+  const explicitInviteeAccountId = stringField(body, 'invitee_account_id').trim();
+  if (explicitInviteeAccountId) {
+    return explicitInviteeAccountId;
+  }
+  const inviteeName = normalizeName(stringField(body, 'invitee_name'));
+  if (!inviteeName) {
+    return '';
+  }
+
+  const friends = await listFriends(db as never, { accountId: requesterAccountId });
+  const matches = (friends as JsonRecord[]).filter((friendship) => {
+    const displayName = normalizeName(displayNameForFriend(friendship, requesterAccountId));
+    return displayName === inviteeName || displayName.includes(inviteeName);
+  });
+  if (matches.length === 0) {
+    throw new Error('friend_not_found');
+  }
+  if (matches.length > 1) {
+    throw new Error('friend_name_ambiguous');
+  }
+  return accountIdForFriend(matches[0], requesterAccountId) ?? '';
 }
 
 function schedulingErrorCode(error: unknown): string {
@@ -164,6 +210,16 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(c, body, (customerId) =>
       listFriendRequests(db as never, {
         accountId: customerId,
+      }),
+    );
+  }
+  if (toolName === 'send_friend_request_by_user_link_code') {
+    return runCustomerTool(c, body, (customerId) =>
+      sendFriendRequestByUserLinkCode(db as never, {
+        requesterAccountId: customerId,
+        code: stringField(body, 'user_link_code'),
+        message: stringField(body, 'message') || null,
+        idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
   }
@@ -252,13 +308,13 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(
       c,
       body,
-      (customerId) =>
+      async (customerId) =>
         createSharedReminder(
           db as never,
           { createRuntimeReminder, cancelRuntimeReminder },
           {
             requesterAccountId: customerId,
-            inviteeAccountId: stringField(body, 'invitee_account_id'),
+            inviteeAccountId: await resolveInviteeAccountId(body, customerId),
             title: stringField(body, 'title'),
             fireAt: stringField(body, 'fire_at'),
             timezone: stringField(body, 'timezone', 'UTC'),

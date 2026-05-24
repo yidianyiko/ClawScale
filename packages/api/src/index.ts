@@ -30,7 +30,6 @@ import { adminDeliveriesRouter } from './routes/admin-deliveries.js';
 import { adminAdminsRouter } from './routes/admin-admins.js';
 import { gatewayRouter } from './gateway/message-router.js';
 import { initWeixinAdapters } from './adapters/wechat.js';
-import { initBridgeWebSocket } from './gateway/bridge-ws.js';
 
 const app = new Hono();
 
@@ -100,6 +99,5 @@ const host = process.env['HOST'] ?? '0.0.0.0';
 
 const server = serve({ fetch: app.fetch, port, hostname: host }, (info) => {
   console.log(`ClawScale API running on http://${info.address}:${info.port}`);
-  initBridgeWebSocket(server);
   initWeixinAdapters().catch((err) => console.error('[weixin] Init failed:', err));
 });

@@ -1,20 +1,8 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 
-const openAiCreate = vi.hoisted(() => vi.fn());
-
-vi.mock('openai', () => ({
-  default: vi.fn(() => ({
-    chat: {
-      completions: {
-        create: openAiCreate,
-      },
-    },
-  })),
-}));
-
 import { generateReply } from './ai-backend.js';
 
-describe('custom backend metadata envelope', () => {
+describe('custom backend bridge adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -35,7 +23,7 @@ describe('custom backend metadata envelope', () => {
     await generateReply({
       backend: {
         type: 'custom',
-        config: { baseUrl: 'https://bridge.local/reply', responseFormat: 'json-auto' } as any,
+        config: { baseUrl: 'https://bridge.local/reply' },
       },
       history: [{ role: 'user', content: '你好' }],
       sender: 'Alice',
@@ -47,7 +35,7 @@ describe('custom backend metadata envelope', () => {
         conversationId: 'conv_1',
         externalId: 'wxid_123',
       },
-    } as any);
+    });
 
     const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(requestInit?.body).toBeDefined();
@@ -79,13 +67,19 @@ describe('custom backend metadata envelope', () => {
     const result = await generateReply({
       backend: {
         type: 'custom',
-        config: { baseUrl: 'https://bridge.local/reply', responseFormat: 'json-auto' } as any,
+        config: { baseUrl: 'https://bridge.local/reply' },
       },
       history: [{ role: 'user', content: '你好' }],
       sender: 'Alice',
       platform: 'wechat_personal',
-      metadata: {},
-    } as any);
+      metadata: {
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        conversationId: 'conv_1',
+        externalId: 'wxid_123',
+      },
+    });
 
     expect(result).toEqual({
       text: 'bridge ok',
@@ -94,196 +88,14 @@ describe('custom backend metadata envelope', () => {
       causalInboundEventId: 'in_evt_1',
     });
   });
-});
 
-describe('OpenAI backend attachment conversion', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    openAiCreate.mockResolvedValue({
-      choices: [{ message: { content: 'ok' } }],
-    });
-  });
-
-  it('sends http image attachments as image_url parts', async () => {
-    await generateReply({
+  it('rejects retired provider backend types before dispatch', async () => {
+    await expect(generateReply({
       backend: {
         type: 'llm',
-        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
+        config: { apiKey: 'test-key', model: 'gpt-test' },
       },
-      history: [
-        {
-          role: 'user',
-          content: 'caption',
-          attachments: [
-            {
-              url: 'https://cdn.example.com/photo.jpg',
-              filename: 'photo.jpg',
-              contentType: 'image/jpeg',
-              safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
-            },
-          ],
-        },
-      ],
-    });
-
-    const request = openAiCreate.mock.calls[0]?.[0];
-    expect(request.messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'caption' },
-          { type: 'image_url', image_url: { url: 'https://cdn.example.com/photo.jpg' } },
-        ],
-      },
-    ]);
-  });
-
-  it('redacts credentialed or query-bearing http image attachments into safe text', async () => {
-    const secretUrl = 'https://user:pass@cdn.example.com/photo.jpg?token=secret#frag';
-
-    await generateReply({
-      backend: {
-        type: 'llm',
-        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
-      },
-      history: [
-        {
-          role: 'user',
-          content: 'caption',
-          attachments: [
-            {
-              url: secretUrl,
-              filename: 'photo.jpg',
-              contentType: 'image/jpeg',
-              safeDisplayUrl: 'https://cdn.example.com/photo.jpg',
-            },
-          ],
-        },
-      ],
-    });
-
-    const request = openAiCreate.mock.calls[0]?.[0];
-    const parts = request.messages[0].content;
-    expect(parts).toEqual([
-      { type: 'text', text: 'caption' },
-      { type: 'text', text: '[Attached image: https://cdn.example.com/photo.jpg]' },
-    ]);
-    expect(JSON.stringify(parts)).not.toContain(secretUrl);
-    expect(parts).not.toContainEqual(
-      expect.objectContaining({
-        type: 'image_url',
-        image_url: expect.objectContaining({ url: secretUrl }),
-      }),
-    );
-  });
-
-  it('redacts data image attachments into text parts instead of image_url parts', async () => {
-    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
-
-    await generateReply({
-      backend: {
-        type: 'llm',
-        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
-      },
-      history: [
-        {
-          role: 'user',
-          content: 'caption',
-          attachments: [
-            {
-              url: dataUrl,
-              filename: 'photo.png',
-              contentType: 'image/png',
-              safeDisplayUrl: '[inline image/png attachment: photo.png]',
-            },
-          ],
-        },
-      ],
-    });
-
-    const request = openAiCreate.mock.calls[0]?.[0];
-    const parts = request.messages[0].content;
-    expect(parts).toEqual([
-      { type: 'text', text: 'caption' },
-      { type: 'text', text: '[Attached image: [inline image/png attachment: photo.png]]' },
-    ]);
-    expect(parts).not.toContainEqual(
-      expect.objectContaining({
-        type: 'image_url',
-        image_url: expect.objectContaining({ url: expect.stringContaining('data:') }),
-      }),
-    );
-  });
-
-  it('redacts data image attachments for openclaw backends too', async () => {
-    const dataUrl = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
-
-    await generateReply({
-      backend: {
-        type: 'openclaw',
-        config: { baseUrl: 'https://openclaw.local', apiKey: 'test-key', model: 'gpt-test' } as any,
-      },
-      history: [
-        {
-          role: 'user',
-          content: 'caption',
-          attachments: [
-            {
-              url: dataUrl,
-              filename: 'photo.png',
-              contentType: 'image/png',
-              safeDisplayUrl: '[inline image/png attachment: photo.png]',
-            },
-          ],
-        },
-      ],
-    });
-
-    const request = openAiCreate.mock.calls[0]?.[0];
-    const parts = request.messages[0].content;
-    expect(parts).toEqual([
-      { type: 'text', text: 'caption' },
-      { type: 'text', text: '[Attached image: [inline image/png attachment: photo.png]]' },
-    ]);
-    expect(parts).not.toContainEqual(
-      expect.objectContaining({
-        type: 'image_url',
-        image_url: expect.objectContaining({ url: expect.stringContaining('data:') }),
-      }),
-    );
-  });
-
-  it('represents non-image attachments as safe display text only', async () => {
-    await generateReply({
-      backend: {
-        type: 'llm',
-        config: { apiKey: 'test-key', model: 'gpt-test' } as any,
-      },
-      history: [
-        {
-          role: 'user',
-          content: 'see attached',
-          attachments: [
-            {
-              url: 'https://cdn.example.com/file.pdf?token=secret',
-              filename: 'file.pdf',
-              contentType: 'application/pdf',
-              safeDisplayUrl: 'https://cdn.example.com/file.pdf',
-            },
-          ],
-        },
-      ],
-    });
-
-    const request = openAiCreate.mock.calls[0]?.[0];
-    expect(request.messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'see attached' },
-          { type: 'text', text: '[Attached file: https://cdn.example.com/file.pdf]' },
-        ],
-      },
-    ]);
+      history: [{ role: 'user', content: 'hello' }],
+    } as any)).rejects.toThrow('Unsupported AI backend type: llm');
   });
 });

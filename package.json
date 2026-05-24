@@ -4,7 +4,7 @@
   "private": true,
   "description": "ClawScale customer and shared-channel gateway for Coke/Kap",
   "scripts": {
-    "dev": "pnpm --parallel -r --filter \"!@clawscale/cli-bridge\" dev",
+    "dev": "pnpm --parallel -r dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",

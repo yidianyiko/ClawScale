@@ -6,23 +6,19 @@
  *   - Access policy enforcement
  *   - Conversation management
  *   - Message persistence
- *   - Commands: forwarded to active backend; use "> /cmd" for ClawScale
- *   - Direct messages: agent> message, > message (ClawScale)
- *   - AI backend routing (multi-backend)
+ *   - Current Coke bridge routing through custom HTTP backends
  */
 
 import { db } from '../db/index.js';
 import { generateId } from './id.js';
 import { generateReply, type BackendReplyPayload } from './ai-backend.js';
-import { runClawscaleAgent, buildSelectionMenu } from './clawscale-agent.js';
-import type { AgentLlmConfig } from './clawscale-agent.js';
 import { bindEndUserToCokeAccount, getUnifiedConversationIds } from './clawscale-user.js';
 import { bindBusinessConversation, upsertDirectDeliveryRoute } from './business-conversation.js';
 import { resolveCokeAccountAccess } from './coke-account-access.js';
 import { buildPublicCheckoutUrl, issuePublicCheckoutToken } from './coke-public-checkout.js';
 import { provisionSharedChannelCustomer } from './shared-channel-provisioning.js';
 import { createRouteBindingSnapshot } from './route-binding.js';
-import { parseCommand, resolveTarget, resolveAddRemoveArg, formatCommandHelp } from './slash-commands.js';
+import { parseCommand, formatCommandHelp } from './slash-commands.js';
 import { normalizeInboundAttachments } from './inbound-attachments.js';
 import type { Prisma } from '@prisma/client';
 import type { AiBackendType, AiBackendProviderConfig } from './ai-backend-runtime.js';
@@ -175,7 +171,6 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     personaName?: string;
     endUserAccess?: 'anonymous' | 'whitelist' | 'blacklist';
     allowList?: string[];
-    clawscale?: { name?: string; answerStyle?: string; isActive?: boolean; llm?: AgentLlmConfig };
     blockList?: string[];
   };
 
@@ -359,72 +354,19 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     historyConvIds = [conversation.id];
   }
 
-  // 7. Load backends and ClawScale config
-  const clawscaleCfg = settings.clawscale ?? {};
-  const clawscaleName = clawscaleCfg.name ?? 'ClawScale Assistant';
-  const clawscaleStyle = clawscaleCfg.answerStyle;
-  const clawscaleActive = clawscaleCfg.isActive !== false;
-  const clawscaleLlm = clawscaleCfg.llm ?? { model: 'openai:gpt-5.4-mini' };
-
+  // 7. Load the current custom bridge backends. Retired provider-backed
+  // backend types are intentionally excluded from inbound routing.
   const allBackends = await db.aiBackend.findMany({
-    where: { tenantId, isActive: true },
+    where: { tenantId, isActive: true, type: 'custom' },
     orderBy: { createdAt: 'asc' },
   });
   const channelCustomerId = resolvedChannelCustomerId;
 
   const replies: ReplyEntry[] = [];
 
-  /**
-   * Run the ClawScale LangChain agent.
-   *
-   * The agent handles the full reason → act → observe loop internally.
-   * Slash commands are executed via a callback that re-enters routeInboundMessage.
-   */
-  async function runAgent(userText: string, mode: 'select' | 'direct'): Promise<RouteResult> {
-    // If attachments are present but multimodal is not enabled, nudge the admin
-    if (normalizedAttachments.length && !clawscaleLlm?.multimodal) {
-      return reply(
-        `I received your ${normalizedAttachments.length > 1 ? 'files' : 'file'}, but I can't process non-text content yet.\n\n` +
-        'Ask your admin to enable **multimodal input** in the ClawScale dashboard:\n' +
-        '**Settings → ClawScale Assistant → Enable multimodal input**',
-      );
-    }
-
-    const agentHistory = await loadHistory(historyConvIds, null);
-    const agentReply = await runClawscaleAgent({
-      text: userText,
-      backends: allBackends.map((b) => ({ id: b.id, name: b.name })),
-      activeIds: [...activeBackendIds],
-      personaName: clawscaleName,
-      mode,
-      history: agentHistory,
-      attachments: normalizedAttachments,
-      ...(clawscaleStyle != null && { answerStyle: clawscaleStyle }),
-      ...(clawscaleLlm != null && { llmConfig: clawscaleLlm }),
-      executeCommand: async (command) => {
-        // Ensure command starts with "/" — reject plain-text commands
-        // that would be routed as regular messages instead of executed.
-        const trimmed = command.trim();
-        if (!trimmed.startsWith('/')) {
-          return `Error: "${trimmed}" is not a valid command. Commands must start with "/". Example: /team kick elie`;
-        }
-        const result = await routeInboundMessage({
-          ...input,
-          text: trimmed,
-          attachments: undefined,
-          attachmentPolicy: undefined,
-        });
-        return result?.reply ?? '(no result)';
-      },
-    });
-
-    if (!agentReply) return { conversationId: conversation!.id, replies, reply: '' };
-    return reply(agentReply);
-  }
-
   // ── Helper closures ─────────────────────────────────────────────────
 
-  async function reply(content: string, backendId: string | null = null, backendName: string | null = clawscaleName): Promise<RouteResult> {
+  async function reply(content: string, backendId: string | null = null, backendName: string | null = 'Gateway'): Promise<RouteResult> {
     replies.push({ backendId, backendName, reply: content });
     await db.message.create({
       data: {
@@ -449,36 +391,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     if (!activeBackendIds.includes(backendId)) activeBackendIds.push(backendId);
   }
 
-  async function removeBackend(backendId: string) {
-    await db.endUserBackend.deleteMany({
-      where: { endUserId: endUser!.id, backendId },
-    });
-    const idx = activeBackendIds.indexOf(backendId);
-    if (idx !== -1) activeBackendIds.splice(idx, 1);
-  }
-
-  async function removeAllBackends() {
-    await db.endUserBackend.deleteMany({ where: { endUserId: endUser!.id } });
-    activeBackendIds.length = 0;
-  }
-
-  function formatList(highlightActive = true): string {
-    return allBackends.map((b, i) => {
-      const active = highlightActive && activeBackendIds.includes(b.id) ? ' ✅' : '';
-      return `${i + 1}. ${b.name}${active}`;
-    }).join('\n');
-  }
-
   async function routeToBackends(backends: typeof allBackends): Promise<RouteResult> {
-    const hasPalmos = backends.some((b) => b.type === 'palmos');
-    const palmosCtx = hasPalmos
-      ? {
-          endUserId: endUser!.linkedTo ?? endUser!.id,
-          tenantId,
-          conversationId: conversation!.id,
-          displayName: endUser!.name ?? displayName,
-        }
-      : undefined;
     const results = await Promise.allSettled(
       backends.map(async (backend) => {
         const backendReply = await runBackend(backend, historyConvIds, {
@@ -512,7 +425,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
                 renewalUrl: resolvedAccessAccountMetadata.renewalUrl,
               }
             : {}),
-        }, palmosCtx, {
+        }, {
           sender: endUser!.name ?? displayName,
           platform,
         });
@@ -626,98 +539,14 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     return { conversationId: conversation!.id, replies, reply: combined };
   }
 
-  // 8. Parse commands
+  // 8. Parse supported Gateway commands
   const cmd = parseCommand(text);
   const activeBackends = allBackends.filter((b) => activeBackendIds.includes(b.id));
 
   if (cmd) {
-    // ── System commands ────────────────────────────────────────────────
-    // Bare slash commands (e.g. "/clear") are forwarded to the active
-    // backend as regular text.  System commands only execute when
-    // explicitly directed to ClawScale via "> /cmd" or "clawscale> /cmd".
-    // Fallback: if no backends are active, execute as system command.
-    if (cmd.kind === 'system' && activeBackends.length > 0 && !meta?.__forceSystem) {
-      // Forward to active backends as plain text
-      return routeToBackends(activeBackends);
-    }
-
-    if (cmd.kind === 'system') {
-      switch (cmd.command) {
+    switch (cmd.command) {
         case 'help': {
           return reply(formatCommandHelp());
-        }
-
-        case 'team': {
-          // Parse subcommand: /team, /team invite <arg>, /team kick [arg]
-          const subMatch = cmd.arg.match(/^(invite|kick)(?:\s+([\s\S]+))?$/i);
-
-          if (!subMatch) {
-            // /team with no subcommand — show team
-            const agents: string[] = [];
-            if (clawscaleActive) {
-              agents.push(`• *${clawscaleName}* — ClawScale assistant`);
-            }
-            for (const b of allBackends) {
-              if (activeBackendIds.includes(b.id)) {
-                agents.push(`• *${b.name}*`);
-              }
-            }
-            if (agents.length === 0) {
-              return reply('No agents in your team yet. Use `/team invite <name|#>` to add one.');
-            }
-            return reply(`*Your team:*\n\n${agents.join('\n')}`);
-          }
-
-          const sub = subMatch[1]!.toLowerCase();
-          const subArg = (subMatch[2] ?? '').trim();
-
-          if (sub === 'invite') {
-            if (!subArg) {
-              return reply(`Usage: \`/team invite <name|#>\`\n\n${formatList()}`);
-            }
-            const resolved = resolveAddRemoveArg(subArg, allBackends);
-            if (resolved.type !== 'backend' || !resolved.backendId) {
-              return reply(`Agent not found: "${subArg}"\n\nAvailable:\n\n${formatList()}`);
-            }
-            if (activeBackendIds.includes(resolved.backendId)) {
-              return reply(`*${resolved.backendName}* is already in your team.`);
-            }
-            await addBackend(resolved.backendId);
-            return reply(`✅ *${resolved.backendName}* joined the team.\n\nActive agents:\n\n${formatList()}`);
-          }
-
-          if (sub === 'kick') {
-            if (!subArg) {
-              // /team kick — kick all
-              if (activeBackendIds.length === 0) {
-                return reply('No active agents to kick.');
-              }
-              await removeAllBackends();
-              return reply(`✅ Kicked all agents.\n\nAvailable:\n\n${formatList()}`);
-            }
-            const resolved = resolveAddRemoveArg(subArg, allBackends);
-            if (resolved.type !== 'backend' || !resolved.backendId) {
-              return reply(`Agent not found: "${subArg}"\n\nActive agents:\n\n${formatList()}`);
-            }
-            if (!activeBackendIds.includes(resolved.backendId)) {
-              return reply(`*${resolved.backendName}* is not currently in your team.`);
-            }
-            await removeBackend(resolved.backendId);
-            return reply(`✅ Kicked *${resolved.backendName}*.\n\nActive agents:\n\n${formatList()}`);
-          }
-
-          return reply(`Unknown subcommand. Usage:\n\`/team invite <name|#>\`\n\`/team kick <name|#>\``);
-        }
-
-        case 'backends': {
-          if (allBackends.length === 0) {
-            return reply('No AI backends have been configured. Ask your admin to set one up.');
-          }
-          const active = allBackends.filter((b) => activeBackendIds.includes(b.id));
-          const activeStr = active.length > 0
-            ? `\n\n*Active:* ${active.map((b) => b.name).join(', ')}`
-            : '\n\nNo backends active. Use `/team invite <name|#>` to add one.';
-          return reply(`*Available backends:*\n\n${formatList()}${activeStr}`);
         }
 
         case 'clear': {
@@ -856,52 +685,10 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
 
           return result;
         }
-      }
-    }
-
-    // ── Direct message: agent> message ─────────────────────────────────
-    if (cmd.kind === 'direct') {
-      if (!cmd.message) {
-        return reply(`Usage: \`${cmd.target}> message\``);
-      }
-
-      const resolved = resolveTarget(cmd.target, allBackends);
-
-      if (resolved.type === 'not_found') {
-        const names = allBackends.map((b) => b.name.toLowerCase()).join(', ');
-        return reply(`Unknown agent: "${cmd.target}". Available: clawscale, ${names}`);
-      }
-
-      if (resolved.type === 'clawscale') {
-        if (!clawscaleActive) {
-          return reply('ClawScale assistant is currently disabled.');
-        }
-        // Check if the message is a system command (e.g. "> /clear")
-        const innerCmd = parseCommand(cmd.message);
-        if (innerCmd?.kind === 'system') {
-          // Execute as system command by re-routing with __forceSystem flag
-          return routeInboundMessage({
-            ...input,
-            text: cmd.message,
-            attachments: undefined,
-            attachmentPolicy: undefined,
-            meta: { ...meta, __forceSystem: true },
-          });
-        }
-        // Direct mode — run agent loop (may execute commands)
-        return runAgent(cmd.message, 'direct');
-      }
-
-      // Route to specific backend
-      const backend = allBackends.find((b) => b.id === resolved.backendId);
-      if (!backend) {
-        return reply(`Backend "${cmd.target}" is not available.`);
-      }
-      return routeToBackends([backend]);
     }
   }
 
-  // 9. No command — route to active backends or show menu
+  // 9. No command — route to active backends or auto-select the default bridge.
   if (activeBackends.length > 0) {
     return routeToBackends(activeBackends);
   }
@@ -917,17 +704,6 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       await addBackend(autoSelect.id);
       return routeToBackends([autoSelect]);
     }
-  }
-
-  // Run ClawScale agent loop (handles knowledge base + command execution)
-  if (clawscaleActive) {
-    const result = await runAgent(text, 'select');
-    // If agent returned empty (silent), fall back to welcome menu
-    if (!result.reply) {
-      const menuReply = buildSelectionMenu(clawscaleName, allBackends);
-      return reply(menuReply);
-    }
-    return result;
   }
 
   return null;
@@ -996,18 +772,14 @@ async function runBackend(
     renewalUrl?: string;
     channelScope?: 'personal' | 'tenant_shared';
   },
-  palmosCtx?: { endUserId: string; tenantId: string; conversationId: string; displayName?: string },
   meta?: { sender?: string; platform?: string },
 ): Promise<BackendReplyPayload> {
   const history = await loadHistory(conversationIds, backend.id);
   const cfg = (backend.config ?? {}) as AiBackendProviderConfig;
-  // Pass backend ID through for cli-bridge WebSocket lookup
-  (cfg as any).__backendId = backend.id;
   const backendReply = await generateReply({
     backend: {
       type: backend.type as AiBackendType,
       config: cfg,
-      ...(backend.type === 'palmos' && palmosCtx ? { palmosCtx } : {}),
     },
     history,
     sender: meta?.sender,

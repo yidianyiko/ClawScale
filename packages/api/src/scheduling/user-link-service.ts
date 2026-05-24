@@ -75,7 +75,7 @@ interface UserLinkClient {
 type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
 type FriendRequestWriteClient = Pick<
   UserLinkClient,
-  'linkSession' | 'friendRequest' | 'accountBlock'
+  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock'
 >;
 type UserLinkTransactionClient = Pick<
   UserLinkClient,
@@ -500,6 +500,67 @@ export async function sendFriendRequestFromLinkSession(
   return result.request;
 }
 
+export async function sendFriendRequestByUserLinkCode(
+  client: UserLinkClient,
+  input: {
+    code: string;
+    requesterAccountId: string;
+    message: string | null;
+    idempotencyKey: string;
+  },
+): Promise<Record<string, unknown>> {
+  const code = nonEmpty(input.code, 'invalid_user_link');
+  const requesterAccountId = nonEmpty(input.requesterAccountId, 'invalid_account');
+
+  const result = await runFriendRequestWrite(client, async (writeClient): Promise<FriendRequestWriteResult> => {
+    const userLink = await writeClient.userLink.findFirst({
+      where: { code, status: 'active' },
+    });
+    if (!userLink) {
+      throw new Error('user_link_not_found');
+    }
+    if (userLink.providerAccountId === requesterAccountId) {
+      throw new Error('cannot_friend_self');
+    }
+
+    const block = await writeClient.accountBlock.findFirst({
+      where: {
+        blockerAccountId: userLink.providerAccountId,
+        blockedAccountId: requesterAccountId,
+      },
+    });
+    if (block) {
+      throw new Error('friend_request_blocked');
+    }
+
+    const existing = await findPendingFriendRequest(
+      writeClient,
+      requesterAccountId,
+      userLink.providerAccountId,
+    );
+    const request = existing ?? (await createFriendRequestWithConflictRead(writeClient, {
+      requesterAccountId,
+      targetAccountId: userLink.providerAccountId,
+      linkSessionId: null,
+      message: input.message,
+      idempotencyKey: input.idempotencyKey,
+    }));
+    return {
+      request,
+      notification: {
+        request,
+        requesterAccountId,
+        targetAccountId: userLink.providerAccountId,
+      },
+    };
+  });
+
+  if (result.notification) {
+    await ensureFriendRequestNotification(client, result.notification);
+  }
+  return result.request;
+}
+
 async function findPendingFriendRequest(
   client: Pick<UserLinkClient, 'friendRequest'>,
   requesterAccountId: string,
@@ -519,7 +580,7 @@ async function createFriendRequestWithConflictRead(
   input: {
     requesterAccountId: string;
     targetAccountId: string;
-    linkSessionId: string;
+    linkSessionId: string | null;
     message: string | null;
     idempotencyKey: string;
   },

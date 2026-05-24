@@ -29,6 +29,12 @@ describe('gateway API topology', () => {
     expect(indexSource).not.toContain('initWABusinessAdapters');
   });
 
+  it('does not initialize retired provider bridge websocket support', () => {
+    expect(indexSource).not.toContain('initBridgeWebSocket');
+    expect(indexSource).not.toContain('./gateway/bridge-ws.js');
+    expect(indexSource).not.toContain('/bridge');
+  });
+
   it('keeps active customer, admin, shared-channel, and bridge routes mounted', () => {
     expect(indexSource).toContain("app.route('/api/auth', customerAuthRouter)");
     expect(indexSource).toContain("app.route('/api/customer/agent-instance', customerAgentInstanceRouter)");

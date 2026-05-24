@@ -5,6 +5,7 @@ const scheduling = vi.hoisted(() => ({
   getOrCreateActiveUserLink: vi.fn(),
   resetUserLink: vi.fn(),
   disableUserLink: vi.fn(),
+  sendFriendRequestByUserLinkCode: vi.fn(),
 }));
 
 const friendships = vi.hoisted(() => ({
@@ -47,6 +48,7 @@ vi.mock('../scheduling/user-link-service.js', () => ({
   getOrCreateActiveUserLink: scheduling.getOrCreateActiveUserLink,
   resetUserLink: scheduling.resetUserLink,
   disableUserLink: scheduling.disableUserLink,
+  sendFriendRequestByUserLinkCode: scheduling.sendFriendRequestByUserLinkCode,
 }));
 vi.mock('../scheduling/friendship-service.js', () => friendships);
 vi.mock('../scheduling/shared-reminder-service.js', () => sharedReminders);
@@ -69,6 +71,7 @@ describe('internal scheduling routes', () => {
     scheduling.getOrCreateActiveUserLink.mockResolvedValue({ code: 'AbCdEfGhIjK_' });
     scheduling.resetUserLink.mockResolvedValue({ code: 'ResetCode123' });
     scheduling.disableUserLink.mockResolvedValue({ count: 1 });
+    scheduling.sendFriendRequestByUserLinkCode.mockResolvedValue({ id: 'fr_1', status: 'pending' });
     friendships.listFriendRequests.mockResolvedValue([{ id: 'fr_1', status: 'pending' }]);
     friendships.acceptFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'accepted' });
     friendships.rejectFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'rejected' });
@@ -237,6 +240,34 @@ describe('internal scheduling routes', () => {
     }
   });
 
+  it('routes user-link-code friend requests with the internal customer id as requester', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/send_friend_request_by_user_link_code', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_requester',
+        user_link_code: 'AbCdEfGhIjK_',
+        message: '一起测试提醒',
+        idempotency_key: 'idem_code',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: { id: 'fr_1', status: 'pending' },
+    });
+    expect(scheduling.sendFriendRequestByUserLinkCode).toHaveBeenCalledWith(db as never, {
+      requesterAccountId: 'ck_requester',
+      code: 'AbCdEfGhIjK_',
+      message: '一起测试提醒',
+      idempotencyKey: 'idem_code',
+    });
+  });
+
   it('routes friendship and block tools with cleanup runtime wiring', async () => {
     const cases = [
       {
@@ -396,6 +427,57 @@ describe('internal scheduling routes', () => {
       expect(res.status).toBe(testCase.status);
       expect(testCase.service).toHaveBeenCalledWith(...testCase.expected);
     }
+  });
+
+  it('resolves create_shared_reminder invitee_name against active friends', async () => {
+    const runtimePort = {
+      createRuntimeReminder: reminderRuntime.createRuntimeReminder,
+      cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder,
+    };
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_provider',
+        accountBId: 'ck_nora',
+        status: 'active',
+        accountA: { id: 'ck_provider', displayName: 'Ming Smoke', avatarUrl: null },
+        accountB: { id: 'ck_nora', displayName: 'Nora Smoke', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/create_shared_reminder', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        invitee_name: 'Nora',
+        title: '开会',
+        fire_at: '2026-05-25T06:00:00.000Z',
+        timezone: 'Asia/Tokyo',
+        idempotency_key: 'shared-by-name',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
+      accountId: 'ck_provider',
+    });
+    expect(sharedReminders.createSharedReminder).toHaveBeenCalledWith(
+      db as never,
+      runtimePort,
+      {
+        requesterAccountId: 'ck_provider',
+        inviteeAccountId: 'ck_nora',
+        title: '开会',
+        fireAt: '2026-05-25T06:00:00.000Z',
+        timezone: 'Asia/Tokyo',
+        durationMinutes: null,
+        idempotencyKey: 'shared-by-name',
+      },
+    );
   });
 
   it('routes list_friend_calendar_facts with trusted requester identity', async () => {
