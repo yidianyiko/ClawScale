@@ -41,6 +41,9 @@ const db = {
     findMany: vi.fn(),
     updateMany: vi.fn(),
   },
+  deliveryRoute: {
+    findFirst: vi.fn(),
+  },
   $transaction: vi.fn(),
 };
 
@@ -55,10 +58,14 @@ describe('friendship service', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
+    process.env.COKE_GATEWAY_OUTBOUND_URL = 'http://127.0.0.1:4041/api/outbound';
     db.$transaction.mockImplementation(async (fn) => fn(db));
     db.sharedReminderRequest.findMany.mockResolvedValue([]);
     db.reminderProjection.findFirst.mockResolvedValue(null);
     db.reminderProjection.deleteMany.mockResolvedValue({ count: 0 });
+    db.deliveryRoute.findFirst.mockResolvedValue({
+      businessConversationKey: 'bc_latest',
+    });
     db.productNotification.create.mockResolvedValue({
       id: 'pn_1',
       recipientAccountId: 'ck_z',
@@ -79,6 +86,7 @@ describe('friendship service', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    delete process.env.COKE_GATEWAY_OUTBOUND_URL;
   });
 
   function fakeReminderRuntime(state: {
@@ -137,7 +145,7 @@ describe('friendship service', () => {
     });
   });
 
-  it('delivers accepted friend-request notifications to the bridge immediately', async () => {
+  it('delivers accepted friend-request notifications to outbound immediately', async () => {
     db.friendRequest.updateMany.mockResolvedValueOnce({ count: 1 });
     db.friendRequest.findUnique.mockResolvedValueOnce({
       id: 'fr_1',
@@ -160,7 +168,7 @@ describe('friendship service', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8090/bridge/inbound',
+      'http://127.0.0.1:4041/api/outbound',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(String),
@@ -168,15 +176,12 @@ describe('friendship service', () => {
     );
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
+      output_id: 'friend-request:fr_1:accepted:idem_accept',
       customer_id: 'ck_z',
-      inbound_event_id: 'friend-request:fr_1:accepted:idem_accept',
-      message_type: 'product_notification',
-      product_notification: {
-        request_id: 'fr_1',
-        request_type: 'friend_request',
-        actor_account_id: 'ck_a',
-        kind: 'friend_request_accepted',
-      },
+      business_conversation_key: 'bc_latest',
+      idempotency_key: 'friend-request:fr_1:accepted:idem_accept',
+      message_type: 'text',
+      delivery_mode: 'push',
     });
     expect(db.productNotification.updateMany).toHaveBeenCalledWith({
       where: { id: 'pn_1', status: { in: ['pending_delivery', 'failed'] } },
@@ -215,7 +220,7 @@ describe('friendship service', () => {
       return result;
     });
     globalThis.fetch = vi.fn().mockImplementation(async () => {
-      events.push('bridge:fetch');
+      events.push('outbound:fetch');
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -263,7 +268,7 @@ describe('friendship service', () => {
       'transaction:start',
       'transaction:commit',
       'notification:create',
-      'bridge:fetch',
+      'outbound:fetch',
       'notification:delivered',
     ]);
   });

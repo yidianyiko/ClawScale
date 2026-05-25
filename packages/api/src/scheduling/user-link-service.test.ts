@@ -16,6 +16,7 @@ const db = {
   friendRequest: { findFirst: vi.fn(), create: vi.fn() },
   accountBlock: { findFirst: vi.fn() },
   productNotification: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+  deliveryRoute: { findFirst: vi.fn() },
   $transaction: vi.fn(),
 };
 
@@ -30,7 +31,11 @@ describe('user link service', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
+    process.env.COKE_GATEWAY_OUTBOUND_URL = 'http://127.0.0.1:4041/api/outbound';
     db.$transaction.mockImplementation(async (fn) => fn(db));
+    db.deliveryRoute.findFirst.mockResolvedValue({
+      businessConversationKey: 'bc_latest',
+    });
     db.productNotification.create.mockResolvedValue({
       id: 'pn_1',
       recipientAccountId: 'acct_a',
@@ -53,6 +58,7 @@ describe('user link service', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    delete process.env.COKE_GATEWAY_OUTBOUND_URL;
     vi.useRealTimers();
   });
 
@@ -349,7 +355,7 @@ describe('user link service', () => {
       }),
     });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8090/bridge/inbound',
+      'http://127.0.0.1:4041/api/outbound',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(String),
@@ -379,7 +385,7 @@ describe('user link service', () => {
       return result;
     });
     globalThis.fetch = vi.fn().mockImplementation(async () => {
-      events.push('bridge:fetch');
+      events.push('outbound:fetch');
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -437,7 +443,7 @@ describe('user link service', () => {
       'transaction:commit',
       'notification:find',
       'notification:create',
-      'bridge:fetch',
+      'outbound:fetch',
       'notification:delivered',
     ]);
   });

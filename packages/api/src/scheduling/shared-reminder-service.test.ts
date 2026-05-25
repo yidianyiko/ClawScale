@@ -74,6 +74,11 @@ function fakeSharedReminderClient(state: {
       findMany: vi.fn(),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    deliveryRoute: {
+      findFirst: vi.fn().mockResolvedValue({
+        businessConversationKey: 'bc_latest',
+      }),
+    },
   };
 }
 
@@ -91,6 +96,7 @@ describe('shared reminder service', () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    process.env.COKE_GATEWAY_OUTBOUND_URL = 'http://127.0.0.1:4041/api/outbound';
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -101,6 +107,7 @@ describe('shared reminder service', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    delete process.env.COKE_GATEWAY_OUTBOUND_URL;
   });
 
   it('creates requester projection immediately and notifies invitee', async () => {
@@ -140,7 +147,7 @@ describe('shared reminder service', () => {
       }),
     });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8090/bridge/inbound',
+      'http://127.0.0.1:4041/api/outbound',
       expect.objectContaining({
         method: 'POST',
         body: expect.any(String),
@@ -148,15 +155,12 @@ describe('shared reminder service', () => {
     );
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
+      output_id: 'shared-reminder:srr_1:shared_reminder_request',
       customer_id: 'acct_a',
-      inbound_event_id: 'shared-reminder:srr_1:shared_reminder_request',
-      message_type: 'product_notification',
-      product_notification: {
-        request_id: 'srr_1',
-        request_type: 'shared_reminder_request',
-        allowed_actions: ['accept', 'reject'],
-        kind: 'shared_reminder_request',
-      },
+      business_conversation_key: 'bc_latest',
+      idempotency_key: 'shared-reminder:srr_1:shared_reminder_request',
+      message_type: 'text',
+      delivery_mode: 'push',
     });
     expect(client.productNotification.updateMany).toHaveBeenCalledWith({
       where: { id: 'pn_1', status: { in: ['pending_delivery', 'failed'] } },

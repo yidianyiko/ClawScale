@@ -25,6 +25,11 @@ function fakeNotificationClient() {
       findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    deliveryRoute: {
+      findFirst: vi.fn().mockResolvedValue({
+        businessConversationKey: 'bc_latest',
+      }),
+    },
   };
 }
 
@@ -84,6 +89,14 @@ function inMemoryNotificationClient() {
         return { count };
       }),
     },
+    deliveryRoute: {
+      findFirst: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if (where['cokeAccountId'] === 'acct_a' && where['isActive'] === true) {
+          return { businessConversationKey: 'bc_latest' };
+        }
+        return null;
+      }),
+    },
   };
 }
 
@@ -93,6 +106,8 @@ describe('product notification service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.COKE_BRIDGE_INBOUND_URL = 'http://127.0.0.1:8090/bridge/inbound';
+    process.env.COKE_GATEWAY_OUTBOUND_URL = 'http://127.0.0.1:4041/api/outbound';
+    process.env.CLAWSCALE_OUTBOUND_API_KEY = 'outbound-secret';
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -104,10 +119,12 @@ describe('product notification service', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     delete process.env.COKE_BRIDGE_INBOUND_URL;
+    delete process.env.COKE_GATEWAY_OUTBOUND_URL;
     delete process.env.COKE_BRIDGE_API_KEY;
+    delete process.env.CLAWSCALE_OUTBOUND_API_KEY;
   });
 
-  it('delivers product notification metadata to the bridge', async () => {
+  it('delivers product notification through the recipient active outbound route', async () => {
     const client = fakeNotificationClient();
 
     await enqueueProductNotification(client as never, {
@@ -125,33 +142,35 @@ describe('product notification service', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:8090/bridge/inbound',
+      'http://127.0.0.1:4041/api/outbound',
       expect.objectContaining({
         method: 'POST',
+        headers: expect.objectContaining({
+          authorization: 'Bearer outbound-secret',
+        }),
         body: expect.any(String),
       }),
     );
+    expect(client.deliveryRoute.findFirst).toHaveBeenCalledWith({
+      where: {
+        cokeAccountId: 'acct_a',
+        isActive: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { businessConversationKey: true },
+    });
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
     expect(body).toEqual({
+      output_id: 'friend-request:fr_1:target',
       customer_id: 'acct_a',
-      tenant_id: 'product_notification',
-      channel_id: 'product_notification',
-      platform: 'product_notification',
-      external_id: 'acct_a',
-      end_user_id: 'acct_a',
-      business_conversation_key: 'product-notification:acct_a',
-      gateway_conversation_id: 'product-notification:acct_a',
-      inbound_event_id: 'friend-request:fr_1:target',
-      input: '你有一个新的好友请求，请确认或拒绝。',
+      business_conversation_key: 'bc_latest',
+      message_type: 'text',
       text: '你有一个新的好友请求，请确认或拒绝。',
-      timestamp: expect.any(Number),
-      message_type: 'product_notification',
-      product_notification: {
-        request_id: 'fr_1',
-        request_type: 'friend_request',
-        allowed_actions: ['accept', 'reject'],
-        kind: 'friend_request',
-      },
+      delivery_mode: 'push',
+      expect_output_timestamp: expect.any(String),
+      idempotency_key: 'friend-request:fr_1:target',
+      trace_id: 'friend-request:fr_1:target',
+      causal_inbound_event_id: 'friend-request:fr_1:target',
     });
   });
 
@@ -194,18 +213,44 @@ describe('product notification service', () => {
     });
     const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
+      output_id: 'shared-reminder:sr_1:shared_reminder_request',
       customer_id: 'acct_a',
-      tenant_id: 'product_notification',
-      channel_id: 'product_notification',
-      platform: 'product_notification',
-      external_id: 'acct_a',
-      end_user_id: 'acct_a',
-      business_conversation_key: 'product-notification:acct_a',
-      gateway_conversation_id: 'product-notification:acct_a',
-      inbound_event_id: 'shared-reminder:sr_1:shared_reminder_request',
-      input: '你有一个共享提醒请求，请确认或拒绝。',
+      business_conversation_key: 'bc_latest',
+      message_type: 'text',
       text: '你有一个共享提醒请求，请确认或拒绝。',
-      message_type: 'product_notification',
+      delivery_mode: 'push',
+      idempotency_key: 'shared-reminder:sr_1:shared_reminder_request',
+      trace_id: 'shared-reminder:sr_1:shared_reminder_request',
+      causal_inbound_event_id: 'shared-reminder:sr_1:shared_reminder_request',
+    });
+  });
+
+  it('marks product notifications failed when the recipient has no active delivery route', async () => {
+    const client = fakeNotificationClient();
+    client.deliveryRoute.findFirst.mockResolvedValueOnce(null);
+
+    await enqueueProductNotification(client as never, {
+      requestId: 'fr_1',
+      requestType: 'friend_request',
+      recipientAccountId: 'acct_a',
+      idempotencyKey: 'friend-request:fr_1:target',
+      kind: 'friend_request',
+      text: '你有一个新的好友请求，请确认或拒绝。',
+      metadata: {
+        request_id: 'fr_1',
+        request_type: 'friend_request',
+        allowed_actions: ['accept', 'reject'],
+      },
+    });
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(client.productNotification.updateMany).toHaveBeenCalledWith({
+      where: { id: 'pn_1', status: { in: ['pending_delivery', 'failed'] } },
+      data: {
+        status: 'failed',
+        attempts: { increment: 1 },
+        lastError: 'product_notification_missing_delivery_route',
+      },
     });
   });
 
