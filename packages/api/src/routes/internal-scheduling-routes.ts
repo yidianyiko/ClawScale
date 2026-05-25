@@ -170,30 +170,30 @@ async function resolveFriendRequestId(
   }
 
   const friendName = requestFriendName(body);
-  if (!friendName) {
-    return '';
-  }
 
   const actorField = toolName === 'cancel_friend_request' ? 'requesterAccountId' : 'targetAccountId';
   const requests = (await listFriendRequests(db as never, {
     accountId: actorAccountId,
   })) as FriendRequestLookupRecord[];
-  const matches = requests.filter((request) => {
+  const pendingActorRequests = requests.filter((request) => {
     if (request.status !== 'pending') {
       return false;
     }
     if (request[actorField] !== actorAccountId) {
       return false;
     }
+    return true;
+  });
+  const matches = friendName ? pendingActorRequests.filter((request) => {
     const displayName = friendRequestProfileName(request, actorField);
     return displayName === friendName || displayName.includes(friendName);
-  });
+  }) : pendingActorRequests;
 
   if (matches.length === 0) {
-    throw new Error('friend_name_not_found');
+    throw new Error(friendName ? 'friend_name_not_found' : 'friend_request_not_found');
   }
   if (matches.length > 1) {
-    throw new Error('friend_name_ambiguous');
+    throw new Error(friendName ? 'friend_name_ambiguous' : 'friend_request_ambiguous');
   }
   return matches[0]?.id ?? '';
 }

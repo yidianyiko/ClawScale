@@ -41,6 +41,15 @@ export interface InboundMessage {
   meta?: Record<string, unknown>;
 }
 
+type ProductNotificationContext = {
+  request_id: string;
+  request_type: 'friend_request' | 'shared_reminder_request';
+  kind: string;
+  delivered_at?: string;
+  allowed_actions?: unknown;
+  actor_account_id?: unknown;
+};
+
 interface ReplyEntry {
   backendId: string | null;
   backendName: string | null;
@@ -84,6 +93,81 @@ function getSharedChannelIdentityType(provider: string): string {
     return 'wa_id';
   }
   return 'external_id';
+}
+
+function readPayloadRecord(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {};
+  }
+  return payload as Record<string, unknown>;
+}
+
+async function resolveRecentPendingProductNotificationContext(
+  cokeAccountId: string | null,
+): Promise<ProductNotificationContext | null> {
+  if (!cokeAccountId) return null;
+
+  const deliveredAfter = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const notification = await db.productNotification.findFirst({
+    where: {
+      recipientAccountId: cokeAccountId,
+      status: 'delivered',
+      deliveredAt: { gte: deliveredAfter },
+      OR: [
+        {
+          friendRequest: {
+            is: {
+              targetAccountId: cokeAccountId,
+              status: 'pending',
+            },
+          },
+        },
+        {
+          sharedReminderRequest: {
+            is: {
+              inviteeAccountId: cokeAccountId,
+              status: 'pending_invitee_confirmation',
+            },
+          },
+        },
+      ],
+    },
+    orderBy: [{ deliveredAt: 'desc' }, { createdAt: 'desc' }],
+    select: {
+      kind: true,
+      payload: true,
+      deliveredAt: true,
+      friendRequestId: true,
+      sharedReminderRequestId: true,
+    },
+  });
+  if (!notification) return null;
+
+  const payload = readPayloadRecord(notification.payload);
+  const metadata = readPayloadRecord(payload.metadata);
+  const requestType =
+    metadata.request_type === 'shared_reminder_request' ||
+    notification.sharedReminderRequestId
+      ? 'shared_reminder_request'
+      : 'friend_request';
+  const requestId = String(
+    metadata.request_id ??
+      notification.friendRequestId ??
+      notification.sharedReminderRequestId ??
+      '',
+  ).trim();
+  if (!requestId) return null;
+
+  return {
+    request_id: requestId,
+    request_type: requestType,
+    kind: notification.kind,
+    ...(notification.deliveredAt
+      ? { delivered_at: notification.deliveredAt.toISOString() }
+      : {}),
+    ...(metadata.allowed_actions ? { allowed_actions: metadata.allowed_actions } : {}),
+    ...(metadata.actor_account_id ? { actor_account_id: metadata.actor_account_id } : {}),
+  };
 }
 
 export async function routeInboundMessage(input: InboundMessage): Promise<RouteResult | null> {
@@ -310,6 +394,27 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
     previousClawscaleUserId: conversation.clawscaleUserId ?? null,
     deliveryRoute: activeDeliveryRoute,
   });
+  const productNotificationContext =
+    await resolveRecentPendingProductNotificationContext(routeCokeAccountId);
+  const inboundMetadata = {
+    ...(meta ?? {}),
+    ...(personalChannelOwnership ?? {}),
+    ...(resolvedChannelCustomerId
+      ? { customerId: resolvedChannelCustomerId, customer_id: resolvedChannelCustomerId }
+      : {}),
+    ...(resolvedCokeAccountId
+      ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
+      : {}),
+    ...(routeBinding.businessConversationKey
+      ? { businessConversationKey: routeBinding.businessConversationKey }
+      : {}),
+    ...(productNotificationContext
+      ? { product_notification: productNotificationContext }
+      : {}),
+    gatewayConversationId: routeBinding.gatewayConversationId,
+    inboundEventId,
+    ...(normalizedAttachments.length ? { attachments: normalizedAttachments } : {}),
+  };
 
   await db.message.create({
     data: {
@@ -317,22 +422,7 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
       conversationId: conversation.id,
       role: 'user',
       content: text,
-      metadata: {
-        ...(meta ?? {}),
-        ...(personalChannelOwnership ?? {}),
-        ...(resolvedChannelCustomerId
-          ? { customerId: resolvedChannelCustomerId, customer_id: resolvedChannelCustomerId }
-          : {}),
-        ...(resolvedCokeAccountId
-          ? { cokeAccountId: resolvedCokeAccountId, coke_account_id: resolvedCokeAccountId }
-          : {}),
-        ...(routeBinding.businessConversationKey
-          ? { businessConversationKey: routeBinding.businessConversationKey }
-          : {}),
-        gatewayConversationId: routeBinding.gatewayConversationId,
-        inboundEventId,
-        ...(normalizedAttachments.length ? { attachments: normalizedAttachments } : {}),
-      } as any,
+      metadata: inboundMetadata as any,
     },
   });
 
@@ -413,6 +503,9 @@ export async function routeInboundMessage(input: InboundMessage): Promise<RouteR
             ? { cokeAccountId: routeCokeAccountId, coke_account_id: routeCokeAccountId }
             : {}),
           ...(personalChannelOwnership ?? {}),
+          ...(productNotificationContext
+            ? { product_notification: productNotificationContext }
+            : {}),
           ...(resolvedAccessAccount && resolvedAccessAccountMetadata
             ? {
                 cokeAccountDisplayName: resolvedAccessAccount.displayName,

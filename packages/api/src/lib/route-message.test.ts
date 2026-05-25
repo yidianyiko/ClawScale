@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   endUser: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   conversation: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   deliveryRoute: { findFirst: vi.fn() },
+  productNotification: { findFirst: vi.fn() },
   message: { create: vi.fn(), findMany: vi.fn() },
   cokeAccount: { findUnique: vi.fn() },
   aiBackend: { findMany: vi.fn() },
@@ -92,6 +93,7 @@ describe('routeInboundMessage', () => {
     });
     db.conversation.findMany.mockResolvedValue([{ id: 'conv_1' }, { id: 'conv_2' }]);
     db.deliveryRoute.findFirst.mockResolvedValue(null);
+    db.productNotification.findFirst.mockResolvedValue(null);
     db.message.create.mockResolvedValue({});
     db.message.findMany.mockResolvedValue([]);
     db.membership.findFirst.mockResolvedValue({
@@ -1541,6 +1543,86 @@ describe('routeInboundMessage', () => {
         gatewayConversationId: 'conv_1',
         inboundEventId: expect.any(String),
         channelScope: 'personal',
+      }),
+    );
+  });
+
+  it('threads a recent pending product notification into the next bridge turn metadata', async () => {
+    db.channel.findUnique.mockResolvedValue({
+      id: 'ch_1',
+      tenantId: 'ten_1',
+      customerId: 'ck_customer_1',
+      ownershipKind: 'customer',
+      agentId: null,
+      status: 'connected',
+      scope: 'personal',
+      ownerClawscaleUserId: 'csu_1',
+      ownerClawscaleUser: { id: 'csu_1', cokeAccountId: 'ck_customer_1' },
+    });
+    db.endUser.findUnique.mockResolvedValue({
+      id: 'eu_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      name: 'Alice',
+      status: 'allowed',
+      linkedTo: null,
+      clawscaleUserId: null,
+      clawscaleUser: null,
+      activeBackends: [{ backendId: 'ab_1' }],
+    });
+    db.productNotification.findFirst.mockResolvedValue({
+      kind: 'friend_request',
+      payload: {
+        metadata: {
+          request_id: 'fr_1',
+          request_type: 'friend_request',
+          allowed_actions: ['accept', 'reject'],
+          actor_account_id: 'ck_requester',
+        },
+      },
+      deliveredAt: new Date('2026-05-25T02:00:00.000Z'),
+      friendRequestId: 'fr_1',
+      sharedReminderRequestId: null,
+    });
+
+    await routeInboundMessage({
+      channelId: 'ch_1',
+      externalId: 'wxid_123',
+      displayName: 'Alice',
+      text: '确认',
+      meta: { platform: 'wechat_personal' },
+    });
+
+    const expectedContext = {
+      request_id: 'fr_1',
+      request_type: 'friend_request',
+      kind: 'friend_request',
+      delivered_at: '2026-05-25T02:00:00.000Z',
+      allowed_actions: ['accept', 'reject'],
+      actor_account_id: 'ck_requester',
+    };
+    expect(db.productNotification.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          recipientAccountId: 'ck_customer_1',
+          status: 'delivered',
+        }),
+      }),
+    );
+    const firstGenerateCall = vi.mocked(generateReply).mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(firstGenerateCall?.metadata?.product_notification).toEqual(expectedContext);
+    expect(db.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          role: 'user',
+          content: '确认',
+          metadata: expect.objectContaining({
+            product_notification: expectedContext,
+          }),
+        }),
       }),
     );
   });
