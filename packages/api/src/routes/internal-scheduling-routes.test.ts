@@ -852,7 +852,18 @@ describe('internal scheduling routes', () => {
     });
   });
 
-  it('fails closed when list_shared_reminders has no friend name', async () => {
+  it('lists shared reminders for the current account without a friend name', async () => {
+    sharedReminders.listSharedReminders.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'acct_student',
+        inviteeAccountId: 'acct_bob',
+        status: 'accepted',
+        requester: { displayName: 'Alice Smoke' },
+        invitee: { displayName: 'Bob Smoke' },
+      },
+    ]);
+
     const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
       method: 'POST',
       headers: {
@@ -864,10 +875,80 @@ describe('internal scheduling routes', () => {
       }),
     });
 
+    expect(res.status).toBe(200);
+    expect(friendships.listFriends).not.toHaveBeenCalled();
+    expect(sharedReminders.listSharedReminders).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+      friendAccountId: null,
+      status: null,
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        friend_name: null,
+        status: null,
+        from_date: null,
+        to_date: null,
+        timezone: 'UTC',
+        shared_reminders: [
+          {
+            id: 'srr_1',
+            requesterAccountId: 'acct_student',
+            inviteeAccountId: 'acct_bob',
+            status: 'accepted',
+            requester: { displayName: 'Alice Smoke' },
+            invitee: { displayName: 'Bob Smoke' },
+          },
+        ],
+      },
+    });
+  });
+
+  it('passes date range filters to list_shared_reminders', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        from_date: '2026-05-25',
+        to_date: '2026-05-25',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sharedReminders.listSharedReminders).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+      friendAccountId: null,
+      status: null,
+      fromDate: '2026-05-25',
+      toDate: '2026-05-25',
+      timezone: 'Asia/Tokyo',
+    });
+  });
+
+  it('rejects invalid list_shared_reminders date ranges', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        from_date: '2026-05-26',
+        to_date: '2026-05-25',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
       ok: false,
-      error: 'friend_not_found',
+      error: 'invalid_body',
     });
     expect(sharedReminders.listSharedReminders).not.toHaveBeenCalled();
   });

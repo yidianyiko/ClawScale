@@ -186,6 +186,75 @@ function splitInstant(fireAt: string | Date, timezone: string): { localDate: str
   };
 }
 
+function parseLocalDate(value: string): { year: number; month: number; day: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error('invalid_body');
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    throw new Error('invalid_body');
+  }
+  return { year, month, day };
+}
+
+function timezoneOffsetMs(timezone: string, instant: Date): number {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'shortOffset',
+      hour: '2-digit',
+    }).formatToParts(instant);
+  } catch {
+    throw new Error('invalid_body');
+  }
+  const zoneName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
+  const match = /^GMT(?:(?<sign>[+-])(?<hours>\d{1,2})(?::(?<minutes>\d{2}))?)?$/.exec(zoneName);
+  if (!match?.groups) {
+    throw new Error('invalid_body');
+  }
+  const sign = match.groups['sign'] === '-' ? -1 : 1;
+  const hours = Number(match.groups['hours'] ?? '0');
+  const minutes = Number(match.groups['minutes'] ?? '0');
+  return sign * (hours * 60 + minutes) * 60 * 1000;
+}
+
+function localDateStartUtc(value: string, timezone: string): Date {
+  const local = parseLocalDate(value);
+  const guess = new Date(Date.UTC(local.year, local.month - 1, local.day));
+  const first = new Date(guess.getTime() - timezoneOffsetMs(timezone, guess));
+  return new Date(guess.getTime() - timezoneOffsetMs(timezone, first));
+}
+
+function addUtcDays(value: Date, days: number): Date {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function sharedReminderDateWhere(input: {
+  fromDate?: string | null;
+  toDate?: string | null;
+  timezone?: string | null;
+}): Record<string, unknown> | null {
+  if (!input.fromDate && !input.toDate) {
+    return null;
+  }
+  if (!input.fromDate || !input.toDate || input.fromDate > input.toDate) {
+    throw new Error('invalid_body');
+  }
+  const timezone = nonEmpty(input.timezone ?? '', 'invalid_body');
+  const gte = localDateStartUtc(input.fromDate, timezone);
+  const nextLocalDayStart = localDateStartUtc(input.toDate, timezone);
+  return { gte, lt: addUtcDays(nextLocalDayStart, 1) };
+}
+
 function requireRuntimeReminderId(value: unknown): string {
   if (typeof value === 'string' && value.trim()) {
     return value;
@@ -1228,20 +1297,31 @@ export async function listSharedReminders(
   client: SharedReminderClient,
   input: {
     accountId: string;
-    friendAccountId: string;
+    friendAccountId?: string | null;
     status?: SharedReminderRequestStatus | null;
+    fromDate?: string | null;
+    toDate?: string | null;
+    timezone?: string | null;
   },
 ): Promise<SharedReminderRequestRecord[]> {
   const accountId = nonEmpty(input.accountId, 'invalid_account');
-  const friendAccountId = nonEmpty(input.friendAccountId, 'invalid_account');
-  const where: Record<string, unknown> = {
-    OR: [
-      { requesterAccountId: accountId, inviteeAccountId: friendAccountId },
-      { requesterAccountId: friendAccountId, inviteeAccountId: accountId },
-    ],
-  };
+  const friendAccountId = input.friendAccountId?.trim() ?? '';
+  const where: Record<string, unknown> = friendAccountId
+    ? {
+        OR: [
+          { requesterAccountId: accountId, inviteeAccountId: friendAccountId },
+          { requesterAccountId: friendAccountId, inviteeAccountId: accountId },
+        ],
+      }
+    : {
+        OR: [{ requesterAccountId: accountId }, { inviteeAccountId: accountId }],
+      };
   if (input.status) {
     where.status = input.status;
+  }
+  const dateWhere = sharedReminderDateWhere(input);
+  if (dateWhere) {
+    where.fireAt = dateWhere;
   }
   return client.sharedReminderRequest.findMany({
     where,

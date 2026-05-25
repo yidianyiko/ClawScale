@@ -2046,4 +2046,83 @@ describe('shared reminder service', () => {
       orderBy: { createdAt: 'desc' },
     });
   });
+
+  it('lists shared reminders involving the current account when friend filter is absent', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const client = {
+      sharedReminderRequest: {
+        findMany,
+      },
+    };
+
+    await expect(
+      listSharedReminders(client as never, {
+        accountId: 'acct_a',
+        friendAccountId: null,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ requesterAccountId: 'acct_a' }, { inviteeAccountId: 'acct_a' }],
+      },
+      include: {
+        requester: { select: { displayName: true } },
+        invitee: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('filters shared reminders by local date range', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const client = {
+      sharedReminderRequest: {
+        findMany,
+      },
+    };
+
+    await listSharedReminders(client as never, {
+      accountId: 'acct_a',
+      friendAccountId: null,
+      fromDate: '2026-05-25',
+      toDate: '2026-05-25',
+      timezone: 'Asia/Tokyo',
+    });
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ requesterAccountId: 'acct_a' }, { inviteeAccountId: 'acct_a' }],
+        fireAt: {
+          gte: new Date('2026-05-24T15:00:00.000Z'),
+          lt: new Date('2026-05-25T15:00:00.000Z'),
+        },
+      },
+      include: {
+        requester: { select: { displayName: true } },
+        invitee: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('rejects invalid shared reminder date ranges', async () => {
+    const client = {
+      sharedReminderRequest: {
+        findMany: vi.fn(),
+      },
+    };
+
+    await expect(
+      listSharedReminders(client as never, {
+        accountId: 'acct_a',
+        friendAccountId: null,
+        fromDate: '2026-05-26',
+        toDate: '2026-05-25',
+        timezone: 'Asia/Tokyo',
+      }),
+    ).rejects.toThrow('invalid_body');
+
+    expect(client.sharedReminderRequest.findMany).not.toHaveBeenCalled();
+  });
 });

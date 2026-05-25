@@ -86,6 +86,26 @@ function optionalNumberField(body: JsonRecord, key: string): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
 }
 
+function optionalDateField(body: JsonRecord, key: string): string | null {
+  const value = stringField(body, key).trim();
+  if (!value) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error('invalid_body');
+  }
+  return value;
+}
+
+function validateOptionalDateRange(fromDate: string | null, toDate: string | null): void {
+  if ((fromDate && !toDate) || (!fromDate && toDate)) {
+    throw new Error('invalid_body');
+  }
+  if (fromDate && toDate && fromDate > toDate) {
+    throw new Error('invalid_body');
+  }
+}
+
 function normalizeName(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -510,16 +530,36 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
   if (toolName === 'list_shared_reminders') {
     return runCustomerTool(c, body, async (customerId) => {
       const status = stringField(body, 'status').trim() || null;
-      const sharedReminders = await listSharedReminders(db as never, {
+      const fromDate = optionalDateField(body, 'from_date');
+      const toDate = optionalDateField(body, 'to_date');
+      validateOptionalDateRange(fromDate, toDate);
+      const timezone = stringField(body, 'timezone', 'UTC').trim() || 'UTC';
+      const hasFriendFilter = Boolean(
+        stringField(body, 'target_account_id').trim() || calendarFactsFriendName(body),
+      );
+      const friendAccountId = hasFriendFilter
+        ? await resolveFriendAccountIdForLookup(body, customerId)
+        : null;
+      const query = {
         accountId: customerId,
-        friendAccountId: await resolveFriendAccountIdForLookup(body, customerId),
+        friendAccountId,
         status: status as SharedReminderRequestStatus | null,
+        ...(fromDate && toDate ? { fromDate, toDate, timezone } : {}),
+      };
+      const sharedReminders = await listSharedReminders(db as never, {
+        ...query,
       });
-      return {
+      const response: JsonRecord = {
         friend_name: calendarFactsFriendName(body) || null,
         status,
         shared_reminders: sharedReminders,
       };
+      if (!hasFriendFilter || (fromDate && toDate)) {
+        response['from_date'] = fromDate;
+        response['to_date'] = toDate;
+        response['timezone'] = timezone;
+      }
+      return response;
     });
   }
   if (toolName === 'accept_shared_reminder') {
