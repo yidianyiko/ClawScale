@@ -132,7 +132,44 @@ const timezoneSchema = nonEmptyStringSchema.refine(isValidIanaTimezone);
 
 const titleSchema = nonEmptyStringSchema.max(200);
 
-const rruleSchema = z.union([z.literal('FREQ=DAILY'), z.literal('FREQ=WEEKLY'), z.null()]).optional();
+function isValidRrule(value: string): boolean {
+  const parts = Object.fromEntries(
+    value.split(';').map((part) => {
+      const [key, rawValue] = part.split('=', 2);
+      return [key?.trim().toUpperCase(), rawValue?.trim().toUpperCase()];
+    }),
+  );
+  const freq = parts.FREQ;
+  if (!freq) {
+    return false;
+  }
+  const allowedKeys = new Set(['FREQ', 'BYDAY', 'INTERVAL']);
+  if (Object.keys(parts).some((key) => !allowedKeys.has(key))) {
+    return false;
+  }
+  if (parts.INTERVAL !== undefined && !/^[1-9]\d*$/.test(parts.INTERVAL)) {
+    return false;
+  }
+  if (freq === 'DAILY') {
+    return parts.BYDAY === undefined;
+  }
+  if (freq === 'MONTHLY') {
+    return parts.BYDAY === undefined;
+  }
+  if (freq !== 'WEEKLY') {
+    return false;
+  }
+  if (parts.BYDAY === undefined) {
+    return true;
+  }
+  const days = parts.BYDAY.split(',');
+  return (
+    days.length > 0 &&
+    days.every((day) => ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].includes(day))
+  );
+}
+
+const rruleSchema = z.union([z.string().refine(isValidRrule), z.null()]).optional();
 
 const durationMinutesSchema = z.number().int().positive().nullable().optional();
 

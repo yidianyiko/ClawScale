@@ -272,6 +272,60 @@ describe('customer reminder routes', () => {
     expect(mocks.updateRuntimeReminder).not.toHaveBeenCalled();
   });
 
+  it('accepts runtime-supported RRULE subset for create and update', async () => {
+    const app = createApp();
+    await app.request('/api/customer/reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Weekday standup',
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',
+      }),
+    });
+    await app.request('/api/customer/reminders/rem-1', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        rrule: 'FREQ=WEEKLY;INTERVAL=2',
+      }),
+    });
+    await app.request('/api/customer/reminders/rem-2', {
+      method: 'PATCH',
+      headers: {
+        authorization: 'Bearer customer-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        localDate: '2026-05-13',
+        localTime: '09:30',
+        timezone: 'Asia/Tokyo',
+        rrule: 'FREQ=MONTHLY',
+      }),
+    });
+
+    expect(mocks.createRuntimeReminder).toHaveBeenCalledWith(
+      expect.objectContaining({ rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' }),
+    );
+    expect(mocks.updateRuntimeReminder).toHaveBeenCalledWith(
+      expect.objectContaining({ reminderId: 'rem-1', rrule: 'FREQ=WEEKLY;INTERVAL=2' }),
+    );
+    expect(mocks.updateRuntimeReminder).toHaveBeenCalledWith(
+      expect.objectContaining({ reminderId: 'rem-2', rrule: 'FREQ=MONTHLY' }),
+    );
+  });
+
   it('rejects invalid reminder timezones', async () => {
     const createRes = await createApp().request('/api/customer/reminders', {
       method: 'POST',
