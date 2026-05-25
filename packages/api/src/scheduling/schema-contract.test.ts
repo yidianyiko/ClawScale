@@ -24,7 +24,6 @@ describe('friend-link and shared-reminder schema contract', () => {
     expect(schema).toContain('model LinkSession');
     expect(schema).toContain('model FriendRequest');
     expect(schema).toContain('model Friendship');
-    expect(schema).toContain('model AccountBlock');
     expect(schema).toContain('model SharedReminderRequest');
     expect(schema).toContain('model SharedReminderEvent');
     expect(schema).toContain('model ReminderProjection');
@@ -50,7 +49,6 @@ describe('friend-link and shared-reminder schema contract', () => {
     expect(sql).toContain("WHERE status = 'pending'");
     expect(sql).toContain('CREATE UNIQUE INDEX "friendships_one_active_pair"');
     expect(sql).toContain("WHERE status = 'active'");
-    expect(sql).toContain('CREATE UNIQUE INDEX "account_blocks_direction_uniq"');
   });
 
   it('guards destructive appointment-state retirement', () => {

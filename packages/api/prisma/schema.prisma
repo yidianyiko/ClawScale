@@ -358,8 +358,6 @@ model Customer {
   targetFriendRequests     FriendRequest[]         @relation("TargetFriendRequests")
   friendshipsAsA           Friendship[]            @relation("FriendshipAccountA")
   friendshipsAsB           Friendship[]            @relation("FriendshipAccountB")
-  blocksCreated            AccountBlock[]          @relation("BlockerAccountBlocks")
-  blocksReceived           AccountBlock[]          @relation("BlockedAccountBlocks")
   requesterSharedReminders SharedReminderRequest[] @relation("RequesterSharedReminders")
   inviteeSharedReminders   SharedReminderRequest[] @relation("InviteeSharedReminders")
   reminderProjections      ReminderProjection[]
@@ -735,20 +733,6 @@ model Friendship {
   @@index([accountAId, status])
   @@index([accountBId, status])
   @@map("friendships")
-}
-
-model AccountBlock {
-  id               String   @id @default(cuid())
-  blockerAccountId String   @map("blocker_account_id")
-  blockedAccountId String   @map("blocked_account_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  blocker Customer @relation("BlockerAccountBlocks", fields: [blockerAccountId], references: [id], onDelete: Cascade)
-  blocked Customer @relation("BlockedAccountBlocks", fields: [blockedAccountId], references: [id], onDelete: Cascade)
-
-  @@index([blockerAccountId])
-  @@index([blockedAccountId])
-  @@map("account_blocks")
 }
 
 model SharedReminderRequest {

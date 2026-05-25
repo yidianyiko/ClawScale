@@ -15,8 +15,6 @@ const friendships = vi.hoisted(() => ({
   cancelFriendRequest: vi.fn(),
   listFriends: vi.fn(),
   removeFriendship: vi.fn(),
-  blockAccount: vi.fn(),
-  unblockAccount: vi.fn(),
 }));
 
 const sharedReminders = vi.hoisted(() => ({
@@ -69,11 +67,6 @@ describe('internal scheduling routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.CLAWSCALE_IDENTITY_API_KEY = 'internal-key';
-    Object.assign(db, {
-      accountBlock: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
-    });
     scheduling.getOrCreateActiveUserLink.mockResolvedValue({ code: 'AbCdEfGhIjK_' });
     scheduling.resetUserLink.mockResolvedValue({ code: 'ResetCode123' });
     scheduling.disableUserLink.mockResolvedValue({ count: 1 });
@@ -84,8 +77,6 @@ describe('internal scheduling routes', () => {
     friendships.cancelFriendRequest.mockResolvedValue({ id: 'fr_1', status: 'cancelled' });
     friendships.listFriends.mockResolvedValue([{ id: 'fs_1', status: 'active' }]);
     friendships.removeFriendship.mockResolvedValue({ id: 'fs_1', status: 'removed' });
-    friendships.blockAccount.mockResolvedValue({ blockerAccountId: 'ck_provider', blockedAccountId: 'ck_other' });
-    friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_provider', blockedAccountId: 'ck_other' });
     sharedReminders.createSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'pending_invitee_confirmation' });
     sharedReminders.listPendingSharedReminders.mockResolvedValue([{ id: 'sr_1', status: 'pending_invitee_confirmation' }]);
     sharedReminders.listSharedReminders.mockResolvedValue([{ id: 'sr_1', status: 'accepted' }]);
@@ -379,7 +370,7 @@ describe('internal scheduling routes', () => {
     });
   });
 
-  it('routes friendship and block tools with cleanup runtime wiring', async () => {
+  it('routes friendship tools with cleanup runtime wiring', async () => {
     const cases = [
       {
         toolName: 'list_friends',
@@ -396,22 +387,6 @@ describe('internal scheduling routes', () => {
           { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
           { actorAccountId: 'ck_provider', friendshipId: 'fs_1' },
         ],
-      },
-      {
-        toolName: 'block_account',
-        service: friendships.blockAccount,
-        body: { blocked_account_id: 'ck_other' },
-        expected: [
-          db as never,
-          { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
-          { blockerAccountId: 'ck_provider', blockedAccountId: 'ck_other' },
-        ],
-      },
-      {
-        toolName: 'unblock_account',
-        service: friendships.unblockAccount,
-        body: { blocked_account_id: 'ck_other' },
-        expected: [db as never, { blockerAccountId: 'ck_provider', blockedAccountId: 'ck_other' }],
       },
     ] as const;
 
@@ -466,66 +441,6 @@ describe('internal scheduling routes', () => {
       { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
       { actorAccountId: 'ck_provider', friendshipId: 'fs_1' },
     );
-  });
-
-  it('resolves block_account friend_name against active friendships', async () => {
-    friendships.listFriends.mockResolvedValueOnce([
-      {
-        id: 'fs_1',
-        accountAId: 'ck_provider',
-        accountBId: 'ck_bob',
-        status: 'active',
-        accountA: { id: 'ck_provider', displayName: 'Alice Smoke', avatarUrl: null },
-        accountB: { id: 'ck_bob', displayName: 'Bob Smoke', avatarUrl: null },
-      },
-    ]);
-
-    const res = await createApp().request('/api/internal/scheduling/tools/block_account', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer internal-key',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        customer_id: 'ck_provider',
-        friend_name: 'Bob',
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(friendships.blockAccount).toHaveBeenCalledWith(
-      db as never,
-      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
-      { blockerAccountId: 'ck_provider', blockedAccountId: 'ck_bob' },
-    );
-  });
-
-  it('resolves unblock_account friend_name against existing account blocks', async () => {
-    const accountBlock = db.accountBlock as { findMany: ReturnType<typeof vi.fn> };
-    accountBlock.findMany.mockResolvedValueOnce([
-      {
-        blockedAccountId: 'ck_bob',
-        blocked: { id: 'ck_bob', displayName: 'Bob Smoke' },
-      },
-    ]);
-
-    const res = await createApp().request('/api/internal/scheduling/tools/unblock_account', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer internal-key',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        customer_id: 'ck_provider',
-        friend_name: 'Bob',
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(friendships.unblockAccount).toHaveBeenCalledWith(db as never, {
-      blockerAccountId: 'ck_provider',
-      blockedAccountId: 'ck_bob',
-    });
   });
 
   it('routes shared reminder tools with the reminder runtime port', async () => {

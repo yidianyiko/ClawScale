@@ -14,13 +14,11 @@ import {
 } from '../scheduling/user-link-service.js';
 import {
   acceptFriendRequest,
-  blockAccount,
   cancelFriendRequest,
   listFriendRequests,
   listFriends,
   rejectFriendRequest,
   removeFriendship,
-  unblockAccount,
 } from '../scheduling/friendship-service.js';
 import {
   acceptSharedReminder,
@@ -94,7 +92,6 @@ function isKnownSchedulingError(error: string): boolean {
     error === 'invalid_account' ||
     error === 'invalid_body' ||
     error === 'friend_request_not_found' ||
-    error === 'friend_request_blocked' ||
     error === 'friendship_not_found' ||
     error === 'friendship_required' ||
     error === 'reminder_projection_failed' ||
@@ -166,12 +163,6 @@ function friendDto(row: Record<string, unknown>, accountId: string): Record<stri
     status: stringField(row, 'status'),
     counterpartAccountId: counterpartIsAccountA ? accountAId : accountBId,
     ...(counterpartProfile ? { counterpartProfile } : {}),
-  };
-}
-
-function blockDto(row: Record<string, unknown>): Record<string, string> {
-  return {
-    blockedAccountId: stringField(row, 'blockedAccountId'),
   };
 }
 
@@ -313,40 +304,6 @@ customerSchedulingRouter.delete('/friends/:friendshipId', async (c) => {
     return c.json({ ok: true, data: friendRequestActionDto(result as Record<string, unknown>) });
   } catch (error) {
     return c.json({ ok: false, error: schedulingError(error, 'friendship_failed') }, 400);
-  }
-});
-
-customerSchedulingRouter.post('/blocks', async (c) => {
-  const session = c.get('customerSchedulingAuth');
-  const body = await readJsonObject(c);
-  if (!body || typeof body['blockedAccountId'] !== 'string' || !body['blockedAccountId'].trim()) {
-    return c.json({ ok: false, error: 'invalid_body' }, 400);
-  }
-  try {
-    const result = await blockAccount(
-      db as never,
-      { cancelRuntimeReminder },
-      {
-        blockerAccountId: session.customerId,
-        blockedAccountId: body['blockedAccountId'].trim(),
-      },
-    );
-    return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
-  } catch (error) {
-    return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);
-  }
-});
-
-customerSchedulingRouter.delete('/blocks/:blockedAccountId', async (c) => {
-  const session = c.get('customerSchedulingAuth');
-  try {
-    const result = await unblockAccount(db as never, {
-      blockerAccountId: session.customerId,
-      blockedAccountId: c.req.param('blockedAccountId'),
-    });
-    return c.json({ ok: true, data: blockDto(result as Record<string, unknown>) });
-  } catch (error) {
-    return c.json({ ok: false, error: schedulingError(error, 'block_failed') }, 400);
   }
 });
 

@@ -19,8 +19,6 @@ const friendships = vi.hoisted(() => ({
   cancelFriendRequest: vi.fn(),
   listFriends: vi.fn(),
   removeFriendship: vi.fn(),
-  blockAccount: vi.fn(),
-  unblockAccount: vi.fn(),
 }));
 
 const sharedReminders = vi.hoisted(() => ({
@@ -126,8 +124,6 @@ describe('customer scheduling routes', () => {
       accountAId: 'ck_123',
       accountBId: 'ck_other',
     });
-    friendships.blockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
-    friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_123', blockedAccountId: 'ck_other' });
     sharedReminders.createSharedReminder.mockResolvedValue({
       id: 'srr_1',
       requesterAccountId: 'ck_123',
@@ -307,48 +303,6 @@ describe('customer scheduling routes', () => {
     );
   });
 
-  it('uses the authenticated customer id for block ownership and ignores body actor ids', async () => {
-    const res = await createApp().request('/api/customer/scheduling/blocks', {
-      method: 'POST',
-      headers: {
-        authorization: 'Bearer customer-token',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ blockerAccountId: 'ck_attacker', blockedAccountId: 'ck_other' }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(friendships.blockAccount).toHaveBeenCalledWith(
-      db as never,
-      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
-      {
-        blockerAccountId: 'ck_123',
-        blockedAccountId: 'ck_other',
-      },
-    );
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      data: { blockedAccountId: 'ck_other' },
-    });
-  });
-
-  it('unblocks as the authenticated customer', async () => {
-    const res = await createApp().request('/api/customer/scheduling/blocks/ck_other', {
-      method: 'DELETE',
-      headers: { authorization: 'Bearer customer-token' },
-    });
-
-    expect(res.status).toBe(200);
-    expect(friendships.unblockAccount).toHaveBeenCalledWith(db as never, {
-      blockerAccountId: 'ck_123',
-      blockedAccountId: 'ck_other',
-    });
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      data: { blockedAccountId: 'ck_other' },
-    });
-  });
-
   it('creates and lists shared reminder requests as the authenticated customer', async () => {
     const createRes = await createApp().request('/api/customer/scheduling/shared-reminders', {
       method: 'POST',
@@ -457,18 +411,6 @@ describe('customer scheduling routes', () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({ ok: false, error: 'not_allowed' });
-  });
-
-  it('preserves the friend request blocked error for accept after block', async () => {
-    friendships.acceptFriendRequest.mockRejectedValueOnce(new Error('friend_request_blocked'));
-
-    const res = await createApp().request('/api/customer/scheduling/friend-requests/fr_1/accept', {
-      method: 'POST',
-      headers: { authorization: 'Bearer customer-token' },
-    });
-
-    expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toEqual({ ok: false, error: 'friend_request_blocked' });
   });
 
 });

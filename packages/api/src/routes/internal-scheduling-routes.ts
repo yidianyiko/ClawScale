@@ -8,14 +8,12 @@ import {
 } from '../lib/reminder-runtime-client.js';
 import {
   acceptFriendRequest,
-  blockAccount,
   cancelFriendRequest,
   type FriendshipRecord,
   listFriendRequests,
   listFriends,
   rejectFriendRequest,
   removeFriendship,
-  unblockAccount,
 } from '../scheduling/friendship-service.js';
 import { listFriendCalendarFacts } from '../scheduling/friend-calendar-facts-service.js';
 import { deliverPendingProductNotifications } from '../scheduling/notification-service.js';
@@ -122,49 +120,6 @@ function displayNameForFriend(friendship: FriendshipRecord, actorAccountId: stri
         ? friendship.accountA
         : null;
   return friendProfile?.displayName ?? '';
-}
-
-async function resolveBlockedAccountId(body: JsonRecord, blockerAccountId: string): Promise<string> {
-  const explicitBlockedAccountId = stringField(body, 'blocked_account_id').trim();
-  if (explicitBlockedAccountId) {
-    return explicitBlockedAccountId;
-  }
-  const friendName = requestFriendName(body);
-  if (!friendName) {
-    return '';
-  }
-
-  const friends = await listFriends(db as never, { accountId: blockerAccountId });
-  const friendMatches = friends.filter((friendship) => {
-    const displayName = normalizeName(displayNameForFriend(friendship, blockerAccountId));
-    return displayName === friendName || displayName.includes(friendName);
-  });
-  if (friendMatches.length > 1) {
-    throw new Error('friend_name_ambiguous');
-  }
-  const matchedFriendship = friendMatches[0];
-  if (matchedFriendship) {
-    const accountId = accountIdForFriend(matchedFriendship, blockerAccountId);
-    if (accountId) {
-      return accountId;
-    }
-  }
-
-  const blocks = await db.accountBlock.findMany({
-    where: { blockerAccountId },
-    include: { blocked: { select: { id: true, displayName: true } } },
-  });
-  const blockMatches = blocks.filter((block: { blocked?: { displayName?: string | null } }) => {
-    const displayName = normalizeName(block.blocked?.displayName ?? '');
-    return displayName === friendName || displayName.includes(friendName);
-  });
-  if (blockMatches.length === 0) {
-    throw new Error('friend_name_not_found');
-  }
-  if (blockMatches.length > 1) {
-    throw new Error('friend_name_ambiguous');
-  }
-  return String(blockMatches[0]?.blockedAccountId ?? '');
 }
 
 async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
@@ -507,26 +462,6 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
           friendshipId: await resolveFriendshipId(body, customerId),
         },
       ),
-    );
-  }
-  if (toolName === 'block_account') {
-    return runCustomerTool(c, body, async (customerId) =>
-      blockAccount(
-        db as never,
-        { cancelRuntimeReminder },
-        {
-          blockerAccountId: customerId,
-          blockedAccountId: await resolveBlockedAccountId(body, customerId),
-        },
-      ),
-    );
-  }
-  if (toolName === 'unblock_account') {
-    return runCustomerTool(c, body, async (customerId) =>
-      unblockAccount(db as never, {
-        blockerAccountId: customerId,
-        blockedAccountId: await resolveBlockedAccountId(body, customerId),
-      }),
     );
   }
   if (toolName === 'list_friend_calendar_facts') {

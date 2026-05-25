@@ -108,7 +108,6 @@ function isKnownFriendRequestError(error: string): boolean {
     error === 'invalid_link_session' ||
     error === 'link_session_expired' ||
     error === 'cannot_friend_self' ||
-    error === 'friend_request_blocked' ||
     error === 'friend_request_not_found' ||
     error === 'not_allowed'
   );

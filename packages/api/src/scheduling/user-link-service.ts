@@ -53,9 +53,6 @@ interface UserLinkClient {
     findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   };
-  accountBlock: {
-    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
-  };
   productNotification: {
     findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
@@ -82,11 +79,11 @@ interface UserLinkClient {
 type UserLinkWriteClient = Pick<UserLinkClient, 'userLink'>;
 type FriendRequestWriteClient = Pick<
   UserLinkClient,
-  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock'
+  'userLink' | 'linkSession' | 'friendRequest'
 >;
 type UserLinkTransactionClient = Pick<
   UserLinkClient,
-  'userLink' | 'linkSession' | 'friendRequest' | 'accountBlock'
+  'userLink' | 'linkSession' | 'friendRequest'
 >;
 
 interface UserLinkInput {
@@ -449,16 +446,6 @@ export async function sendFriendRequestFromLinkSession(
     if (new Date(session.expiresAt).getTime() <= Date.now()) {
       throw new Error('link_session_expired');
     }
-    const block = await writeClient.accountBlock.findFirst({
-      where: {
-        blockerAccountId: session.providerAccountId,
-        blockedAccountId: requesterAccountId,
-      },
-    });
-    if (block) {
-      throw new Error('friend_request_blocked');
-    }
-
     const existing = await findPendingFriendRequest(
       writeClient,
       requesterAccountId,
@@ -528,16 +515,6 @@ export async function sendFriendRequestByUserLinkCode(
     }
     if (userLink.providerAccountId === requesterAccountId) {
       throw new Error('cannot_friend_self');
-    }
-
-    const block = await writeClient.accountBlock.findFirst({
-      where: {
-        blockerAccountId: userLink.providerAccountId,
-        blockedAccountId: requesterAccountId,
-      },
-    });
-    if (block) {
-      throw new Error('friend_request_blocked');
     }
 
     const existing = await findPendingFriendRequest(

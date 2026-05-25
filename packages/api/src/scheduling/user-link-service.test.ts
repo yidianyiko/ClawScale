@@ -14,7 +14,6 @@ const db = {
   linkSession: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
   customer: { findUnique: vi.fn() },
   friendRequest: { findFirst: vi.fn(), create: vi.fn() },
-  accountBlock: { findFirst: vi.fn() },
   productNotification: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   deliveryRoute: { findFirst: vi.fn() },
   $transaction: vi.fn(),
@@ -248,7 +247,6 @@ describe('user link service', () => {
       code: 'AbCdEfGhIjK_',
       status: 'active',
     });
-    db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.create.mockResolvedValueOnce({
       id: 'fr_1',
@@ -296,7 +294,6 @@ describe('user link service', () => {
       status: 'opened',
       expiresAt: new Date('2026-06-21T00:00:00.000Z'),
     });
-    db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst.mockResolvedValueOnce(null);
     db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
     db.friendRequest.create.mockResolvedValueOnce({
@@ -368,7 +365,6 @@ describe('user link service', () => {
     const tx = {
       linkSession: { findUnique: vi.fn(), updateMany: vi.fn() },
       friendRequest: { findFirst: vi.fn(), create: vi.fn() },
-      accountBlock: { findFirst: vi.fn() },
       productNotification: {
         findFirst: vi.fn(() => {
           throw new Error('notification_in_transaction');
@@ -398,7 +394,6 @@ describe('user link service', () => {
       status: 'opened',
       expiresAt: new Date('2026-06-21T00:00:00.000Z'),
     });
-    tx.accountBlock.findFirst.mockResolvedValueOnce(null);
     tx.friendRequest.findFirst.mockResolvedValueOnce(null);
     tx.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
     tx.friendRequest.create.mockResolvedValueOnce({
@@ -511,7 +506,6 @@ describe('user link service', () => {
       status: 'opened',
       expiresAt: new Date('2026-06-21T00:00:00.000Z'),
     });
-    db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -534,29 +528,6 @@ describe('user link service', () => {
     expect(db.productNotification.create).not.toHaveBeenCalled();
   });
 
-  it('rejects friend requests when the target blocked the requester', async () => {
-    db.linkSession.findUnique.mockResolvedValueOnce({
-      id: 'ls_1',
-      providerAccountId: 'acct_a',
-      consumerAccountId: null,
-      status: 'opened',
-      expiresAt: new Date('2026-06-21T00:00:00.000Z'),
-    });
-    db.accountBlock.findFirst.mockResolvedValueOnce({ id: 'blk_1' });
-
-    await expect(
-      sendFriendRequestFromLinkSession(db as never, {
-        token: 'session-token',
-        requesterAccountId: 'acct_b',
-        message: null,
-        idempotencyKey: 'friend:req:block',
-      }),
-    ).rejects.toThrow('friend_request_blocked');
-
-    expect(db.linkSession.updateMany).not.toHaveBeenCalled();
-    expect(db.friendRequest.create).not.toHaveBeenCalled();
-  });
-
   it('rejects expired link sessions', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
@@ -577,7 +548,6 @@ describe('user link service', () => {
       }),
     ).rejects.toThrow('link_session_expired');
 
-    expect(db.accountBlock.findFirst).not.toHaveBeenCalled();
     expect(db.linkSession.updateMany).not.toHaveBeenCalled();
   });
 
@@ -589,7 +559,6 @@ describe('user link service', () => {
       status: 'opened',
       expiresAt: new Date('2026-06-21T00:00:00.000Z'),
     });
-    db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -626,7 +595,6 @@ describe('user link service', () => {
       status: 'opened',
       expiresAt: new Date('2026-06-21T00:00:00.000Z'),
     });
-    db.accountBlock.findFirst.mockResolvedValueOnce(null);
     db.friendRequest.findFirst.mockResolvedValueOnce(null);
     db.linkSession.updateMany.mockResolvedValueOnce({ count: 1 });
     db.friendRequest.create.mockResolvedValueOnce({

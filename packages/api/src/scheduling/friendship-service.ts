@@ -118,11 +118,6 @@ interface FriendshipClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
-  accountBlock: {
-    findFirst(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
-    create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
-    deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
-  };
   sharedReminderRequest: {
     findMany(args: {
       where: Record<string, unknown>;
@@ -257,37 +252,6 @@ async function createAcceptedNotification(
       actor_account_id: input.request.targetAccountId,
     },
   });
-}
-
-function sharedReminderPairWhere(input: {
-  friendshipId: string | null;
-  blockerAccountId: string;
-  blockedAccountId: string;
-  status?: SharedReminderRequestStatus;
-}): Record<string, unknown> {
-  const pair = [
-    { requesterAccountId: input.blockerAccountId, inviteeAccountId: input.blockedAccountId },
-    { requesterAccountId: input.blockedAccountId, inviteeAccountId: input.blockerAccountId },
-  ];
-  return {
-    status: input.status ?? 'pending_invitee_confirmation',
-    OR: input.friendshipId ? [{ friendshipId: input.friendshipId }, ...pair] : pair,
-  };
-}
-
-async function ensureAcceptNotBlocked(
-  client: Pick<FriendshipClient, 'accountBlock'>,
-  request: FriendRequestRecord,
-): Promise<void> {
-  const block = await client.accountBlock.findFirst({
-    where: {
-      blockerAccountId: request.targetAccountId,
-      blockedAccountId: request.requesterAccountId,
-    },
-  });
-  if (block) {
-    throw new Error('friend_request_blocked');
-  }
 }
 
 function terminalRetryResult(
@@ -491,7 +455,6 @@ export async function acceptFriendRequest(
       }
     }
 
-    await ensureAcceptNotBlocked(writeClient, request);
     const pair = canonicalPair(request.requesterAccountId, request.targetAccountId);
     if (transition.count === 1) {
       await ensureActiveFriendship(writeClient, { ...pair, friendRequestId: request.id });
@@ -654,90 +617,4 @@ export async function removeFriendship(
   });
   await cancelRequesterProjections(client, reminderRuntime, result.requesterProjections);
   return result.friendship;
-}
-
-export async function blockAccount(
-  client: FriendshipClient,
-  runtimeOrInput: ReminderRuntimePort | { blockerAccountId: string; blockedAccountId: string },
-  maybeInput?: { blockerAccountId: string; blockedAccountId: string },
-): Promise<{ blockerAccountId: string; blockedAccountId: string }> {
-  const reminderRuntime = maybeInput ? (runtimeOrInput as ReminderRuntimePort) : null;
-  const input = maybeInput ?? (runtimeOrInput as { blockerAccountId: string; blockedAccountId: string });
-  const blockerAccountId = nonEmpty(input.blockerAccountId, 'invalid_account');
-  const blockedAccountId = nonEmpty(input.blockedAccountId, 'invalid_account');
-  if (blockerAccountId === blockedAccountId) {
-    throw new Error('cannot_friend_self');
-  }
-
-  const result = await runWrite(client, async (writeClient) => {
-    await writeClient.friendRequest.updateMany({
-      where: {
-        status: 'pending',
-        OR: [
-          { requesterAccountId: blockedAccountId, targetAccountId: blockerAccountId },
-          { requesterAccountId: blockerAccountId, targetAccountId: blockedAccountId },
-        ],
-      },
-      data: { status: 'cancelled', resolvedAt: new Date() },
-    });
-
-    try {
-      await writeClient.accountBlock.create({
-        data: { blockerAccountId, blockedAccountId },
-      });
-    } catch (error) {
-      if (!isUniqueConflict(error)) {
-        throw error;
-      }
-    }
-
-    const pair = canonicalPair(blockerAccountId, blockedAccountId);
-    const friendship = await findActiveFriendship(writeClient, pair.accountAId, pair.accountBId);
-    if (friendship) {
-      await writeClient.friendship.updateMany({
-        where: { id: friendship.id, status: 'active' },
-        data: { status: 'removed', removedAt: new Date() },
-      });
-    }
-    const invalidation = await invalidatePendingSharedReminders(
-      writeClient,
-      sharedReminderPairWhere({
-        friendshipId: friendship?.id ?? null,
-        blockerAccountId,
-        blockedAccountId,
-      }),
-    );
-    const invalidatedCleanup = await collectInvalidatedSharedReminderCleanup(
-      writeClient,
-      sharedReminderPairWhere({
-        friendshipId: friendship?.id ?? null,
-        blockerAccountId,
-        blockedAccountId,
-        status: 'invalidated',
-      }),
-    );
-
-    return {
-      block: { blockerAccountId, blockedAccountId },
-      requesterProjections: [
-        ...invalidation.requesterProjections,
-        ...invalidatedCleanup,
-      ],
-    };
-  });
-  await cancelRequesterProjections(client, reminderRuntime, result.requesterProjections);
-  return result.block;
-}
-
-export async function unblockAccount(
-  client: FriendshipClient,
-  input: { blockerAccountId: string; blockedAccountId: string },
-): Promise<{ blockerAccountId: string; blockedAccountId: string }> {
-  const blockerAccountId = nonEmpty(input.blockerAccountId, 'invalid_account');
-  const blockedAccountId = nonEmpty(input.blockedAccountId, 'invalid_account');
-
-  await client.accountBlock.deleteMany({
-    where: { blockerAccountId, blockedAccountId },
-  });
-  return { blockerAccountId, blockedAccountId };
 }
