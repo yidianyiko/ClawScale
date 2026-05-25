@@ -198,6 +198,28 @@ async function resolveFriendRequestId(
   return matches[0]?.id ?? '';
 }
 
+async function resolveFriendshipId(body: JsonRecord, actorAccountId: string): Promise<string> {
+  const explicitFriendshipId = stringField(body, 'friendship_id').trim();
+  if (explicitFriendshipId) {
+    return explicitFriendshipId;
+  }
+
+  const friendName = requestFriendName(body);
+  const friends = await listFriends(db as never, { accountId: actorAccountId });
+  const matches = friendName ? friends.filter((friendship) => {
+    const displayName = normalizeName(displayNameForFriend(friendship, actorAccountId));
+    return displayName === friendName || displayName.includes(friendName);
+  }) : friends;
+
+  if (matches.length === 0) {
+    throw new Error(friendName ? 'friend_name_not_found' : 'friendship_not_found');
+  }
+  if (matches.length > 1) {
+    throw new Error(friendName ? 'friend_name_ambiguous' : 'friendship_ambiguous');
+  }
+  return matches[0]?.id ?? '';
+}
+
 type SharedReminderLookupRecord = {
   id: string;
   requesterAccountId: string;
@@ -394,13 +416,13 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     );
   }
   if (toolName === 'remove_friendship') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       removeFriendship(
         db as never,
         { cancelRuntimeReminder },
         {
           actorAccountId: customerId,
-          friendshipId: stringField(body, 'friendship_id'),
+          friendshipId: await resolveFriendshipId(body, customerId),
         },
       ),
     );

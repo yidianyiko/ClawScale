@@ -426,6 +426,41 @@ describe('internal scheduling routes', () => {
     }
   });
 
+  it('resolves remove_friendship friend_name against active friendships', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_provider',
+        accountBId: 'ck_bob',
+        status: 'active',
+        accountA: { id: 'ck_provider', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'ck_bob', displayName: 'Bob Smoke', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/remove_friendship', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        friend_name: 'Bob',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
+      accountId: 'ck_provider',
+    });
+    expect(friendships.removeFriendship).toHaveBeenCalledWith(
+      db as never,
+      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
+      { actorAccountId: 'ck_provider', friendshipId: 'fs_1' },
+    );
+  });
+
   it('routes shared reminder tools with the reminder runtime port', async () => {
     const runtimePort = {
       createRuntimeReminder: reminderRuntime.createRuntimeReminder,
