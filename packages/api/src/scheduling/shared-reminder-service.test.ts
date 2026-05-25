@@ -1948,6 +1948,10 @@ describe('shared reminder service', () => {
         inviteeAccountId: 'acct_a',
         status: 'pending_invitee_confirmation',
       },
+      include: {
+        requester: { select: { displayName: true } },
+        invitee: { select: { displayName: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   });

@@ -80,7 +80,11 @@ export interface SharedReminderClient {
   sharedReminderRequest: {
     create(args: { data: Record<string, unknown> }): Promise<SharedReminderRequestRecord>;
     findFirst(args: { where: Record<string, unknown>; orderBy?: Record<string, unknown> }): Promise<SharedReminderRequestRecord | null>;
-    findMany(args: { where: Record<string, unknown>; orderBy?: Record<string, unknown> | Record<string, unknown>[] }): Promise<SharedReminderRequestRecord[]>;
+    findMany(args: {
+      where: Record<string, unknown>;
+      orderBy?: Record<string, unknown> | Record<string, unknown>[];
+      include?: Record<string, unknown>;
+    }): Promise<SharedReminderRequestRecord[]>;
     updateMany(args: {
       where: Record<string, unknown>;
       data: Record<string, unknown>;
@@ -1157,6 +1161,10 @@ export async function listPendingSharedReminders(
     where: {
       inviteeAccountId,
       status: 'pending_invitee_confirmation',
+    },
+    include: {
+      requester: { select: { displayName: true } },
+      invitee: { select: { displayName: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
