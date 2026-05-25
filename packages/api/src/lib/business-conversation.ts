@@ -189,68 +189,74 @@ export async function bindBusinessConversation(
       );
     }
 
-    const claimant = await tx.conversation.findFirst({
-      where: {
-        tenantId: routeBinding.tenantId,
-        id: { not: conversationId },
-        clawscaleUserId: clawscaleUser.id,
-        businessConversationKey: input.businessConversationKey,
-      },
-      select: {
-        id: true,
-        clawscaleUserId: true,
-        businessConversationKey: true,
-      },
-    });
+    const alreadyBound =
+      conversation.clawscaleUserId === clawscaleUser.id &&
+      conversation.businessConversationKey === input.businessConversationKey;
 
-    if (claimant) {
-      const clearClaimant = await tx.conversation.updateMany({
+    if (!alreadyBound) {
+      const claimant = await tx.conversation.findFirst({
         where: {
-          id: claimant.id,
           tenantId: routeBinding.tenantId,
-          clawscaleUserId: claimant.clawscaleUserId,
-          businessConversationKey: claimant.businessConversationKey,
-        },
-        data: {
-          businessConversationKey: null,
-        },
-      });
-
-      if (clearClaimant.count !== 1) {
-        throwConversationBindingConflict(conversationId);
-      }
-    }
-
-    try {
-      const applyBinding = await tx.conversation.updateMany({
-        where: {
-          id: conversationId,
-          tenantId: routeBinding.tenantId,
-          channelId: routeBinding.channelId,
-          endUserId: routeBinding.endUserId,
-          businessConversationKey:
-            routeBinding.previousBusinessConversationKey === null
-              ? { equals: null }
-              : routeBinding.previousBusinessConversationKey,
-          clawscaleUserId:
-            routeBinding.previousClawscaleUserId === null
-              ? { equals: null }
-              : routeBinding.previousClawscaleUserId,
-        },
-        data: {
+          id: { not: conversationId },
           clawscaleUserId: clawscaleUser.id,
           businessConversationKey: input.businessConversationKey,
         },
+        select: {
+          id: true,
+          clawscaleUserId: true,
+          businessConversationKey: true,
+        },
       });
 
-      if (applyBinding.count !== 1) {
-        throwConversationBindingConflict(conversationId);
+      if (claimant) {
+        const clearClaimant = await tx.conversation.updateMany({
+          where: {
+            id: claimant.id,
+            tenantId: routeBinding.tenantId,
+            clawscaleUserId: claimant.clawscaleUserId,
+            businessConversationKey: claimant.businessConversationKey,
+          },
+          data: {
+            businessConversationKey: null,
+          },
+        });
+
+        if (clearClaimant.count !== 1) {
+          throwConversationBindingConflict(conversationId);
+        }
       }
-    } catch (error) {
-      if (isUniqueConstraint(error)) {
-        throwConversationBindingConflict(conversationId);
+
+      try {
+        const applyBinding = await tx.conversation.updateMany({
+          where: {
+            id: conversationId,
+            tenantId: routeBinding.tenantId,
+            channelId: routeBinding.channelId,
+            endUserId: routeBinding.endUserId,
+            businessConversationKey:
+              routeBinding.previousBusinessConversationKey === null
+                ? { equals: null }
+                : routeBinding.previousBusinessConversationKey,
+            clawscaleUserId:
+              routeBinding.previousClawscaleUserId === null
+                ? { equals: null }
+                : routeBinding.previousClawscaleUserId,
+          },
+          data: {
+            clawscaleUserId: clawscaleUser.id,
+            businessConversationKey: input.businessConversationKey,
+          },
+        });
+
+        if (applyBinding.count !== 1) {
+          throwConversationBindingConflict(conversationId);
+        }
+      } catch (error) {
+        if (isUniqueConstraint(error)) {
+          throwConversationBindingConflict(conversationId);
+        }
+        throw error;
       }
-      throw error;
     }
 
     for (const staleBusinessConversationKey of collectStaleBusinessConversationKeys(

@@ -181,6 +181,76 @@ describe('business conversation helpers', () => {
     expect(db.deliveryRoute.upsert).not.toHaveBeenCalled();
   });
 
+  it('bindBusinessConversation is idempotent when the conversation already has the requested binding', async () => {
+    tx.conversation.findUnique.mockResolvedValue({
+      id: 'conv_1',
+      tenantId: 'ten_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      clawscaleUserId: 'csu_1',
+      businessConversationKey: 'biz_conv_1',
+      endUser: {
+        externalId: 'ext_1',
+        clawscaleUserId: 'csu_1',
+      },
+    });
+    tx.clawscaleUser.findUnique.mockResolvedValue({
+      id: 'csu_1',
+      tenantId: 'ten_1',
+    });
+    tx.deliveryRoute.upsert.mockResolvedValue({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'ext_1',
+      isActive: true,
+    });
+
+    const result = await bindBusinessConversation({
+      routeBinding: makeRouteBindingSnapshot(),
+      businessConversationKey: 'biz_conv_1',
+    });
+
+    expect(tx.conversation.findFirst).not.toHaveBeenCalled();
+    expect(tx.conversation.updateMany).not.toHaveBeenCalled();
+    expect(tx.deliveryRoute.updateMany).not.toHaveBeenCalled();
+    expect(tx.deliveryRoute.upsert).toHaveBeenCalledWith({
+      where: {
+        cokeAccountId_businessConversationKey: {
+          cokeAccountId: 'acct_1',
+          businessConversationKey: 'biz_conv_1',
+        },
+      },
+      create: {
+        tenantId: 'ten_1',
+        cokeAccountId: 'acct_1',
+        businessConversationKey: 'biz_conv_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'ext_1',
+        isActive: true,
+      },
+      update: {
+        tenantId: 'ten_1',
+        channelId: 'ch_1',
+        endUserId: 'eu_1',
+        externalEndUserId: 'ext_1',
+        isActive: true,
+      },
+    });
+    expect(result).toMatchObject({
+      tenantId: 'ten_1',
+      cokeAccountId: 'acct_1',
+      businessConversationKey: 'biz_conv_1',
+      channelId: 'ch_1',
+      endUserId: 'eu_1',
+      externalEndUserId: 'ext_1',
+      isActive: true,
+    });
+  });
+
   it('bindBusinessConversation throws conversation_binding_conflict when guarded write loses race', async () => {
     tx.conversation.findUnique.mockResolvedValue({
       id: 'conv_1',
