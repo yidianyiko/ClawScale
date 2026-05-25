@@ -1169,3 +1169,32 @@ export async function listPendingSharedReminders(
     orderBy: { createdAt: 'desc' },
   });
 }
+
+export async function listSharedReminders(
+  client: SharedReminderClient,
+  input: {
+    accountId: string;
+    friendAccountId: string;
+    status?: SharedReminderRequestStatus | null;
+  },
+): Promise<SharedReminderRequestRecord[]> {
+  const accountId = nonEmpty(input.accountId, 'invalid_account');
+  const friendAccountId = nonEmpty(input.friendAccountId, 'invalid_account');
+  const where: Record<string, unknown> = {
+    OR: [
+      { requesterAccountId: accountId, inviteeAccountId: friendAccountId },
+      { requesterAccountId: friendAccountId, inviteeAccountId: accountId },
+    ],
+  };
+  if (input.status) {
+    where.status = input.status;
+  }
+  return client.sharedReminderRequest.findMany({
+    where,
+    include: {
+      requester: { select: { displayName: true } },
+      invitee: { select: { displayName: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}

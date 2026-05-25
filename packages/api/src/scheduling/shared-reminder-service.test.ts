@@ -5,6 +5,7 @@ import {
   createSharedReminder,
   expireDueSharedReminders,
   listPendingSharedReminders,
+  listSharedReminders,
   rejectSharedReminder,
 } from './shared-reminder-service.js';
 
@@ -1947,6 +1948,50 @@ describe('shared reminder service', () => {
       where: {
         inviteeAccountId: 'acct_a',
         status: 'pending_invitee_confirmation',
+      },
+      include: {
+        requester: { select: { displayName: true } },
+        invitee: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('lists shared reminders between friends with status filtering and display-name projection', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'acct_b',
+        inviteeAccountId: 'acct_a',
+        title: 'meeting',
+        fireAt: new Date('2026-05-22T07:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'accepted',
+        requester: { displayName: 'Alice Smoke' },
+        invitee: { displayName: 'Bob Smoke' },
+      },
+    ]);
+    const client = {
+      sharedReminderRequest: {
+        findMany,
+      },
+    };
+
+    await expect(
+      listSharedReminders(client as never, {
+        accountId: 'acct_a',
+        friendAccountId: 'acct_b',
+        status: 'accepted',
+      }),
+    ).resolves.toHaveLength(1);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { requesterAccountId: 'acct_a', inviteeAccountId: 'acct_b' },
+          { requesterAccountId: 'acct_b', inviteeAccountId: 'acct_a' },
+        ],
+        status: 'accepted',
       },
       include: {
         requester: { select: { displayName: true } },
