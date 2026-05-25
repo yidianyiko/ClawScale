@@ -24,8 +24,10 @@ import {
   cancelSharedReminder,
   createSharedReminder,
   listPendingSharedReminders,
+  listSharedReminders,
   rejectSharedReminder,
 } from '../scheduling/shared-reminder-service.js';
+import type { SharedReminderRequestStatus } from '../scheduling/types.js';
 import {
   disableUserLink,
   getOrCreateActiveUserLink,
@@ -92,9 +94,17 @@ function normalizeName(value: string): string {
 
 function requestFriendName(body: JsonRecord): string {
   return normalizeName(
-    stringField(body, 'friend_name') ||
-      stringField(body, 'requester_name') ||
-      stringField(body, 'target_name'),
+    stringField(body, 'friend_name').trim() ||
+      stringField(body, 'requester_name').trim() ||
+      stringField(body, 'target_name').trim(),
+  );
+}
+
+function calendarFactsFriendName(body: JsonRecord): string {
+  return normalizeName(
+    stringField(body, 'friend_name').trim() ||
+      stringField(body, 'target_name').trim() ||
+      stringField(body, 'name').trim(),
   );
 }
 
@@ -112,6 +122,49 @@ function displayNameForFriend(friendship: FriendshipRecord, actorAccountId: stri
         ? friendship.accountA
         : null;
   return friendProfile?.displayName ?? '';
+}
+
+async function resolveBlockedAccountId(body: JsonRecord, blockerAccountId: string): Promise<string> {
+  const explicitBlockedAccountId = stringField(body, 'blocked_account_id').trim();
+  if (explicitBlockedAccountId) {
+    return explicitBlockedAccountId;
+  }
+  const friendName = requestFriendName(body);
+  if (!friendName) {
+    return '';
+  }
+
+  const friends = await listFriends(db as never, { accountId: blockerAccountId });
+  const friendMatches = friends.filter((friendship) => {
+    const displayName = normalizeName(displayNameForFriend(friendship, blockerAccountId));
+    return displayName === friendName || displayName.includes(friendName);
+  });
+  if (friendMatches.length > 1) {
+    throw new Error('friend_name_ambiguous');
+  }
+  const matchedFriendship = friendMatches[0];
+  if (matchedFriendship) {
+    const accountId = accountIdForFriend(matchedFriendship, blockerAccountId);
+    if (accountId) {
+      return accountId;
+    }
+  }
+
+  const blocks = await db.accountBlock.findMany({
+    where: { blockerAccountId },
+    include: { blocked: { select: { id: true, displayName: true } } },
+  });
+  const blockMatches = blocks.filter((block: { blocked?: { displayName?: string | null } }) => {
+    const displayName = normalizeName(block.blocked?.displayName ?? '');
+    return displayName === friendName || displayName.includes(friendName);
+  });
+  if (blockMatches.length === 0) {
+    throw new Error('friend_name_not_found');
+  }
+  if (blockMatches.length > 1) {
+    throw new Error('friend_name_ambiguous');
+  }
+  return String(blockMatches[0]?.blockedAccountId ?? '');
 }
 
 async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
@@ -140,6 +193,35 @@ async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: str
     throw new Error('friend_not_found');
   }
   return accountIdForFriend(matchedFriendship, requesterAccountId) ?? '';
+}
+
+async function resolveFriendAccountIdForLookup(
+  body: JsonRecord,
+  requesterAccountId: string,
+): Promise<string> {
+  const explicitTargetAccountId = stringField(body, 'target_account_id').trim();
+  if (explicitTargetAccountId) {
+    return explicitTargetAccountId;
+  }
+
+  const friendName = calendarFactsFriendName(body);
+  if (!friendName) {
+    throw new Error('friend_not_found');
+  }
+
+  const friends = await listFriends(db as never, { accountId: requesterAccountId });
+  const matches = friends.filter((friendship) => {
+    const displayName = normalizeName(displayNameForFriend(friendship, requesterAccountId));
+    return displayName === friendName || displayName.includes(friendName);
+  });
+
+  if (matches.length === 0) {
+    throw new Error('friend_not_found');
+  }
+  if (matches.length > 1) {
+    throw new Error('friend_name_ambiguous');
+  }
+  return accountIdForFriend(matches[0] as FriendshipRecord, requesterAccountId) ?? '';
 }
 
 type FriendRequestLookupRecord = {
@@ -428,33 +510,33 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     );
   }
   if (toolName === 'block_account') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       blockAccount(
         db as never,
         { cancelRuntimeReminder },
         {
           blockerAccountId: customerId,
-          blockedAccountId: stringField(body, 'blocked_account_id'),
+          blockedAccountId: await resolveBlockedAccountId(body, customerId),
         },
       ),
     );
   }
   if (toolName === 'unblock_account') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       unblockAccount(db as never, {
         blockerAccountId: customerId,
-        blockedAccountId: stringField(body, 'blocked_account_id'),
+        blockedAccountId: await resolveBlockedAccountId(body, customerId),
       }),
     );
   }
   if (toolName === 'list_friend_calendar_facts') {
-    return runCustomerTool(c, body, (customerId) =>
+    return runCustomerTool(c, body, async (customerId) =>
       listFriendCalendarFacts(
         db as never,
         { listRuntimeCalendarFacts },
         {
           requesterAccountId: customerId,
-          targetAccountId: stringField(body, 'target_account_id'),
+          targetAccountId: await resolveFriendAccountIdForLookup(body, customerId),
           fromDate: stringField(body, 'from_date'),
           toDate: stringField(body, 'to_date'),
           timezone: stringField(body, 'timezone', 'UTC'),
@@ -489,6 +571,21 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         inviteeAccountId: customerId,
       }),
     );
+  }
+  if (toolName === 'list_shared_reminders') {
+    return runCustomerTool(c, body, async (customerId) => {
+      const status = stringField(body, 'status').trim() || null;
+      const sharedReminders = await listSharedReminders(db as never, {
+        accountId: customerId,
+        friendAccountId: await resolveFriendAccountIdForLookup(body, customerId),
+        status: status as SharedReminderRequestStatus | null,
+      });
+      return {
+        friend_name: calendarFactsFriendName(body) || null,
+        status,
+        shared_reminders: sharedReminders,
+      };
+    });
   }
   if (toolName === 'accept_shared_reminder') {
     return runCustomerTool(c, body, async (customerId) => {

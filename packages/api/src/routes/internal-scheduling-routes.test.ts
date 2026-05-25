@@ -22,6 +22,7 @@ const friendships = vi.hoisted(() => ({
 const sharedReminders = vi.hoisted(() => ({
   createSharedReminder: vi.fn(),
   listPendingSharedReminders: vi.fn(),
+  listSharedReminders: vi.fn(),
   acceptSharedReminder: vi.fn(),
   rejectSharedReminder: vi.fn(),
   cancelSharedReminder: vi.fn(),
@@ -68,6 +69,11 @@ describe('internal scheduling routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.CLAWSCALE_IDENTITY_API_KEY = 'internal-key';
+    Object.assign(db, {
+      accountBlock: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
     scheduling.getOrCreateActiveUserLink.mockResolvedValue({ code: 'AbCdEfGhIjK_' });
     scheduling.resetUserLink.mockResolvedValue({ code: 'ResetCode123' });
     scheduling.disableUserLink.mockResolvedValue({ count: 1 });
@@ -82,6 +88,7 @@ describe('internal scheduling routes', () => {
     friendships.unblockAccount.mockResolvedValue({ blockerAccountId: 'ck_provider', blockedAccountId: 'ck_other' });
     sharedReminders.createSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'pending_invitee_confirmation' });
     sharedReminders.listPendingSharedReminders.mockResolvedValue([{ id: 'sr_1', status: 'pending_invitee_confirmation' }]);
+    sharedReminders.listSharedReminders.mockResolvedValue([{ id: 'sr_1', status: 'accepted' }]);
     sharedReminders.acceptSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'accepted' });
     sharedReminders.rejectSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'rejected' });
     sharedReminders.cancelSharedReminder.mockResolvedValue({ id: 'sr_1', status: 'cancelled' });
@@ -461,6 +468,66 @@ describe('internal scheduling routes', () => {
     );
   });
 
+  it('resolves block_account friend_name against active friendships', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'ck_provider',
+        accountBId: 'ck_bob',
+        status: 'active',
+        accountA: { id: 'ck_provider', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'ck_bob', displayName: 'Bob Smoke', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/block_account', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        friend_name: 'Bob',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.blockAccount).toHaveBeenCalledWith(
+      db as never,
+      { cancelRuntimeReminder: reminderRuntime.cancelRuntimeReminder },
+      { blockerAccountId: 'ck_provider', blockedAccountId: 'ck_bob' },
+    );
+  });
+
+  it('resolves unblock_account friend_name against existing account blocks', async () => {
+    const accountBlock = db.accountBlock as { findMany: ReturnType<typeof vi.fn> };
+    accountBlock.findMany.mockResolvedValueOnce([
+      {
+        blockedAccountId: 'ck_bob',
+        blocked: { id: 'ck_bob', displayName: 'Bob Smoke' },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/unblock_account', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        friend_name: 'Bob',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.unblockAccount).toHaveBeenCalledWith(db as never, {
+      blockerAccountId: 'ck_provider',
+      blockedAccountId: 'ck_bob',
+    });
+  });
+
   it('routes shared reminder tools with the reminder runtime port', async () => {
     const runtimePort = {
       createRuntimeReminder: reminderRuntime.createRuntimeReminder,
@@ -654,6 +721,280 @@ describe('internal scheduling routes', () => {
         timezone: 'Asia/Tokyo',
       },
     );
+  });
+
+  it('resolves list_friend_calendar_facts friend_name against active friendships', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'acct_student',
+        accountBId: 'acct_coach',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_coach', displayName: 'Coach Bob', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_friend_calendar_facts', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        friend_name: 'Coach Bob',
+        from_date: '2026-05-25',
+        to_date: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+    });
+    expect(friendCalendarFacts.listFriendCalendarFacts).toHaveBeenCalledWith(
+      db as never,
+      { listRuntimeCalendarFacts: reminderRuntime.listRuntimeCalendarFacts },
+      {
+        requesterAccountId: 'acct_student',
+        targetAccountId: 'acct_coach',
+        fromDate: '2026-05-25',
+        toDate: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      },
+    );
+  });
+
+  it('resolves list_friend_calendar_facts name alias against active friendships', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'acct_student',
+        accountBId: 'acct_coach',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_coach', displayName: 'Coach Bob', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_friend_calendar_facts', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        name: 'Bob',
+        from_date: '2026-05-25',
+        to_date: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendCalendarFacts.listFriendCalendarFacts).toHaveBeenCalledWith(
+      db as never,
+      { listRuntimeCalendarFacts: reminderRuntime.listRuntimeCalendarFacts },
+      {
+        requesterAccountId: 'acct_student',
+        targetAccountId: 'acct_coach',
+        fromDate: '2026-05-25',
+        toDate: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      },
+    );
+  });
+
+  it('fails closed when list_friend_calendar_facts has neither target_account_id nor friend_name', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/list_friend_calendar_facts', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        from_date: '2026-05-25',
+        to_date: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'friend_not_found',
+    });
+    expect(friendCalendarFacts.listFriendCalendarFacts).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when list_friend_calendar_facts friend_name is ambiguous', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'acct_student',
+        accountBId: 'acct_bob_1',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob_1', displayName: 'Bob Smoke', avatarUrl: null },
+      },
+      {
+        id: 'fs_2',
+        accountAId: 'acct_student',
+        accountBId: 'acct_bob_2',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob_2', displayName: 'Bob Buddy', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_friend_calendar_facts', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        friend_name: 'Bob',
+        from_date: '2026-05-25',
+        to_date: '2026-05-31',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'friend_name_ambiguous',
+    });
+    expect(friendCalendarFacts.listFriendCalendarFacts).not.toHaveBeenCalled();
+  });
+
+  it('resolves list_shared_reminders friend_name against active friendships', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'acct_student',
+        accountBId: 'acct_bob',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob', displayName: 'Bob Smoke', avatarUrl: null },
+      },
+    ]);
+    sharedReminders.listSharedReminders.mockResolvedValueOnce([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'acct_student',
+        inviteeAccountId: 'acct_bob',
+        status: 'accepted',
+        requester: { displayName: 'Alice Smoke' },
+        invitee: { displayName: 'Bob Smoke' },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        friend_name: 'Bob',
+        status: 'accepted',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(friendships.listFriends).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+    });
+    expect(sharedReminders.listSharedReminders).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+      friendAccountId: 'acct_bob',
+      status: 'accepted',
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        friend_name: 'bob',
+        status: 'accepted',
+        shared_reminders: [
+          {
+            id: 'srr_1',
+            requesterAccountId: 'acct_student',
+            inviteeAccountId: 'acct_bob',
+            status: 'accepted',
+            requester: { displayName: 'Alice Smoke' },
+            invitee: { displayName: 'Bob Smoke' },
+          },
+        ],
+      },
+    });
+  });
+
+  it('fails closed when list_shared_reminders has no friend name', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'friend_not_found',
+    });
+    expect(sharedReminders.listSharedReminders).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when list_shared_reminders friend_name is ambiguous', async () => {
+    friendships.listFriends.mockResolvedValueOnce([
+      {
+        id: 'fs_1',
+        accountAId: 'acct_student',
+        accountBId: 'acct_bob',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob', displayName: 'Bob Smoke', avatarUrl: null },
+      },
+      {
+        id: 'fs_2',
+        accountAId: 'acct_student',
+        accountBId: 'acct_bob_2',
+        status: 'active',
+        accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob_2', displayName: 'Bobbie Smoke', avatarUrl: null },
+      },
+    ]);
+
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        friend_name: 'Bob',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'friend_name_ambiguous',
+    });
+    expect(sharedReminders.listSharedReminders).not.toHaveBeenCalled();
   });
 
   it('routes product notification retry after auth', async () => {
