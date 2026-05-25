@@ -80,6 +80,10 @@ describe('customer-auth helpers', () => {
       identity: {
         findUnique: vi.fn().mockResolvedValue(null),
       },
+      customer: {
+        // No existing customer with the same display name.
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       $transaction: vi.fn(async (fn: (db: typeof tx) => Promise<unknown>) => fn(tx)),
     };
 

@@ -174,6 +174,7 @@ export class CustomerAuthError extends Error {
   constructor(
     public readonly code:
       | 'email_already_exists'
+      | 'display_name_already_exists'
       | 'invalid_credentials'
       | 'invalid_or_expired_token'
       | 'account_not_found'
@@ -448,6 +449,19 @@ export async function registerCustomer(
 
   if (existing) {
     throw new CustomerAuthError('email_already_exists');
+  }
+
+  // Display name uniqueness: scheduling tools (friend-name fuzzy lookup,
+  // shared-reminder requester resolution) resolve targets by display name.
+  // If two customers share a name, those resolvers fail-closed with
+  // friend_name_ambiguous and the user cannot complete the action. Enforce
+  // uniqueness at registration so the ambiguity never happens.
+  const existingDisplayName = await client.customer.findFirst({
+    where: { displayName: { equals: displayName, mode: 'insensitive' } },
+    select: { id: true },
+  });
+  if (existingDisplayName) {
+    throw new CustomerAuthError('display_name_already_exists');
   }
 
   const passwordHash = await hashPassword(input.password);

@@ -37,6 +37,8 @@ function mapCustomerAuthError(error: unknown): {
       return { status: 404, body: { ok: false, error: error.code } };
     case 'email_already_exists':
       return { status: 409, body: { ok: false, error: error.code } };
+    case 'display_name_already_exists':
+      return { status: 409, body: { ok: false, error: error.code } };
     case 'claim_not_allowed':
       return { status: 409, body: { ok: false, error: error.code } };
     default:

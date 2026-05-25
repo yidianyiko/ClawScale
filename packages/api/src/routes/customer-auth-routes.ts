@@ -94,6 +94,8 @@ function mapCustomerAuthError(error: unknown): {
   switch (error.code) {
     case 'email_already_exists':
       return { status: 409, body: { ok: false, error: error.code } };
+    case 'display_name_already_exists':
+      return { status: 409, body: { ok: false, error: error.code } };
     case 'invalid_credentials':
       return { status: 401, body: { ok: false, error: error.code } };
     case 'invalid_or_expired_token':
