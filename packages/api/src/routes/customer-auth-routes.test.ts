@@ -18,6 +18,9 @@ const db = vi.hoisted(() => ({
   identity: {
     findUnique: vi.fn(),
   },
+  customer: {
+    findFirst: vi.fn(),
+  },
   membership: {
     findFirst: vi.fn(),
     findMany: vi.fn(),
@@ -72,6 +75,7 @@ describe('customer auth routes', () => {
       customerId: 'ck_generated',
       role: 'owner',
     });
+    db.customer.findFirst.mockResolvedValue(null);
     db.membership.findMany.mockResolvedValue([
       {
         role: 'owner',

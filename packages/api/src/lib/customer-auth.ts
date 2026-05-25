@@ -154,6 +154,12 @@ interface CustomerAuthClient {
       };
     }): Promise<{ id: string } | null>;
   };
+  customer: {
+    findFirst(args: {
+      where: Record<string, unknown>;
+      select: Record<string, unknown>;
+    }): Promise<{ id: string } | null>;
+  };
   membership: {
     findFirst(args: {
       where: Record<string, unknown>;
