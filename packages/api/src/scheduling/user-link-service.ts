@@ -69,6 +69,13 @@ interface UserLinkClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
+  deliveryRoute: {
+    findFirst(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      select: Record<string, boolean>;
+    }): Promise<{ businessConversationKey: string } | null>;
+  };
   $transaction?<T>(fn: (client: UserLinkTransactionClient) => Promise<T>): Promise<T>;
 }
 
@@ -613,7 +620,7 @@ async function createFriendRequestWithConflictRead(
 }
 
 async function ensureFriendRequestNotification(
-  client: Pick<UserLinkClient, 'productNotification'>,
+  client: Pick<UserLinkClient, 'productNotification' | 'deliveryRoute'>,
   input: {
     request: Record<string, unknown>;
     requesterAccountId: string;

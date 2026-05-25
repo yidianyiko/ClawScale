@@ -106,6 +106,13 @@ export interface SharedReminderClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
+  deliveryRoute: {
+    findFirst(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      select: Record<string, boolean>;
+    }): Promise<{ businessConversationKey: string } | null>;
+  };
 }
 
 function nonEmpty(value: string, code: string): string {
@@ -277,7 +284,7 @@ async function recordEvent(
 }
 
 async function enqueueSharedReminderNotification(
-  client: Pick<SharedReminderClient, 'productNotification'>,
+  client: Pick<SharedReminderClient, 'productNotification' | 'deliveryRoute'>,
   input: {
     requestId: string;
     recipientAccountId: string;

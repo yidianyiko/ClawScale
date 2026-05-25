@@ -149,6 +149,13 @@ interface FriendshipClient {
       data: Record<string, unknown>;
     }): Promise<{ count: number }>;
   };
+  deliveryRoute: {
+    findFirst(args: {
+      where: Record<string, unknown>;
+      orderBy: Record<string, unknown>;
+      select: Record<string, boolean>;
+    }): Promise<{ businessConversationKey: string } | null>;
+  };
   $transaction?<T>(fn: (client: FriendshipWriteClient) => Promise<T>): Promise<T>;
 }
 
@@ -231,7 +238,7 @@ async function ensureActiveFriendship(
 }
 
 async function createAcceptedNotification(
-  client: Pick<FriendshipClient, 'productNotification'>,
+  client: Pick<FriendshipClient, 'productNotification' | 'deliveryRoute'>,
   input: {
     request: FriendRequestRecord;
     idempotencyKey: string;
