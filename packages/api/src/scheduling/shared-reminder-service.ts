@@ -66,6 +66,11 @@ interface ProductNotificationDeliveryRecord {
   payload: unknown;
 }
 
+interface CustomerDisplayNameRecord {
+  id: string;
+  displayName: string | null;
+}
+
 const STALE_PENDING_CLAIM_MS = 5 * 60 * 1000;
 
 export interface ReminderRuntimePort {
@@ -97,6 +102,12 @@ export interface SharedReminderClient {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
     deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
     findFirst(args: { where: Record<string, unknown> }): Promise<ReminderProjectionRecord | null>;
+  };
+  customer?: {
+    findUnique(args: {
+      where: { id: string };
+      select: { id: boolean; displayName: boolean };
+    }): Promise<CustomerDisplayNameRecord | null>;
   };
   productNotification: {
     create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
@@ -295,6 +306,7 @@ async function enqueueSharedReminderNotification(
     kind: string;
     text: string;
     allowedActions: string[];
+    metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
   await enqueueProductNotification(client, {
@@ -308,8 +320,48 @@ async function enqueueSharedReminderNotification(
       request_id: input.requestId,
       request_type: 'shared_reminder_request',
       allowed_actions: input.allowedActions,
+      ...(input.metadata ?? {}),
     },
   });
+}
+
+async function readCustomerDisplayName(
+  client: SharedReminderClient,
+  accountId: string,
+): Promise<string | null> {
+  if (!client.customer) {
+    return null;
+  }
+  const customer = await client.customer.findUnique({
+    where: { id: accountId },
+    select: { id: true, displayName: true },
+  });
+  const displayName = customer?.displayName?.trim() ?? '';
+  return displayName || null;
+}
+
+async function buildSharedReminderNotification(
+  client: SharedReminderClient,
+  request: SharedReminderRequestRecord,
+): Promise<{ text: string; metadata: Record<string, unknown> }> {
+  const requesterName = await readCustomerDisplayName(client, request.requesterAccountId);
+  const { localDate, localTime } = splitInstant(request.fireAt, request.timezone);
+  const durationMinutes = request.durationMinutes ?? null;
+  const inviter = requesterName ?? '有人';
+  const durationText = durationMinutes ? `，预计${durationMinutes}分钟` : '';
+  return {
+    text: `${inviter}邀请你参加「${request.title}」，时间${localDate} ${localTime}${durationText}。请确认或拒绝。`,
+    metadata: {
+      actor_account_id: request.requesterAccountId,
+      requester_name: requesterName,
+      title: request.title,
+      fire_at: request.fireAt.toISOString(),
+      timezone: request.timezone,
+      local_date: localDate,
+      local_time: localTime,
+      duration_minutes: durationMinutes,
+    },
+  };
 }
 
 async function findProjection(
@@ -420,12 +472,14 @@ async function finalizeRequesterProjection(
     actorRole: 'requester',
     idempotencyKey: input.idempotencyKey,
   });
+  const notification = await buildSharedReminderNotification(client, input.request);
   await enqueueSharedReminderNotification(client, {
     requestId: input.request.id,
     recipientAccountId: input.request.inviteeAccountId,
     kind: 'shared_reminder_request',
-    text: '你有一个共享提醒请求，请确认或拒绝。',
+    text: notification.text,
     allowedActions: ['accept', 'reject'],
+    metadata: notification.metadata,
   });
   return { ...input.request, requesterReminderId: input.projection.runtimeReminderId };
 }

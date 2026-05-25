@@ -56,22 +56,23 @@ function fakeSharedReminderClient(state: {
         return state.reminderProjection;
       }),
     },
-    productNotification: {
-      create: vi.fn().mockResolvedValue({
-        id: 'pn_1',
-        recipientAccountId: 'acct_a',
-        idempotencyKey: 'shared-reminder:srr_1:shared_reminder_request',
-        kind: 'shared_reminder_request',
-        payload: {
-          text: '你有一个共享提醒请求，请确认或拒绝。',
-          metadata: {
-            request_id: 'srr_1',
-            request_type: 'shared_reminder_request',
-            allowed_actions: ['accept', 'reject'],
-          },
-        },
-        status: 'pending_delivery',
+    customer: {
+      findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => {
+        if (where.id === 'acct_b') {
+          return { id: 'acct_b', displayName: 'Bob Smoke' };
+        }
+        if (where.id === 'acct_a') {
+          return { id: 'acct_a', displayName: 'Alice Smoke' };
+        }
+        return null;
       }),
+    },
+    productNotification: {
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: 'pn_1',
+        status: 'pending_delivery',
+        ...data,
+      })),
       findMany: vi.fn(),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -171,6 +172,51 @@ describe('shared reminder service', () => {
         lastError: null,
       },
     });
+  });
+
+  it('includes invitation context in shared reminder notification text and metadata', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_req_1' } },
+    });
+
+    await createSharedReminder(client as never, reminderRuntime, {
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      title: '一起运动',
+      fireAt: '2026-05-22T13:00:00.000Z',
+      timezone: 'Asia/Shanghai',
+      durationMinutes: 60,
+      idempotencyKey: 'shared:notification-context',
+    });
+
+    expect(client.productNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: {
+          text: 'Bob Smoke邀请你参加「一起运动」，时间2026-05-22 21:00，预计60分钟。请确认或拒绝。',
+          metadata: {
+            request_id: 'srr_1',
+            request_type: 'shared_reminder_request',
+            actor_account_id: 'acct_b',
+            requester_name: 'Bob Smoke',
+            title: '一起运动',
+            fire_at: '2026-05-22T13:00:00.000Z',
+            timezone: 'Asia/Shanghai',
+            local_date: '2026-05-22',
+            local_time: '21:00',
+            duration_minutes: 60,
+            allowed_actions: ['accept', 'reject'],
+          },
+        },
+      }),
+    });
+
+    const body = JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body));
+    expect(body.text).toBe(
+      'Bob Smoke邀请你参加「一起运动」，时间2026-05-22 21:00，预计60分钟。请确认或拒绝。',
+    );
   });
 
   it('persists duration and projects it into requester reminder', async () => {
