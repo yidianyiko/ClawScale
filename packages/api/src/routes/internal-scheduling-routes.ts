@@ -9,12 +9,17 @@ import {
 import {
   acceptFriendRequest,
   cancelFriendRequest,
-  type FriendshipRecord,
   listFriendRequests,
   listFriends,
   rejectFriendRequest,
   removeFriendship,
 } from '../scheduling/friendship-service.js';
+import {
+  resolveActiveFriendForRead,
+  resolveActiveFriendshipForMutation,
+  resolvePendingRequestForAction,
+  resolveSharedReminderInvitee,
+} from '../scheduling/friend-target-resolver.js';
 import { listFriendCalendarFacts } from '../scheduling/friend-calendar-facts-service.js';
 import { deliverPendingProductNotifications } from '../scheduling/notification-service.js';
 import {
@@ -111,170 +116,70 @@ function normalizeName(value: string): string {
 }
 
 function requestFriendName(body: JsonRecord): string {
-  return normalizeName(
+  return (
     stringField(body, 'friend_name').trim() ||
       stringField(body, 'requester_name').trim() ||
-      stringField(body, 'target_name').trim(),
+      stringField(body, 'target_name').trim()
   );
 }
 
 function calendarFactsFriendName(body: JsonRecord): string {
-  return normalizeName(
+  return (
     stringField(body, 'friend_name').trim() ||
       stringField(body, 'target_name').trim() ||
-      stringField(body, 'name').trim(),
+      stringField(body, 'name').trim()
   );
 }
 
-function accountIdForFriend(friendship: FriendshipRecord, actorAccountId: string): string | null {
-  if (friendship.accountAId === actorAccountId) return friendship.accountBId;
-  if (friendship.accountBId === actorAccountId) return friendship.accountAId;
-  return null;
+function friendResolverClient() {
+  return {
+    listFriendRequests: (accountId: string) => listFriendRequests(db as never, { accountId }),
+    listFriends: (accountId: string) => listFriends(db as never, { accountId }),
+  };
 }
 
-function displayNameForFriend(friendship: FriendshipRecord, actorAccountId: string): string {
-  const friendProfile =
-    friendship.accountAId === actorAccountId
-      ? friendship.accountB
-      : friendship.accountBId === actorAccountId
-        ? friendship.accountA
-        : null;
-  return friendProfile?.displayName ?? '';
-}
-
-async function resolveInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
-  const explicitInviteeAccountId = stringField(body, 'invitee_account_id').trim();
-  if (explicitInviteeAccountId) {
-    return explicitInviteeAccountId;
-  }
-  const inviteeName = normalizeName(stringField(body, 'invitee_name'));
-  if (!inviteeName) {
-    return '';
-  }
-
-  const friends = await listFriends(db as never, { accountId: requesterAccountId });
-  const matches = friends.filter((friendship) => {
-    const displayName = normalizeName(displayNameForFriend(friendship, requesterAccountId));
-    return displayName === inviteeName || displayName.includes(inviteeName);
-  });
-  if (matches.length === 0) {
-    throw new Error('friend_not_found');
-  }
-  if (matches.length > 1) {
-    throw new Error('friend_name_ambiguous');
-  }
-  const matchedFriendship = matches[0];
-  if (!matchedFriendship) {
-    throw new Error('friend_not_found');
-  }
-  return accountIdForFriend(matchedFriendship, requesterAccountId) ?? '';
-}
-
-async function resolveFriendAccountIdForLookup(
-  body: JsonRecord,
-  requesterAccountId: string,
-): Promise<string> {
-  const explicitTargetAccountId = stringField(body, 'target_account_id').trim();
-  if (explicitTargetAccountId) {
-    return explicitTargetAccountId;
-  }
-
-  const friendName = calendarFactsFriendName(body);
-  if (!friendName) {
-    throw new Error('friend_not_found');
-  }
-
-  const friends = await listFriends(db as never, { accountId: requesterAccountId });
-  const matches = friends.filter((friendship) => {
-    const displayName = normalizeName(displayNameForFriend(friendship, requesterAccountId));
-    return displayName === friendName || displayName.includes(friendName);
-  });
-
-  if (matches.length === 0) {
-    throw new Error('friend_not_found');
-  }
-  if (matches.length > 1) {
-    throw new Error('friend_name_ambiguous');
-  }
-  return accountIdForFriend(matches[0] as FriendshipRecord, requesterAccountId) ?? '';
-}
-
-type FriendRequestLookupRecord = {
-  id: string;
-  requesterAccountId: string;
-  targetAccountId: string;
-  status: string;
-  requester?: { displayName?: string | null } | null;
-  target?: { displayName?: string | null } | null;
-};
-
-function friendRequestProfileName(
-  request: FriendRequestLookupRecord,
-  actorField: 'requesterAccountId' | 'targetAccountId',
-): string {
-  const profile = actorField === 'requesterAccountId' ? request.target : request.requester;
-  return normalizeName(profile?.displayName ?? '');
-}
-
-async function resolveFriendRequestId(
+async function resolvedPendingRequestId(
   body: JsonRecord,
   actorAccountId: string,
-  toolName: 'accept_friend_request' | 'reject_friend_request' | 'cancel_friend_request',
+  actorRole: 'requester' | 'target',
 ): Promise<string> {
-  const explicitRequestId = stringField(body, 'request_id').trim();
-  if (explicitRequestId) {
-    return explicitRequestId;
-  }
-
-  const friendName = requestFriendName(body);
-
-  const actorField = toolName === 'cancel_friend_request' ? 'requesterAccountId' : 'targetAccountId';
-  const requests = (await listFriendRequests(db as never, {
-    accountId: actorAccountId,
-  })) as FriendRequestLookupRecord[];
-  const pendingActorRequests = requests.filter((request) => {
-    if (request.status !== 'pending') {
-      return false;
-    }
-    if (request[actorField] !== actorAccountId) {
-      return false;
-    }
-    return true;
+  const result = await resolvePendingRequestForAction(friendResolverClient(), {
+    actorRole,
+    actorAccountId,
+    requestId: stringField(body, 'request_id'),
+    friendName: requestFriendName(body),
   });
-  const matches = friendName ? pendingActorRequests.filter((request) => {
-    const displayName = friendRequestProfileName(request, actorField);
-    return displayName === friendName || displayName.includes(friendName);
-  }) : pendingActorRequests;
-
-  if (matches.length === 0) {
-    throw new Error(friendName ? 'friend_name_not_found' : 'friend_request_not_found');
-  }
-  if (matches.length > 1) {
-    throw new Error(friendName ? 'friend_name_ambiguous' : 'friend_request_ambiguous');
-  }
-  return matches[0]?.id ?? '';
+  return result.requestId;
 }
 
-async function resolveFriendshipId(body: JsonRecord, actorAccountId: string): Promise<string> {
-  const explicitFriendshipId = stringField(body, 'friendship_id').trim();
-  if (explicitFriendshipId) {
-    return explicitFriendshipId;
-  }
+async function resolvedFriendshipId(body: JsonRecord, actorAccountId: string): Promise<string> {
+  const result = await resolveActiveFriendshipForMutation(friendResolverClient(), {
+    actorAccountId,
+    friendshipId: stringField(body, 'friendship_id'),
+    friendName: requestFriendName(body),
+  });
+  return result.friendshipId;
+}
 
-  const friendName = requestFriendName(body);
-  const friends = await listFriends(db as never, { accountId: actorAccountId });
-  const matches = friendName ? friends.filter((friendship) => {
-    const displayName = normalizeName(displayNameForFriend(friendship, actorAccountId));
-    return displayName === friendName || displayName.includes(friendName);
-  }) : friends;
+async function resolvedFriendAccountIdForLookup(
+  body: JsonRecord,
+  actorAccountId: string,
+): Promise<string> {
+  const result = await resolveActiveFriendForRead(friendResolverClient(), {
+    actorAccountId,
+    targetAccountId: stringField(body, 'target_account_id'),
+    friendName: calendarFactsFriendName(body),
+  });
+  return result.otherAccountId;
+}
 
-  if (matches.length === 0) {
-    throw new Error(friendName ? 'friend_name_not_found' : 'friendship_not_found');
-  }
-  if (matches.length > 1) {
-    throw new Error(friendName ? 'friend_name_ambiguous' : 'friendship_ambiguous');
-  }
-  return matches[0]?.id ?? '';
+async function resolvedInviteeAccountId(body: JsonRecord, requesterAccountId: string): Promise<string> {
+  const result = await resolveSharedReminderInvitee(friendResolverClient(), {
+    actorAccountId: requesterAccountId,
+    inviteeAccountId: stringField(body, 'invitee_account_id'),
+    friendName: stringField(body, 'invitee_name'),
+  });
+  return result.otherAccountId;
 }
 
 type SharedReminderLookupRecord = {
@@ -306,12 +211,12 @@ async function resolveSharedReminderRequestId(
 
   // For accept / reject the actor is the invitee; for cancel the actor is the requester.
   const actorField = toolName === 'cancel_shared_reminder' ? 'requesterAccountId' : 'inviteeAccountId';
-  const counterpartyName = normalizeName(
+  const counterpartyName = (
     stringField(body, 'inviter_name') ||
       stringField(body, 'requester_name') ||
       stringField(body, 'invitee_name') ||
-      stringField(body, 'friend_name'),
-  );
+      stringField(body, 'friend_name')
+  ).trim().toLowerCase();
 
   const records = (await (db as never as {
     sharedReminderRequest: {
@@ -442,7 +347,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(c, body, async (customerId) =>
       acceptFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: await resolveFriendRequestId(body, customerId, 'accept_friend_request'),
+        requestId: await resolvedPendingRequestId(body, customerId, 'target'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
@@ -451,7 +356,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(c, body, async (customerId) =>
       rejectFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: await resolveFriendRequestId(body, customerId, 'reject_friend_request'),
+        requestId: await resolvedPendingRequestId(body, customerId, 'target'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
@@ -460,7 +365,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(c, body, async (customerId) =>
       cancelFriendRequest(db as never, {
         actorAccountId: customerId,
-        requestId: await resolveFriendRequestId(body, customerId, 'cancel_friend_request'),
+        requestId: await resolvedPendingRequestId(body, customerId, 'requester'),
         idempotencyKey: stringField(body, 'idempotency_key'),
       }),
     );
@@ -479,7 +384,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         { cancelRuntimeReminder },
         {
           actorAccountId: customerId,
-          friendshipId: await resolveFriendshipId(body, customerId),
+          friendshipId: await resolvedFriendshipId(body, customerId),
         },
       ),
     );
@@ -491,7 +396,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         { listRuntimeCalendarFacts },
         {
           requesterAccountId: customerId,
-          targetAccountId: await resolveFriendAccountIdForLookup(body, customerId),
+          targetAccountId: await resolvedFriendAccountIdForLookup(body, customerId),
           fromDate: stringField(body, 'from_date'),
           toDate: stringField(body, 'to_date'),
           timezone: stringField(body, 'timezone', 'UTC'),
@@ -509,7 +414,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
           { createRuntimeReminder, cancelRuntimeReminder },
           {
             requesterAccountId: customerId,
-            inviteeAccountId: await resolveInviteeAccountId(body, customerId),
+            inviteeAccountId: await resolvedInviteeAccountId(body, customerId),
             title: stringField(body, 'title'),
             fireAt: stringField(body, 'fire_at'),
             timezone: stringField(body, 'timezone', 'UTC'),
@@ -538,7 +443,7 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         stringField(body, 'target_account_id').trim() || calendarFactsFriendName(body),
       );
       const friendAccountId = hasFriendFilter
-        ? await resolveFriendAccountIdForLookup(body, customerId)
+        ? await resolvedFriendAccountIdForLookup(body, customerId)
         : null;
       const query = {
         accountId: customerId,

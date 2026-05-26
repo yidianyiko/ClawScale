@@ -133,10 +133,10 @@ const timezoneSchema = nonEmptyStringSchema.refine(isValidIanaTimezone);
 const titleSchema = nonEmptyStringSchema.max(200);
 
 function isValidRrule(value: string): boolean {
-  const parts = Object.fromEntries(
-    value.split(';').map((part) => {
-      const [key, rawValue] = part.split('=', 2);
-      return [key?.trim().toUpperCase(), rawValue?.trim().toUpperCase()];
+  const parts: Record<string, string | undefined> = Object.fromEntries(
+    value.split(';').map((part): [string, string | undefined] => {
+      const [rawKey, rawValue] = part.split('=', 2);
+      return [rawKey?.trim().toUpperCase() ?? '', rawValue?.trim().toUpperCase()];
     }),
   );
   const freq = parts.FREQ;

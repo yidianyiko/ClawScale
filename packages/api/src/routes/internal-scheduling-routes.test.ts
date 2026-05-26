@@ -836,7 +836,7 @@ describe('internal scheduling routes', () => {
     await expect(res.json()).resolves.toEqual({
       ok: true,
       data: {
-        friend_name: 'bob',
+        friend_name: 'Bob',
         status: 'accepted',
         shared_reminders: [
           {
@@ -969,7 +969,7 @@ describe('internal scheduling routes', () => {
         accountBId: 'acct_bob_2',
         status: 'active',
         accountA: { id: 'acct_student', displayName: 'Alice Smoke', avatarUrl: null },
-        accountB: { id: 'acct_bob_2', displayName: 'Bobbie Smoke', avatarUrl: null },
+        accountB: { id: 'acct_bob_2', displayName: 'Bob Buddy', avatarUrl: null },
       },
     ]);
 
