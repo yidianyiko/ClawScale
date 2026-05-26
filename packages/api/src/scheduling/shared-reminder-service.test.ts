@@ -206,6 +206,9 @@ describe('shared reminder service', () => {
             timezone: 'Asia/Shanghai',
             local_date: '2026-05-22',
             local_time: '21:00',
+            viewer_timezone: 'Asia/Shanghai',
+            viewer_local_date: '2026-05-22',
+            viewer_local_time: '21:00',
             duration_minutes: 60,
             allowed_actions: ['accept', 'reject'],
           },
@@ -217,6 +220,41 @@ describe('shared reminder service', () => {
     expect(body.text).toBe(
       'Bob Smoke邀请你参加「一起运动」，时间2026-05-22 21:00，预计60分钟。请确认或拒绝。',
     );
+  });
+
+  it('adds viewer display fields to shared reminder notification metadata', async () => {
+    const client = fakeSharedReminderClient({
+      friendship: { id: 'fs_1', accountAId: 'acct_a', accountBId: 'acct_b', status: 'active' },
+    });
+    const reminderRuntime = fakeReminderRuntime({
+      create: { ok: true, data: { id: 'rem_req_1' } },
+    });
+
+    await createSharedReminder(client as never, reminderRuntime, {
+      requesterAccountId: 'acct_b',
+      inviteeAccountId: 'acct_a',
+      title: '喝咖啡',
+      fireAt: '2026-05-27T01:00:00.000Z',
+      timezone: 'Asia/Tokyo',
+      idempotencyKey: 'shared:notification-viewer-time',
+    });
+
+    expect(client.productNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: {
+          text: 'Bob Smoke邀请你参加「喝咖啡」，时间2026-05-27 10:00。请确认或拒绝。',
+          metadata: expect.objectContaining({
+            fire_at: '2026-05-27T01:00:00.000Z',
+            timezone: 'Asia/Tokyo',
+            local_date: '2026-05-27',
+            local_time: '10:00',
+            viewer_timezone: 'Asia/Tokyo',
+            viewer_local_date: '2026-05-27',
+            viewer_local_time: '10:00',
+          }),
+        },
+      }),
+    });
   });
 
   it('persists duration and projects it into requester reminder', async () => {
@@ -2071,6 +2109,40 @@ describe('shared reminder service', () => {
         invitee: { select: { displayName: true } },
       },
       orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('adds viewer display fields when listing shared reminders', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'srr_1',
+        requesterAccountId: 'acct_a',
+        inviteeAccountId: 'acct_b',
+        title: '喝咖啡',
+        fireAt: new Date('2026-05-27T01:00:00.000Z'),
+        timezone: 'UTC',
+        status: 'pending_invitee_confirmation',
+      },
+    ]);
+    const client = {
+      sharedReminderRequest: {
+        findMany,
+      },
+    };
+
+    const result = await listSharedReminders(client as never, {
+      accountId: 'acct_a',
+      friendAccountId: null,
+      timezone: 'Asia/Tokyo',
+    });
+
+    expect(result[0]).toMatchObject({
+      id: 'srr_1',
+      fireAt: new Date('2026-05-27T01:00:00.000Z'),
+      timezone: 'UTC',
+      viewer_timezone: 'Asia/Tokyo',
+      viewer_local_date: '2026-05-27',
+      viewer_local_time: '10:00',
     });
   });
 

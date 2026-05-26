@@ -408,8 +408,12 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
     return runCustomerTool(
       c,
       body,
-      async (customerId) =>
-        createSharedReminder(
+      async (customerId) => {
+        const timezone = stringField(body, 'timezone').trim();
+        if (!timezone) {
+          throw new Error('invalid_body');
+        }
+        return createSharedReminder(
           db as never,
           { createRuntimeReminder, cancelRuntimeReminder },
           {
@@ -417,11 +421,12 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
             inviteeAccountId: await resolvedInviteeAccountId(body, customerId),
             title: stringField(body, 'title'),
             fireAt: stringField(body, 'fire_at'),
-            timezone: stringField(body, 'timezone', 'UTC'),
+            timezone,
             durationMinutes: optionalNumberField(body, 'duration_minutes'),
             idempotencyKey: stringField(body, 'idempotency_key'),
           },
-        ),
+        );
+      },
       201,
     );
   }
@@ -438,7 +443,10 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       const fromDate = optionalDateField(body, 'from_date');
       const toDate = optionalDateField(body, 'to_date');
       validateOptionalDateRange(fromDate, toDate);
-      const timezone = stringField(body, 'timezone', 'UTC').trim() || 'UTC';
+      const timezone = stringField(body, 'timezone').trim();
+      if (fromDate && toDate && !timezone) {
+        throw new Error('invalid_body');
+      }
       const hasFriendFilter = Boolean(
         stringField(body, 'target_account_id').trim() || calendarFactsFriendName(body),
       );
@@ -449,7 +457,8 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
         accountId: customerId,
         friendAccountId,
         status: status as SharedReminderRequestStatus | null,
-        ...(fromDate && toDate ? { fromDate, toDate, timezone } : {}),
+        ...(timezone ? { timezone } : {}),
+        ...(fromDate && toDate ? { fromDate, toDate } : {}),
       };
       const sharedReminders = await listSharedReminders(db as never, {
         ...query,
@@ -462,7 +471,9 @@ internalSchedulingRouter.post('/tools/:toolName', async (c) => {
       if (!hasFriendFilter || (fromDate && toDate)) {
         response['from_date'] = fromDate;
         response['to_date'] = toDate;
-        response['timezone'] = timezone;
+        if (timezone) {
+          response['timezone'] = timezone;
+        }
       }
       return response;
     });

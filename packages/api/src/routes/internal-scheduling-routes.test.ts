@@ -601,6 +601,30 @@ describe('internal scheduling routes', () => {
     );
   });
 
+  it('rejects create_shared_reminder when timezone is missing', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/create_shared_reminder', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'ck_provider',
+        invitee_account_id: 'ck_other',
+        title: '喝咖啡',
+        fire_at: '2026-05-27T01:00:00.000Z',
+        idempotency_key: 'shared-no-timezone',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      ok: false,
+      error: 'invalid_body',
+    });
+    expect(sharedReminders.createSharedReminder).not.toHaveBeenCalled();
+  });
+
   it('routes list_friend_calendar_facts with trusted requester identity', async () => {
     friendCalendarFacts.listFriendCalendarFacts.mockResolvedValue({
       target_account_id: 'acct_coach',
@@ -889,7 +913,6 @@ describe('internal scheduling routes', () => {
         status: null,
         from_date: null,
         to_date: null,
-        timezone: 'UTC',
         shared_reminders: [
           {
             id: 'srr_1',
@@ -900,6 +923,34 @@ describe('internal scheduling routes', () => {
             invitee: { displayName: 'Bob Smoke' },
           },
         ],
+      },
+    });
+  });
+
+  it('passes viewer timezone to list_shared_reminders even without date filters', async () => {
+    const res = await createApp().request('/api/internal/scheduling/tools/list_shared_reminders', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer internal-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        customer_id: 'acct_student',
+        timezone: 'Asia/Tokyo',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sharedReminders.listSharedReminders).toHaveBeenCalledWith(db as never, {
+      accountId: 'acct_student',
+      friendAccountId: null,
+      status: null,
+      timezone: 'Asia/Tokyo',
+    });
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        timezone: 'Asia/Tokyo',
       },
     });
   });

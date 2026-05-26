@@ -186,6 +186,23 @@ function splitInstant(fireAt: string | Date, timezone: string): { localDate: str
   };
 }
 
+function sharedReminderViewerDisplayFields(
+  fireAt: string | Date,
+  viewerTimezone: string,
+): {
+  viewer_timezone: string;
+  viewer_local_date: string;
+  viewer_local_time: string;
+} {
+  const timezone = nonEmpty(viewerTimezone, 'invalid_body');
+  const { localDate, localTime } = splitInstant(fireAt, timezone);
+  return {
+    viewer_timezone: timezone,
+    viewer_local_date: localDate,
+    viewer_local_time: localTime,
+  };
+}
+
 function parseLocalDate(value: string): { year: number; month: number; day: number } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) {
@@ -415,6 +432,7 @@ async function buildSharedReminderNotification(
 ): Promise<{ text: string; metadata: Record<string, unknown> }> {
   const requesterName = await readCustomerDisplayName(client, request.requesterAccountId);
   const { localDate, localTime } = splitInstant(request.fireAt, request.timezone);
+  const viewerDisplay = sharedReminderViewerDisplayFields(request.fireAt, request.timezone);
   const durationMinutes = request.durationMinutes ?? null;
   const inviter = requesterName ?? '有人';
   const durationText = durationMinutes ? `，预计${durationMinutes}分钟` : '';
@@ -428,6 +446,7 @@ async function buildSharedReminderNotification(
       timezone: request.timezone,
       local_date: localDate,
       local_time: localTime,
+      ...viewerDisplay,
       duration_minutes: durationMinutes,
     },
   };
@@ -1323,7 +1342,7 @@ export async function listSharedReminders(
   if (dateWhere) {
     where.fireAt = dateWhere;
   }
-  return client.sharedReminderRequest.findMany({
+  const rows = await client.sharedReminderRequest.findMany({
     where,
     include: {
       requester: { select: { displayName: true } },
@@ -1331,4 +1350,12 @@ export async function listSharedReminders(
     },
     orderBy: { createdAt: 'desc' },
   });
+  const viewerTimezone = input.timezone?.trim() ?? '';
+  if (!viewerTimezone) {
+    return rows;
+  }
+  return rows.map((row) => ({
+    ...row,
+    ...sharedReminderViewerDisplayFields(row.fireAt, viewerTimezone),
+  }));
 }
