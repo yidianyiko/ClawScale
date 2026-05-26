@@ -18,7 +18,7 @@ interface FriendCalendarPrivacy {
   event_details_included: false;
 }
 
-export interface FriendCalendarFactsSuccess {
+interface FriendCalendarFactsSuccess {
   target_account_id: string;
   range: {
     from: string;
@@ -29,7 +29,7 @@ export interface FriendCalendarFactsSuccess {
   privacy: FriendCalendarPrivacy;
 }
 
-export interface FriendCalendarFactsFriendshipRequired {
+interface FriendCalendarFactsFriendshipRequired {
   status: 'friendship_required';
   target_account_id: string;
   busy_intervals: [];

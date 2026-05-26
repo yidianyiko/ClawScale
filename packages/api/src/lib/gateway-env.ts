@@ -20,7 +20,7 @@ function unique(paths: string[]): string[] {
   return [...new Set(paths)];
 }
 
-export function gatewayEnvPaths(options: LoadGatewayEnvOptions = {}): string[] {
+function gatewayEnvPaths(options: LoadGatewayEnvOptions = {}): string[] {
   const cwd = options.cwd ?? process.cwd();
   const repoRoot = options.repoRoot ?? defaultRepoRoot();
   return unique([

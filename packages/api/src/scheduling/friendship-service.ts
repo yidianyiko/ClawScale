@@ -33,7 +33,7 @@ export interface FriendshipRecord {
   accountB?: CustomerProfileRecord;
 }
 
-export interface CustomerProfileRecord {
+interface CustomerProfileRecord {
   id: string;
   displayName: string;
   avatarUrl: string | null;
